@@ -1,0 +1,65 @@
+.scan-tools {
+  display: grid;
+  gap: 12px;
+  width: min(460px, 95%);
+  margin: 0 auto;
+}
+
+.scan-input {
+  border: 1px solid rgba(20, 57, 93, 0.26);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px;
+  outline: none;
+}
+
+.scan-input:focus {
+  border-color: #2d87a4;
+  box-shadow: 0 0 0 4px rgba(45, 135, 164, 0.16);
+}
+
+.scan-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-checkin,
+.btn-checkout {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 10px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.btn-checkin {
+  background: linear-gradient(160deg, #1f8f5d, #2bab75);
+  box-shadow: 0 10px 16px rgba(33, 141, 93, 0.25);
+}
+
+.btn-checkout {
+  background: linear-gradient(160deg, #c15d39, #da6f45);
+  box-shadow: 0 10px 16px rgba(193, 93, 57, 0.25);
+}
+
+.btn-checkin:hover,
+.btn-checkout:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.1);
+}
+
+.scan-hint {
+  margin: 8px auto 0;
+  width: fit-content;
+  color: #355777;
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .scan-actions {
+    grid-template-columns: 1fr;
+  }
+}

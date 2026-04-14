@@ -1,0 +1,198 @@
+.parking-home {
+  min-height: calc(100vh - 90px);
+  background:
+    radial-gradient(circle at 12% 20%, rgba(83, 160, 229, 0.2), transparent 38%),
+    radial-gradient(circle at 88% 90%, rgba(50, 205, 128, 0.18), transparent 40%),
+    linear-gradient(135deg, #eaf0f6 0%, #dfe7f1 55%, #d3deec 100%);
+}
+
+.parking-board {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 22px 22px 30px;
+}
+
+.parking-title {
+  margin: 0 0 14px;
+  font-size: clamp(30px, 3.2vw, 48px);
+  letter-spacing: 0.4px;
+  color: #143554;
+  text-align: center;
+}
+
+.parking-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: rgba(12, 34, 54, 0.06);
+  color: #1f3850;
+  font-weight: 600;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-car {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+}
+
+.legend-available {
+  background: rgba(50, 168, 82, 0.2);
+}
+
+.legend-occupied {
+  background: rgba(220, 53, 69, 0.2);
+}
+
+.parking-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.slot-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 182px;
+  border-radius: 12px;
+  border: 1px solid rgba(33, 56, 83, 0.24);
+  background:
+    linear-gradient(180deg, rgba(201, 208, 219, 0.65) 0%, rgba(185, 194, 206, 0.95) 100%),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 28px,
+      rgba(255, 255, 255, 0.4) 28px,
+      rgba(255, 255, 255, 0.4) 30px
+    );
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+  animation: slot-pop 0.4s ease-out both;
+}
+
+.slot-card:nth-child(1) { animation-delay: 0.02s; }
+.slot-card:nth-child(2) { animation-delay: 0.04s; }
+.slot-card:nth-child(3) { animation-delay: 0.06s; }
+.slot-card:nth-child(4) { animation-delay: 0.08s; }
+.slot-card:nth-child(5) { animation-delay: 0.1s; }
+.slot-card:nth-child(6) { animation-delay: 0.12s; }
+.slot-card:nth-child(7) { animation-delay: 0.14s; }
+.slot-card:nth-child(8) { animation-delay: 0.16s; }
+.slot-card:nth-child(9) { animation-delay: 0.18s; }
+.slot-card:nth-child(10) { animation-delay: 0.2s; }
+
+.slot-lane {
+  position: absolute;
+  inset: 10px;
+  border: 2px solid rgba(248, 250, 252, 0.95);
+  border-top: none;
+}
+
+.slot-car {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 164px;
+  height: 112px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 10px 20px rgba(10, 21, 38, 0.12);
+}
+
+.car-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  background: transparent;
+}
+
+.slot-available {
+  background: linear-gradient(180deg, #f5fbf7 0%, #e7f4eb 100%);
+}
+
+.slot-occupied {
+  background: linear-gradient(180deg, #faf2f3 0%, #f4dde1 100%);
+}
+
+.slot-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  min-width: 62px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(45, 62, 82, 0.3);
+  background: linear-gradient(180deg, #f8fafc 0%, #dce5f0 100%);
+  text-align: center;
+  font-weight: 700;
+  color: #0f2842;
+}
+
+@keyframes slot-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 992px) {
+  .parking-grid {
+    grid-template-columns: repeat(3, minmax(110px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .parking-home {
+    min-height: calc(100vh - 120px);
+  }
+
+  .parking-board {
+    padding: 14px;
+  }
+
+  .parking-legend {
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .parking-grid {
+    grid-template-columns: repeat(2, minmax(100px, 1fr));
+  }
+
+  .slot-card {
+    min-height: 160px;
+  }
+
+  .slot-car {
+    width: 132px;
+    height: 92px;
+    top: 34px;
+  }
+
+  .car-image {
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
