@@ -303,6 +303,13 @@ export default function Booking() {
   }, [location.state]);
 
   useEffect(() => {
+    if (location.state?.paymentNotice) {
+      setError("");
+      setBookingResult({ message: location.state.paymentNotice });
+    }
+  }, [location.state]);
+
+  useEffect(() => {
     const loadSlots = async () => {
       if (!selectedLot?.id) {
         setAvailableSlots([]);
@@ -477,7 +484,11 @@ export default function Booking() {
         checkin_time: bookingWindow.checkinDate.toISOString(),
         checkout_time: bookingWindow.checkoutDate.toISOString(),
       });
-      setBookingResult(res.data);
+      navigate(`/payment/${res.data.booking_id}`, {
+        state: {
+          booking: res.data,
+        },
+      });
     } catch (err) {
       setBookingResult(null);
       setError(normalizeError(err));

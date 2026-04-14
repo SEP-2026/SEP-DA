@@ -118,10 +118,82 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN billed_units FLOAT NOT NULL DEFAULT 0")
     if "total_amount" not in columns:
         alter_statements.append("ADD COLUMN total_amount FLOAT NOT NULL DEFAULT 0")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
 
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE bookings {', '.join(alter_statements)}"))
+
+    # Ho tro day du trang thai booking cho luong payment moi.
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE bookings MODIFY COLUMN vehicle_id INT NULL"))
+        conn.execute(text("ALTER TABLE bookings MODIFY COLUMN parking_id INT NULL"))
+        conn.execute(
+            text(
+                """
+                ALTER TABLE bookings
+                MODIFY COLUMN status ENUM(
+                    'pending','booked','checked_in','checked_out','completed','cancelled'
+                ) DEFAULT 'pending'
+                """
+            )
+        )
+
+
+def migrate_payments_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "payments" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("payments")}
+    alter_statements = []
+
+    if "amount" not in columns:
+        alter_statements.append("ADD COLUMN amount FLOAT NOT NULL DEFAULT 0")
+    if "overtime_fee" not in columns:
+        alter_statements.append("ADD COLUMN overtime_fee FLOAT NOT NULL DEFAULT 0")
+    if "payment_method" not in columns:
+        alter_statements.append("ADD COLUMN payment_method VARCHAR(50) NOT NULL DEFAULT 'vnpay'")
+    if "payment_status" not in columns:
+        alter_statements.append("ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'pending'")
+    if "paid_at" not in columns:
+        alter_statements.append("ADD COLUMN paid_at DATETIME NULL")
+    if "vnpay_url" not in columns:
+        alter_statements.append("ADD COLUMN vnpay_url VARCHAR(500) NULL")
+    if "qr_code" not in columns:
+        alter_statements.append("ADD COLUMN qr_code VARCHAR(255) NULL")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE payments {', '.join(alter_statements)}"))
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                ALTER TABLE payments
+                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay') DEFAULT 'vnpay'
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE payments
+                MODIFY COLUMN payment_status ENUM('pending','paid','failed') DEFAULT 'pending'
+                """
+            )
+        )
+
+    indexes = {index["name"] for index in inspector.get_indexes("payments")}
+    if "uq_payments_booking_id" not in indexes:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE UNIQUE INDEX uq_payments_booking_id ON payments (booking_id)"))
 
 
 def init_db():
@@ -130,6 +202,7 @@ def init_db():
     migrate_users_columns()
     migrate_parking_slots_columns()
     migrate_bookings_columns()
+    migrate_payments_columns()
 
 
 if __name__ == "__main__":

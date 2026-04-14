@@ -44,17 +44,20 @@ class Booking(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     user_id = Column(Integer, ForeignKey("users.id"))
+    vehicle_id = Column(Integer, nullable=True)
+    parking_id = Column(Integer, nullable=True)
     slot_id = Column(Integer, ForeignKey("parking_slots.id"))
     parking_lot_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=True)
 
-    start_time = Column(DateTime, default=datetime.utcnow)
-    expire_time = Column(DateTime)
+    start_time = Column("checkin_time", DateTime, default=datetime.utcnow)
+    expire_time = Column("checkout_time", DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     booking_mode = Column(String(20), default="hourly")
     billed_units = Column(Float, default=0)
     total_amount = Column(Float, default=0)
 
-    status = Column(String(50), default="reserved")
+    status = Column(String(50), default="pending")
     qr_code = Column(String(255))
 
     user = relationship("User")
@@ -72,6 +75,22 @@ class Transaction(Base):
     amount = Column(Float)
     payment_status = Column(String(50), default="pending")
 
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), unique=True, nullable=False)
+
+    amount = Column(Float, nullable=False)
+    overtime_fee = Column(Float, default=0)
+    payment_method = Column(String(50), default="vnpay")
+    payment_status = Column(String(20), default="pending")
+    paid_at = Column(DateTime, nullable=True)
+    vnpay_url = Column(String(500), nullable=True)
+    qr_code = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

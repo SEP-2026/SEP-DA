@@ -36,4 +36,17 @@ API.interceptors.request.use((config) => {
   return config;
 });
 
+API.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      clearAuth();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?sessionExpired=1";
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
 export default API;

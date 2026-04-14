@@ -1,15 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
 
 import Booking from "./pages/Booking";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
+import Payment from "./pages/Payment";
+import PaymentSuccess from "./pages/PaymentSuccess";
 import Scan from "./pages/Scan";
 import API, { clearAuth, getAuth } from "./services/api";
 import "./styles/layout.css";
 
 function App() {
   const [auth, setAuth] = useState(() => getAuth());
+  const [checkingSession, setCheckingSession] = useState(() => Boolean(getAuth()?.token));
 
   const role = auth?.user?.role || "";
 
@@ -19,13 +22,13 @@ function App() {
     }
 
     const roleLinks = {
-      user: [{ to: "/booking", label: "Đặt chỗ + QR" }],
+      user: [{ to: "/booking", label: "Đặt chỗ" }],
       owner: [
-        { to: "/booking", label: "Đặt chỗ + QR" },
+        { to: "/booking", label: "Đặt chỗ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
       admin: [
-        { to: "/booking", label: "Đặt chỗ + QR" },
+        { to: "/booking", label: "Đặt chỗ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
     };
@@ -45,6 +48,42 @@ function App() {
       setAuth(null);
     }
   };
+
+  useEffect(() => {
+    const verifySession = async () => {
+      if (!auth?.token) {
+        setCheckingSession(false);
+        return;
+      }
+
+      try {
+        const me = await API.get("/auth/me");
+        setAuth((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          return {
+            ...prev,
+            user: {
+              ...prev.user,
+              ...me.data,
+            },
+          };
+        });
+      } catch {
+        clearAuth();
+        setAuth(null);
+      } finally {
+        setCheckingSession(false);
+      }
+    };
+
+    verifySession();
+  }, [auth?.token]);
+
+  if (checkingSession) {
+    return null;
+  }
 
   return (
     <BrowserRouter>
@@ -84,6 +123,14 @@ function App() {
           <Route
             path="/booking"
             element={auth ? <Booking /> : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/payment/:bookingId"
+            element={auth ? <Payment /> : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/payment/success/:bookingId"
+            element={auth ? <PaymentSuccess /> : <Navigate to="/login" replace />}
           />
           <Route
             path="/scan"
