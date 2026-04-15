@@ -45,12 +45,13 @@ class Booking(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"))
     vehicle_id = Column(Integer, nullable=True)
-    parking_id = Column(Integer, nullable=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=True)
     slot_id = Column(Integer, ForeignKey("parking_slots.id"))
-    parking_lot_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=True)
 
     start_time = Column("checkin_time", DateTime, default=datetime.utcnow)
     expire_time = Column("checkout_time", DateTime)
+    actual_checkin = Column(DateTime, nullable=True)
+    actual_checkout = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     booking_mode = Column(String(20), default="hourly")

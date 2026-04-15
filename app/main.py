@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.database import engine
-from app.routes import auth, booking, payment
+from app.routes import admin, auth, booking, payment
 
 app = FastAPI()
 
@@ -22,6 +22,7 @@ app.mount("/qrcodes", StaticFiles(directory="qrcodes"), name="qrcodes")
 app.include_router(booking.router)
 app.include_router(payment.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 
 @app.get("/")

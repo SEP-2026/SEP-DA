@@ -1,40 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
 import Booking from "./pages/Booking";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
+import AdminAnalytics from "./pages/admin/AdminAnalytics";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminSettings from "./pages/admin/AdminSettings";
+import BookingManagement from "./pages/admin/BookingManagement";
+import OwnerManagement from "./pages/admin/OwnerManagement";
+import ParkingManagement from "./pages/admin/ParkingManagement";
+import RevenuePage from "./pages/admin/RevenuePage";
+import UserManagement from "./pages/admin/UserManagement";
+import OwnerBookings from "./pages/owner/OwnerBookings";
+import OwnerOverview from "./pages/owner/OwnerOverview";
+import OwnerParking from "./pages/owner/OwnerParking";
+import OwnerRevenue from "./pages/owner/OwnerRevenue";
+import OwnerReviews from "./pages/owner/OwnerReviews";
+import OwnerSettings from "./pages/owner/OwnerSettings";
 import Payment from "./pages/Payment";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Scan from "./pages/Scan";
+import AdminLayout from "./admin/AdminLayout";
+import OwnerLayout from "./owner/OwnerLayout";
 import API, { clearAuth, getAuth } from "./services/api";
 import "./styles/layout.css";
 
 function App() {
   const [auth, setAuth] = useState(() => getAuth());
   const [checkingSession, setCheckingSession] = useState(() => Boolean(getAuth()?.token));
-
   const role = auth?.user?.role || "";
-
-  const links = useMemo(() => {
-    if (!auth) {
-      return [];
-    }
-
-    const roleLinks = {
-      user: [{ to: "/booking", label: "Đặt chỗ" }],
-      owner: [
-        { to: "/booking", label: "Đặt chỗ" },
-        { to: "/scan", label: "Quét QR vào/ra" },
-      ],
-      admin: [
-        { to: "/booking", label: "Đặt chỗ" },
-        { to: "/scan", label: "Quét QR vào/ra" },
-      ],
-    };
-
-    return [{ to: "/", label: "Trang bãi xe" }, ...(roleLinks[role] || [])];
-  }, [auth, role]);
 
   const handleLogout = async () => {
     try {
@@ -87,8 +82,38 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="app-shell">
-        {auth ? (
+      <AppBody auth={auth} role={role} onLogin={setAuth} onLogout={handleLogout} />
+    </BrowserRouter>
+  );
+}
+
+function AppBody({ auth, role, onLogin, onLogout }) {
+  const location = useLocation();
+  const isOwnerWorkspace = location.pathname.startsWith("/owner");
+  const isAdminWorkspace = location.pathname.startsWith("/admin");
+  const isOwnerScanPage = location.pathname.startsWith("/scan");
+
+  const links = useMemo(() => {
+    if (!auth) {
+      return [];
+    }
+
+    const roleLinks = {
+      user: [{ to: "/booking", label: "Đặt chỗ" }],
+      owner: [
+        { to: "/owner", label: "Bảng Owner" },
+        { to: "/booking", label: "Đặt chỗ" },
+        { to: "/scan", label: "Quét QR vào/ra" },
+      ],
+      admin: [{ to: "/admin", label: "Bảng Admin" }],
+    };
+
+    return [{ to: "/", label: "Trang bãi xe" }, ...(roleLinks[role] || [])];
+  }, [auth, role]);
+
+  return (
+    <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}`}>
+      {auth && !isOwnerWorkspace && !isAdminWorkspace && !isOwnerScanPage ? (
           <nav className="app-nav">
             <div className="app-nav-links">
               {links.map((link) => (
@@ -104,42 +129,65 @@ function App() {
             </div>
             <div className="app-nav-user">
               <span>{auth.user.email} ({role})</span>
-              <button type="button" className="app-logout-btn" onClick={handleLogout}>
+              <button type="button" className="app-logout-btn" onClick={onLogout}>
                 Đăng xuất
               </button>
             </div>
           </nav>
-        ) : null}
+      ) : null}
 
-        <Routes>
-          <Route
-            path="/login"
-            element={auth ? <Navigate to="/" replace /> : <Login onLogin={setAuth} />}
-          />
-          <Route
-            path="/"
-            element={auth ? <Home /> : <Navigate to="/login" replace />}
-          />
-          <Route
-            path="/booking"
-            element={auth ? <Booking /> : <Navigate to="/login" replace />}
-          />
-          <Route
-            path="/payment/:bookingId"
-            element={auth ? <Payment /> : <Navigate to="/login" replace />}
-          />
-          <Route
-            path="/payment/success/:bookingId"
-            element={auth ? <PaymentSuccess /> : <Navigate to="/login" replace />}
-          />
-          <Route
-            path="/scan"
-            element={auth && (role === "owner" || role === "admin") ? <Scan /> : <Navigate to="/" replace />}
-          />
-          <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
-        </Routes>
-      </div>
-    </BrowserRouter>
+      <Routes>
+        <Route
+          path="/login"
+          element={auth ? <Navigate to="/" replace /> : <Login onLogin={onLogin} />}
+        />
+        <Route
+          path="/"
+          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : role === "owner" ? <Navigate to="/owner" replace /> : <Home />) : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/booking"
+          element={auth ? <Booking /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/payment/:bookingId"
+          element={auth ? <Payment /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/payment/success/:bookingId"
+          element={auth ? <PaymentSuccess /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/scan"
+          element={auth && role === "owner" ? <Scan /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/owner"
+          element={auth && role === "owner" ? <OwnerLayout auth={auth} onLogout={onLogout} /> : <Navigate to={auth && role === "admin" ? "/admin" : "/"} replace />}
+        >
+          <Route index element={<OwnerOverview />} />
+          <Route path="parking" element={<OwnerParking />} />
+          <Route path="bookings" element={<OwnerBookings />} />
+          <Route path="revenue" element={<OwnerRevenue />} />
+          <Route path="reviews" element={<OwnerReviews />} />
+          <Route path="settings" element={<OwnerSettings />} />
+        </Route>
+        <Route
+          path="/admin"
+          element={auth && role === "admin" ? <AdminLayout auth={auth} onLogout={onLogout} /> : <Navigate to="/" replace />}
+        >
+          <Route index element={<AdminDashboard />} />
+          <Route path="users" element={<UserManagement />} />
+          <Route path="owners" element={<OwnerManagement />} />
+          <Route path="parking-lots" element={<ParkingManagement />} />
+          <Route path="bookings" element={<BookingManagement />} />
+          <Route path="revenue" element={<RevenuePage />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="settings" element={<AdminSettings />} />
+        </Route>
+        <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
+      </Routes>
+    </div>
   );
 }
 
