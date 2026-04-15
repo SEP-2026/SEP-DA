@@ -11,6 +11,7 @@ export default function Login({ onLogin }) {
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerPhone, setRegisterPhone] = useState("");
   const [registerPlate, setRegisterPlate] = useState("");
+  const [registerColor, setRegisterColor] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -67,6 +68,7 @@ export default function Login({ onLogin }) {
         password: registerPassword,
         phone: registerPhone.trim() || null,
         vehicle_plate: registerPlate.trim() || null,
+        vehicle_color: registerColor.trim() || null,
       });
 
       setSuccess("Tạo tài khoản user thành công. Bạn có thể đăng nhập ngay.");
@@ -74,6 +76,7 @@ export default function Login({ onLogin }) {
       setEmail(registerEmail.trim().toLowerCase());
       setPassword("");
       setRegisterPassword("");
+      setRegisterColor("");
     } catch (err) {
       setError(err?.response?.data?.detail || "Đăng ký thất bại");
     } finally {
@@ -227,6 +230,18 @@ export default function Login({ onLogin }) {
                 value={registerPlate}
                 onChange={(event) => setRegisterPlate(event.target.value)}
                 placeholder="30A-12345"
+              />
+            </div>
+
+            <label className="login-label" htmlFor="register-color">Màu xe (tùy chọn)</label>
+            <div className="input-shell">
+              <span className="input-icon" aria-hidden="true">🎨</span>
+              <input
+                id="register-color"
+                className="login-input"
+                value={registerColor}
+                onChange={(event) => setRegisterColor(event.target.value)}
+                placeholder="Đen, trắng, đỏ..."
               />
             </div>
 

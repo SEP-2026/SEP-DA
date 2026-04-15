@@ -11,6 +11,9 @@ class UserInfo(BaseModel):
     email: EmailStr
     role: str
     name: str | None = None
+    phone: str | None = None
+    vehicle_plate: str | None = None
+    vehicle_color: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -31,8 +34,29 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=6, max_length=128)
     phone: str | None = Field(default=None, max_length=30)
     vehicle_plate: str | None = Field(default=None, max_length=30)
+    vehicle_color: str | None = Field(default=None, max_length=50)
 
 
 class RegisterResponse(BaseModel):
     message: str
     user: UserInfo
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=255)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=30)
+
+
+class UpdateProfileResponse(BaseModel):
+    message: str
+    user: UserInfo
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(min_length=6, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
+
+
+class ChangePasswordResponse(BaseModel):
+    message: str

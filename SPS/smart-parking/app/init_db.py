@@ -46,8 +46,12 @@ def migrate_users_columns():
         alter_statements.append("ADD COLUMN password VARCHAR(255) NULL")
     if "password_hash" not in columns:
         alter_statements.append("ADD COLUMN password_hash VARCHAR(255) NULL")
+    if "phone" not in columns:
+        alter_statements.append("ADD COLUMN phone VARCHAR(30) NULL")
     if "vehicle_plate" not in columns:
         alter_statements.append("ADD COLUMN vehicle_plate VARCHAR(30) NULL")
+    if "vehicle_color" not in columns:
+        alter_statements.append("ADD COLUMN vehicle_color VARCHAR(50) NULL")
     if "is_active" not in columns:
         alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
     if "status" not in columns:
@@ -68,6 +72,39 @@ def migrate_users_columns():
     if "uq_users_email" not in indexes:
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX uq_users_email ON users (email)"))
+
+
+def migrate_user_vehicles_table():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "user_vehicles" not in table_names or "users" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("user_vehicles")}
+    alter_statements = []
+
+    if "vehicle_color" not in columns:
+        alter_statements.append("ADD COLUMN vehicle_color VARCHAR(50) NULL")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE user_vehicles {', '.join(alter_statements)}"))
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO user_vehicles (user_id, license_plate, brand, vehicle_model, seat_count, vehicle_color, created_at, updated_at)
+                SELECT u.id, u.vehicle_plate, NULL, NULL, NULL, u.vehicle_color, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM users u
+                WHERE (u.vehicle_plate IS NOT NULL OR u.vehicle_color IS NOT NULL)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM user_vehicles uv WHERE uv.user_id = u.id
+                  )
+                """
+            )
+        )
 
 
 def migrate_parking_slots_columns():
@@ -200,6 +237,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     migrate_parking_lots_columns()
     migrate_users_columns()
+    migrate_user_vehicles_table()
     migrate_parking_slots_columns()
     migrate_bookings_columns()
     migrate_payments_columns()

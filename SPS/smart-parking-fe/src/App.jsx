@@ -6,8 +6,9 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Payment from "./pages/Payment";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import Profile from "./pages/Profile";
 import Scan from "./pages/Scan";
-import API, { clearAuth, getAuth } from "./services/api";
+import API, { clearAuth, getAuth, saveAuth } from "./services/api";
 import "./styles/layout.css";
 
 function App() {
@@ -22,13 +23,18 @@ function App() {
     }
 
     const roleLinks = {
-      user: [{ to: "/booking", label: "Đặt chỗ" }],
+      user: [
+        { to: "/booking", label: "Đặt chỗ" },
+        { to: "/profile", label: "Hồ sơ" },
+      ],
       owner: [
         { to: "/booking", label: "Đặt chỗ" },
+        { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
       admin: [
         { to: "/booking", label: "Đặt chỗ" },
+        { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
     };
@@ -62,13 +68,15 @@ function App() {
           if (!prev) {
             return prev;
           }
-          return {
+          const nextAuth = {
             ...prev,
             user: {
               ...prev.user,
               ...me.data,
             },
           };
+          saveAuth(nextAuth);
+          return nextAuth;
         });
       } catch {
         clearAuth();
@@ -103,7 +111,9 @@ function App() {
               ))}
             </div>
             <div className="app-nav-user">
-              <span>{auth.user.email} ({role})</span>
+              <span>
+                {auth.user.email} ({role}){auth.user.phone ? ` • ${auth.user.phone}` : ""}{auth.user.vehicle_plate ? ` • ${auth.user.vehicle_plate}` : ""}
+              </span>
               <button type="button" className="app-logout-btn" onClick={handleLogout}>
                 Đăng xuất
               </button>
@@ -123,6 +133,10 @@ function App() {
           <Route
             path="/booking"
             element={auth ? <Booking /> : <Navigate to="/login" replace />}
+          />
+          <Route
+            path="/profile"
+            element={auth ? <Profile onAuthUpdated={setAuth} /> : <Navigate to="/login" replace />}
           />
           <Route
             path="/payment/:bookingId"

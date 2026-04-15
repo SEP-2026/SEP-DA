@@ -15,9 +15,11 @@ class User(Base):
     password_hash = Column(String(255), nullable=True)
     phone = Column(String(30))
     vehicle_plate = Column(String(30), nullable=True)
+    vehicle_color = Column(String(50), nullable=True)
     role = Column(String(50), default="user")
     status = Column(String(20), default="active")
     is_active = Column(Integer, default=1)
+    vehicle_profile = relationship("UserVehicle", back_populates="user", uselist=False)
 
 
 class RevokedToken(Base):
@@ -26,6 +28,22 @@ class RevokedToken(Base):
     id = Column(Integer, primary_key=True, index=True)
     jti = Column(String(128), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime, nullable=False)
+
+
+class UserVehicle(Base):
+    __tablename__ = "user_vehicles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    license_plate = Column(String(30), nullable=True)
+    brand = Column(String(100), nullable=True)
+    vehicle_model = Column(String(100), nullable=True)
+    seat_count = Column(Integer, nullable=True)
+    vehicle_color = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="vehicle_profile")
 
 
 class ParkingSlot(Base):
