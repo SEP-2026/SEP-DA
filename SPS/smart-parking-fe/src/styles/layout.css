@@ -48,6 +48,14 @@ body {
   animation: fade-slide 0.45s ease-out;
 }
 
+.app-shell--owner {
+  width: min(1480px, 97vw);
+}
+
+.app-shell--admin {
+  width: min(1680px, 98vw);
+}
+
 .app-nav {
   display: flex;
   justify-content: space-between;

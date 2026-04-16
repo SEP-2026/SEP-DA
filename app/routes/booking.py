@@ -375,7 +375,7 @@ def _create_booking_qr_content(booking: Booking, slot: ParkingSlot, user: User) 
         "actions": ["check_in", "check_out"],
         "booking_id": booking.id,
         "user_id": user.id,
-        "parking_id": booking.parking_lot_id,
+        "parking_id": booking.parking_id,
         "slot_id": slot.id,
         "license_plate": user.vehicle_plate or "",
         "checkin_time": booking.start_time.isoformat() if booking.start_time else None,
@@ -451,7 +451,7 @@ def get_my_booking_detail(
     if booking.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Bạn không có quyền xem booking này")
 
-    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_lot_id).first()
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
     vehicle_profile = db.query(UserVehicle).filter(UserVehicle.user_id == current_user.id).first()
 
@@ -484,6 +484,52 @@ def get_my_booking_detail(
             "brand": vehicle_profile.brand if vehicle_profile else None,
             "vehicle_model": vehicle_profile.vehicle_model if vehicle_profile else None,
             "seat_count": vehicle_profile.seat_count if vehicle_profile else None,
+        },
+    }
+
+
+@router.get("/booking/gate/{booking_id}")
+def get_gate_booking_detail(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
+    slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
+    user = db.query(User).filter(User.id == booking.user_id).first()
+    payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
+
+    return {
+        "booking_id": booking.id,
+        "booking_status": booking.status,
+        "checkin_time": booking.start_time,
+        "checkout_time": booking.expire_time,
+        "actual_checkin": booking.actual_checkin,
+        "actual_checkout": booking.actual_checkout,
+        "parking": {
+            "id": parking_lot.id if parking_lot else None,
+            "name": parking_lot.name if parking_lot else None,
+            "address": parking_lot.address if parking_lot else None,
+        },
+        "slot": {
+            "id": slot.id if slot else None,
+            "code": slot.code if slot else None,
+        },
+        "vehicle": {
+            "owner_name": user.name if user else None,
+            "license_plate": user.vehicle_plate if user else None,
+        },
+        "payment": {
+            "amount": payment.amount if payment else None,
+            "overtime_fee": payment.overtime_fee if payment else 0,
+            "payment_status": payment.payment_status if payment else None,
         },
     }
 
@@ -558,7 +604,7 @@ def create_booking(
                 if not active_slot:
                     raise HTTPException(status_code=400, detail="Booking pending tồn tại nhưng slot không hợp lệ")
 
-                active_parking = db.query(ParkingLot).filter(ParkingLot.id == active_booking.parking_lot_id).first()
+                active_parking = db.query(ParkingLot).filter(ParkingLot.id == active_booking.parking_id).first()
                 if not active_parking:
                     raise HTTPException(status_code=400, detail="Booking pending tồn tại nhưng bãi xe không hợp lệ")
 
@@ -640,7 +686,6 @@ def create_booking(
             user_id=user.id,
             slot_id=slot.id,
             parking_id=parking_lot.id,
-            parking_lot_id=parking_lot.id,
             start_time=normalized_checkin_time,
             expire_time=normalized_checkout_time,
             booking_mode=billing["resolved_mode"],
@@ -737,7 +782,7 @@ def check_out(booking_id: int, db: Session = Depends(get_db)):
 
     if booking.expire_time and actual_checkout > booking.expire_time:
         extra_hours = (actual_checkout - booking.expire_time).total_seconds() / 3600
-        price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_lot_id).first()
+        price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first()
         if price:
             overtime_fee = round(max(0, extra_hours) * float(price.price_per_hour), 2)
 
