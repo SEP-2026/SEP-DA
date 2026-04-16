@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SectionCard } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
 
@@ -13,15 +13,28 @@ export default function OwnerSettings() {
   const [parkingSaved, setParkingSaved] = useState(false);
   const [accountSaved, setAccountSaved] = useState(false);
 
+  useEffect(() => {
+    setParkingForm(ownerData.settings);
+  }, [ownerData.settings]);
+
+  useEffect(() => {
+    setAccountForm((prev) => ({
+      ...prev,
+      email: auth?.user?.email || "",
+    }));
+  }, [auth?.user?.email]);
+
   const handleParkingChange = (key, value) => {
     setParkingSaved(false);
     setParkingForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleParkingSubmit = (event) => {
+  const handleParkingSubmit = async (event) => {
     event.preventDefault();
-    actions.updateSettings(parkingForm);
-    setParkingSaved(true);
+    const ok = await actions.updateSettings(parkingForm);
+    if (ok) {
+      setParkingSaved(true);
+    }
   };
 
   return (
@@ -29,9 +42,13 @@ export default function OwnerSettings() {
       <SectionCard title="Tài khoản Owner" subtitle="Tài khoản này do admin cấp. Owner có thể thay đổi email và mật khẩu sau khi đăng nhập.">
         <form
           className="owner-settings-form"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
-            setAccountSaved(true);
+            const ok = await actions.updateAccount(accountForm);
+            if (ok) {
+              setAccountSaved(true);
+              setAccountForm((prev) => ({ ...prev, password: "", confirmPassword: "" }));
+            }
           }}
         >
           <label>
@@ -63,7 +80,9 @@ export default function OwnerSettings() {
       </SectionCard>
 
       <SectionCard title="Thiết lập bãi đỗ" subtitle="Điều chỉnh giá gửi xe, số lượng vị trí và thông tin liên hệ của bãi.">
-        <form className="owner-settings-form" onSubmit={handleParkingSubmit}>
+        <form className="owner-settings-form" onSubmit={async (event) => {
+          await handleParkingSubmit(event);
+        }}>
           <label>
             Tên bãi đỗ
             <input className="owner-input" value={parkingForm.parkingName} onChange={(event) => handleParkingChange("parkingName", event.target.value)} />

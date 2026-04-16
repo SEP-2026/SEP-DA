@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDateTime, SectionCard } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
 
@@ -6,6 +6,10 @@ export default function OwnerReviews() {
   const { ownerData } = useOwnerContext();
   const [replies, setReplies] = useState(() => Object.fromEntries(ownerData.reviews.map((item) => [item.id, item.reply || ""])));
   const [savedId, setSavedId] = useState("");
+
+  useEffect(() => {
+    setReplies(Object.fromEntries(ownerData.reviews.map((item) => [item.id, item.reply || ""])));
+  }, [ownerData.reviews]);
 
   return (
     <div className="owner-page-grid">

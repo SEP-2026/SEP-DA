@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import API from "../services/api";
 import { OwnerIcon } from "./OwnerIcons";
@@ -19,13 +19,43 @@ export default function OwnerLayout({ auth, onLogout }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [ownerData, setOwnerData] = useState(() => createOwnerSeedData());
-  const [syncNote, setSyncNote] = useState("Dữ liệu nội bộ");
+  const [syncNote, setSyncNote] = useState("Đang tải dữ liệu bãi");
 
-  useEffect(() => {
-    const syncSlots = async () => {
+  const refreshOwnerData = useCallback(async () => {
+    try {
+      const res = await API.get("/owner/bootstrap");
+      if (res.data?.parkingLot) {
+        setOwnerData((prev) => ({
+          ...prev,
+          slots: Array.isArray(res.data.slots) ? res.data.slots : prev.slots,
+          bookings: Array.isArray(res.data.bookings) ? res.data.bookings : prev.bookings,
+          transactions: Array.isArray(res.data.transactions) ? res.data.transactions : prev.transactions,
+          activities: Array.isArray(res.data.activities) ? res.data.activities : prev.activities,
+          reviews: Array.isArray(res.data.reviews) ? res.data.reviews : prev.reviews,
+          settings: res.data.settings ? { ...prev.settings, ...res.data.settings } : prev.settings,
+        }));
+        setSyncNote(`Đồng bộ bãi: ${res.data.parkingLot.name}`);
+        return;
+      }
+      setOwnerData((prev) => ({
+        ...prev,
+        slots: [],
+        bookings: [],
+        transactions: [],
+        activities: [],
+        reviews: [],
+        settings: {
+          ...prev.settings,
+          parkingName: "Chưa được gán bãi",
+          slotCapacity: "0",
+        },
+      }));
+      setSyncNote("Owner chưa được gán bãi trong CSDL");
+    } catch {
       try {
         const res = await API.get("/slots");
         if (!Array.isArray(res.data) || res.data.length === 0) {
+          setSyncNote("Đang dùng dữ liệu mẫu");
           return;
         }
 
@@ -39,16 +69,18 @@ export default function OwnerLayout({ auth, onLogout }) {
             status: normalizeBackendStatus(slot.status, index),
             type: ["Sedan", "SUV", "EV"][index % 3],
             updatedAt: new Date().toISOString(),
-          })),
+            })),
         }));
         setSyncNote("Đồng bộ chỗ đỗ từ API");
       } catch {
         setSyncNote("Đang dùng dữ liệu mẫu");
       }
-    };
-
-    syncSlots();
+    }
   }, []);
+
+  useEffect(() => {
+    refreshOwnerData();
+  }, [refreshOwnerData]);
 
   const stats = useMemo(() => {
     const todayRevenue = ownerData.transactions
@@ -69,45 +101,79 @@ export default function OwnerLayout({ auth, onLogout }) {
   const notificationsCount = ownerData.activities.length;
 
   const actions = {
-    addSlot(payload) {
-      setOwnerData((prev) => ({
-        ...prev,
-        slots: [
-          {
-            id: `slot-${Date.now()}`,
-            updatedAt: new Date().toISOString(),
-            ...payload,
+    async addSlot(payload) {
+      try {
+        await API.post("/owner/slots", payload);
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể thêm chỗ đỗ");
+        return false;
+      }
+    },
+    async updateSlot(id, payload) {
+      try {
+        await API.patch(`/owner/slots/${id}`, payload);
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể cập nhật chỗ đỗ");
+        return false;
+      }
+    },
+    async deleteSlot(id) {
+      try {
+        await API.delete(`/owner/slots/${id}`);
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể xóa chỗ đỗ");
+        return false;
+      }
+    },
+    async updateBookingStatus(id, status) {
+      try {
+        await API.patch(`/owner/bookings/${id}/status`, { status });
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể cập nhật booking");
+        return false;
+      }
+    },
+    async updateSettings(payload) {
+      try {
+        await API.patch("/owner/settings", {
+          parkingName: payload.parkingName,
+          pricePerHour: payload.pricePerHour,
+          pricePerDay: payload.pricePerDay,
+          pricePerMonth: payload.pricePerMonth,
+          contactPhone: payload.contactPhone,
+          contactEmail: payload.contactEmail,
+        });
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể lưu cài đặt bãi");
+        return false;
+      }
+    },
+    async updateAccount(payload) {
+      try {
+        const res = await API.patch("/owner/account", payload);
+        setOwnerData((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            contactEmail: res.data.user.email,
           },
-          ...prev.slots,
-        ],
-      }));
-    },
-    updateSlot(id, payload) {
-      setOwnerData((prev) => ({
-        ...prev,
-        slots: prev.slots.map((slot) => (slot.id === id ? { ...slot, ...payload, updatedAt: new Date().toISOString() } : slot)),
-      }));
-    },
-    deleteSlot(id) {
-      setOwnerData((prev) => ({
-        ...prev,
-        slots: prev.slots.filter((slot) => slot.id !== id),
-      }));
-    },
-    updateBookingStatus(id, status) {
-      setOwnerData((prev) => ({
-        ...prev,
-        bookings: prev.bookings.map((booking) => (booking.id === id ? { ...booking, status } : booking)),
-      }));
-    },
-    updateSettings(payload) {
-      setOwnerData((prev) => ({
-        ...prev,
-        settings: {
-          ...prev.settings,
-          ...payload,
-        },
-      }));
+        }));
+        setSyncNote("Đã cập nhật tài khoản owner");
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể cập nhật tài khoản");
+        return false;
+      }
     },
   };
 

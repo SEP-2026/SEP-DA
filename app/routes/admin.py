@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from werkzeug.security import generate_password_hash
 
 from app.database import get_db
-from app.models.models import Booking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
+from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
 from app.routes.auth import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -27,7 +27,10 @@ class UserStatusUpdateRequest(BaseModel):
 class OwnerCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: str = Field(min_length=3, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
     parking_lot: str | None = Field(default=None, max_length=255)
+    status: str = Field(default="active", pattern="^(active|suspended)$")
+    temporary_password: str | None = Field(default=None, min_length=6, max_length=255)
 
 
 class OwnerStatusUpdateRequest(BaseModel):
@@ -45,6 +48,7 @@ class ParkingLotCreateRequest(BaseModel):
 class ParkingLotUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     address: str | None = Field(default=None, max_length=255)
+    owner: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, pattern="^(pending|active|locked)$")
 
 
@@ -73,6 +77,77 @@ def _to_status_label(user: User) -> str:
 
 def _lot_status(lot: ParkingLot) -> str:
     return "active" if lot.is_active == 1 else "locked"
+
+
+def _owner_parking_maps(db: Session) -> tuple[dict[int, ParkingLot], dict[int, User]]:
+    assignments = db.query(OwnerParking).order_by(OwnerParking.id.asc()).all()
+    owner_ids = [int(item.owner_id) for item in assignments]
+    parking_ids = [int(item.parking_id) for item in assignments]
+    owners = {
+        int(item.id): item
+        for item in db.query(User).filter(User.id.in_(owner_ids)).all()
+    } if owner_ids else {}
+    parking_lots = {
+        int(item.id): item
+        for item in db.query(ParkingLot).filter(ParkingLot.id.in_(parking_ids)).all()
+    } if parking_ids else {}
+
+    lot_by_owner: dict[int, ParkingLot] = {}
+    owner_by_lot: dict[int, User] = {}
+    for assignment in assignments:
+        owner_id = int(assignment.owner_id)
+        parking_id = int(assignment.parking_id)
+        if owner_id not in lot_by_owner and parking_id in parking_lots:
+            lot_by_owner[owner_id] = parking_lots[parking_id]
+        if parking_id not in owner_by_lot and owner_id in owners:
+            owner_by_lot[parking_id] = owners[owner_id]
+    return lot_by_owner, owner_by_lot
+
+
+def _find_parking_lot_by_reference(db: Session, reference: str | None) -> ParkingLot | None:
+    if not reference:
+        return None
+    normalized = reference.strip()
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        lot = db.query(ParkingLot).filter(ParkingLot.id == int(normalized)).first()
+        if lot:
+            return lot
+    return db.query(ParkingLot).filter(ParkingLot.name == normalized).first()
+
+
+def _find_owner_by_reference(db: Session, reference: str | None) -> User | None:
+    if not reference:
+        return None
+    normalized = reference.strip()
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        owner = db.query(User).filter(User.id == int(normalized), User.role == "owner").first()
+        if owner:
+            return owner
+    owner = db.query(User).filter(User.email == normalized.lower(), User.role == "owner").first()
+    if owner:
+        return owner
+    return db.query(User).filter(User.name == normalized, User.role == "owner").first()
+
+
+def _assign_owner_parking(db: Session, owner_id: int, parking_id: int) -> None:
+    existing_owner = db.query(OwnerParking).filter(OwnerParking.owner_id == owner_id).first()
+    if existing_owner and int(existing_owner.parking_id) != int(parking_id):
+        raise HTTPException(status_code=409, detail="Owner đã được gán cho bãi khác")
+
+    existing_lot = db.query(OwnerParking).filter(OwnerParking.parking_id == parking_id).first()
+    if existing_lot and int(existing_lot.owner_id) != int(owner_id):
+        raise HTTPException(status_code=409, detail="Bãi này đã có owner khác quản lý")
+
+    if not existing_owner and not existing_lot:
+        db.add(OwnerParking(owner_id=owner_id, parking_id=parking_id))
+
+
+def _remove_owner_assignments(db: Session, owner_id: int) -> None:
+    db.query(OwnerParking).filter(OwnerParking.owner_id == owner_id).delete()
 
 
 def _format_day_label(value: datetime) -> str:
@@ -206,6 +281,7 @@ def _serialize_bootstrap(db: Session) -> dict:
 
     slot_counts = _slot_counts_by_lot(slots)
     owners = [user for user in users if user.role == "owner"]
+    lot_by_owner, owner_by_lot = _owner_parking_maps(db)
 
     user_rows = [
         {
@@ -225,7 +301,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": owner.id,
             "name": owner.name,
             "email": owner.email,
-            "parkingLot": "Chưa gán trong CSDL",
+            "parkingLot": lot_by_owner[int(owner.id)].name if int(owner.id) in lot_by_owner else "Chưa gán trong CSDL",
             "status": "active" if _to_status_label(owner) == "active" else "suspended",
             "performance": f"{booking_counts_by_user.get(int(owner.id), 0)} booking",
             "passwordHint": "Có thể reset từ admin",
@@ -243,7 +319,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": lot.id,
             "name": lot.name,
             "address": lot.address,
-            "owner": "Chưa gán trong CSDL",
+            "owner": owner_by_lot[int(lot.id)].name if int(lot.id) in owner_by_lot else "Chưa gán trong CSDL",
             "slotCount": total,
             "status": _lot_status(lot),
             "occupancy": occupancy,
@@ -368,6 +444,14 @@ def create_owner(
         password_hash=generate_password_hash("123456"),
     )
     db.add(owner)
+    db.flush()
+
+    if payload.parking_lot:
+        lot = _find_parking_lot_by_reference(db, payload.parking_lot)
+        if not lot:
+            db.rollback()
+            raise HTTPException(status_code=404, detail="Không tìm thấy bãi để gán cho owner")
+        _assign_owner_parking(db, owner.id, lot.id)
     db.commit()
     return {"message": "Tạo tài khoản owner thành công", "default_password": "123456"}
 
@@ -416,6 +500,7 @@ def delete_owner(
     if not owner:
         raise HTTPException(status_code=404, detail="Không tìm thấy owner")
 
+    _remove_owner_assignments(db, owner.id)
     db.delete(owner)
     db.commit()
     return {"message": "Đã xóa owner"}
@@ -427,6 +512,10 @@ def create_parking_lot(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    owner = _find_owner_by_reference(db, payload.owner)
+    if payload.owner and not owner:
+        raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+
     lot = ParkingLot(
         name=payload.name.strip(),
         address=payload.address.strip(),
@@ -450,6 +539,8 @@ def create_parking_lot(
 
     for index in range(1, payload.slot_count + 1):
         db.add(ParkingSlot(code=f"P{lot.id}-{index}", slot_number=str(index), parking_id=lot.id, status="available"))
+    if owner:
+        _assign_owner_parking(db, owner.id, lot.id)
     db.commit()
     return {"message": "Đã tạo bãi đỗ"}
 
@@ -469,6 +560,13 @@ def update_parking_lot(
         lot.name = payload.name.strip()
     if payload.address is not None:
         lot.address = payload.address.strip()
+    if payload.owner is not None:
+        db.query(OwnerParking).filter(OwnerParking.parking_id == lot.id).delete()
+        owner = _find_owner_by_reference(db, payload.owner)
+        if payload.owner.strip():
+            if not owner:
+                raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+            _assign_owner_parking(db, owner.id, lot.id)
     if payload.status is not None:
         lot.is_active = 1 if payload.status == "active" else 0
     db.commit()
@@ -484,6 +582,7 @@ def delete_parking_lot(
     lot = db.query(ParkingLot).filter(ParkingLot.id == lot_id).first()
     if not lot:
         raise HTTPException(status_code=404, detail="Không tìm thấy bãi đỗ")
+    db.query(OwnerParking).filter(OwnerParking.parking_id == lot_id).delete()
     db.query(ParkingSlot).filter(ParkingSlot.parking_id == lot_id).delete()
     price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == lot_id).first()
     if price:

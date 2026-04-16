@@ -34,6 +34,7 @@ class ParkingSlot(Base):
     id = Column(Integer, primary_key=True, index=True)
     parking_id = Column(Integer, nullable=True)
     slot_number = Column(String(20), nullable=True)
+    slot_type = Column(String(20), nullable=True)
     code = Column(String(50), unique=True)
     status = Column(String(50), default="available")
 
@@ -95,6 +96,14 @@ class Payment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class OwnerParking(Base):
+    __tablename__ = "owner_parking"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False)
+
+
 class ParkingLot(Base):
     __tablename__ = "parking_lots"
 
@@ -116,4 +125,18 @@ class ParkingPrice(Base):
     price_per_day = Column(Float, nullable=False)
     price_per_month = Column(Float, nullable=False)
 
+    parking = relationship("ParkingLot")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False)
+    rating = Column(Integer, nullable=False)
+    comment = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
     parking = relationship("ParkingLot")
