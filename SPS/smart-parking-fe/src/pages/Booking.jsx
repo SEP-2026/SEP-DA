@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import API, { getAuth } from "../services/api";
+import API, { getAuth, saveAuth } from "../services/api";
 import "./Booking.css";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -191,13 +191,15 @@ const BOOKING_MODE_OPTIONS = [
   },
 ];
 
-const buildDefaultBookingForm = (ownerName = "") => {
+const buildDefaultBookingForm = (profile = {}) => {
   const now = Date.now();
   const startDate = new Date(now + 24 * 60 * 60 * 1000);
   const endDate = new Date(now + 2 * 24 * 60 * 60 * 1000);
   return {
-    ownerName,
-    licensePlate: "",
+    ownerName: profile?.name || "",
+    licensePlate: profile?.vehicle_plate || profile?.licensePlate || "",
+    contactPhone: profile?.phone || profile?.phone_number || "",
+    vehicleColor: profile?.vehicle_color || profile?.vehicleColor || "",
     vehicleType: "vf4",
     seats: "4 chỗ",
     brand: "",
@@ -208,6 +210,28 @@ const buildDefaultBookingForm = (ownerName = "") => {
     endDate: formatDateLocal(endDate),
     monthCount: 1,
   };
+};
+
+const parseSeatCount = (value) => {
+  if (!value) {
+    return null;
+  }
+  const match = String(value).match(/\d+/);
+  if (!match) {
+    return null;
+  }
+  const seatCount = Number(match[0]);
+  if (!Number.isInteger(seatCount) || seatCount <= 0) {
+    return null;
+  }
+  return seatCount;
+};
+
+const formatSeats = (seatCount) => {
+  if (!seatCount) {
+    return "";
+  }
+  return `${seatCount} chỗ`;
 };
 
 const loadGoogleMapsScript = () => {
@@ -253,9 +277,12 @@ export default function Booking() {
   const [selectedLot, setSelectedLot] = useState(location.state?.selectedLot || null);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlotId, setSelectedSlotId] = useState("");
-  const [bookingForm, setBookingForm] = useState(() => buildDefaultBookingForm(auth?.user?.name || ""));
+  const [bookingForm, setBookingForm] = useState(() => buildDefaultBookingForm(auth?.user || {}));
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [savingVehicle, setSavingVehicle] = useState(false);
+  const [vehicleNotice, setVehicleNotice] = useState("");
   const [bookingResult, setBookingResult] = useState(null);
+  const [profile, setProfile] = useState(() => auth?.user || null);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -347,9 +374,71 @@ export default function Booking() {
   useEffect(() => {
     if (!selectedLot) {
       setBookingResult(null);
-      setBookingForm(buildDefaultBookingForm(auth?.user?.name || ""));
+      setBookingForm(buildDefaultBookingForm(profile || auth?.user || {}));
     }
-  }, [auth?.user?.name, selectedLot]);
+  }, [auth?.user, profile, selectedLot]);
+
+  useEffect(() => {
+    const refreshProfile = async () => {
+      if (!auth?.token) {
+        setProfile(null);
+        return;
+      }
+
+      try {
+        const res = await API.get("/auth/me");
+        const nextProfile = {
+          ...auth.user,
+          ...res.data,
+        };
+        setProfile(nextProfile);
+        saveAuth({ ...auth, user: nextProfile });
+      } catch {
+        setProfile(auth?.user || null);
+      }
+    };
+
+    refreshProfile();
+  }, [auth?.token]);
+
+  useEffect(() => {
+    const loadVehicleProfile = async () => {
+      if (!auth?.token) {
+        return;
+      }
+
+      try {
+        const res = await API.get("/vehicle/my");
+        const vehicle = res.data?.vehicle || {};
+        setBookingForm((prev) => ({
+          ...prev,
+          licensePlate: prev.licensePlate.trim() ? prev.licensePlate : (vehicle.license_plate || ""),
+          brand: prev.brand.trim() ? prev.brand : (vehicle.brand || ""),
+          vehicleType: prev.vehicleType.trim() ? prev.vehicleType : (vehicle.vehicle_model || ""),
+          seats: prev.seats.trim() ? prev.seats : formatSeats(vehicle.seat_count),
+          vehicleColor: prev.vehicleColor.trim() ? prev.vehicleColor : (vehicle.vehicle_color || ""),
+        }));
+      } catch {
+        // Ignore when the user has not saved any vehicle profile yet.
+      }
+    };
+
+    loadVehicleProfile();
+  }, [auth?.token]);
+
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+
+    setBookingForm((prev) => ({
+      ...prev,
+      ownerName: prev.ownerName.trim() ? prev.ownerName : (profile.name || ""),
+      licensePlate: prev.licensePlate.trim() ? prev.licensePlate : (profile.vehicle_plate || ""),
+      contactPhone: prev.contactPhone.trim() ? prev.contactPhone : (profile.phone || ""),
+      vehicleColor: prev.vehicleColor.trim() ? prev.vehicleColor : (profile.vehicle_color || ""),
+    }));
+  }, [profile]);
 
   const handleSearchNearby = async () => {
     if (!address.trim()) {
@@ -478,7 +567,10 @@ export default function Booking() {
         license_plate: bookingForm.licensePlate.trim(),
         owner_name: bookingForm.ownerName.trim(),
         vehicle_type: `${bookingForm.vehicleType.trim()} - ${bookingForm.seats.trim()}`.trim() || null,
+        vehicle_model: bookingForm.vehicleType.trim() || null,
+        seat_count: parseSeatCount(bookingForm.seats),
         brand: bookingForm.brand.trim() || null,
+        vehicle_color: bookingForm.vehicleColor.trim() || null,
         booking_mode: bookingWindow.bookingMode,
         month_count: bookingWindow.bookingMode === "monthly" ? bookingWindow.monthCount : null,
         checkin_time: bookingWindow.checkinDate.toISOString(),
@@ -494,6 +586,46 @@ export default function Booking() {
       setError(normalizeError(err));
     } finally {
       setBookingLoading(false);
+    }
+  };
+
+  const handleSaveVehicleProfile = async () => {
+    if (!bookingForm.licensePlate.trim()) {
+      setVehicleNotice("Vui lòng nhập biển số trước khi lưu thông tin xe");
+      return;
+    }
+
+    try {
+      setSavingVehicle(true);
+      setVehicleNotice("");
+      await API.post("/vehicle/my/save", {
+        license_plate: bookingForm.licensePlate.trim(),
+        brand: bookingForm.brand.trim() || null,
+        vehicle_model: bookingForm.vehicleType.trim() || null,
+        seat_count: parseSeatCount(bookingForm.seats),
+        vehicle_color: bookingForm.vehicleColor.trim() || null,
+      });
+
+      const verifyRes = await API.get("/vehicle/my");
+      const savedVehicle = verifyRes.data?.vehicle || {};
+      const expectedPlate = bookingForm.licensePlate.trim().toUpperCase();
+      if ((savedVehicle.license_plate || "") !== expectedPlate) {
+        throw new Error("Dữ liệu xe chưa được lưu đúng vào CSDL");
+      }
+
+      setBookingForm((prev) => ({
+        ...prev,
+        licensePlate: savedVehicle.license_plate || prev.licensePlate,
+        brand: savedVehicle.brand || prev.brand,
+        vehicleType: savedVehicle.vehicle_model || prev.vehicleType,
+        seats: savedVehicle.seat_count ? `${savedVehicle.seat_count} chỗ` : prev.seats,
+        vehicleColor: savedVehicle.vehicle_color || prev.vehicleColor,
+      }));
+      setVehicleNotice("Đã lưu thông tin xe cho tài khoản của bạn");
+    } catch (err) {
+      setVehicleNotice(normalizeError(err));
+    } finally {
+      setSavingVehicle(false);
     }
   };
 
@@ -699,6 +831,26 @@ export default function Booking() {
                 </div>
               </div>
 
+              <div className="booking-form-grid booking-form-grid--two">
+                <div className="field-wrap">
+                  <label>Số điện thoại (Phone)</label>
+                  <input
+                    className="booking-input"
+                    placeholder="Tự động lấy từ tài khoản"
+                    value={bookingForm.contactPhone}
+                    onChange={(e) => setBookingForm((prev) => ({ ...prev, contactPhone: e.target.value }))}
+                  />
+                </div>
+                <div className="field-wrap booking-price-note">
+                  <label>Hồ sơ tài khoản</label>
+                  <p>
+                    {profile?.name || bookingForm.ownerName || "Chưa có tên"}
+                    {profile?.phone ? ` • ${profile.phone}` : ""}
+                    {profile?.vehicle_plate ? ` • ${profile.vehicle_plate}` : ""}
+                  </p>
+                </div>
+              </div>
+
               <div className="booking-form-grid booking-form-grid--three">
                 <div className="field-wrap">
                   <label>Thương hiệu (Brand)</label>
@@ -726,6 +878,30 @@ export default function Booking() {
                     value={bookingForm.seats}
                     onChange={(e) => setBookingForm((prev) => ({ ...prev, seats: e.target.value }))}
                   />
+                </div>
+              </div>
+
+              <div className="booking-form-grid booking-form-grid--two">
+                <div className="field-wrap">
+                  <label>Màu xe (Vehicle Color)</label>
+                  <input
+                    className="booking-input"
+                    placeholder="Ví dụ: Đen"
+                    value={bookingForm.vehicleColor}
+                    onChange={(e) => setBookingForm((prev) => ({ ...prev, vehicleColor: e.target.value }))}
+                  />
+                </div>
+                <div className="field-wrap booking-price-note">
+                  <label>Lưu thông tin xe</label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleSaveVehicleProfile}
+                    disabled={savingVehicle}
+                  >
+                    {savingVehicle ? "Đang lưu..." : "Lưu thông tin xe"}
+                  </button>
+                  {vehicleNotice ? <p>{vehicleNotice}</p> : null}
                 </div>
               </div>
 

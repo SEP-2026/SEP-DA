@@ -20,10 +20,11 @@ import OwnerReviews from "./pages/owner/OwnerReviews";
 import OwnerSettings from "./pages/owner/OwnerSettings";
 import Payment from "./pages/Payment";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import Profile from "./pages/Profile";
 import Scan from "./pages/Scan";
 import AdminLayout from "./admin/AdminLayout";
 import OwnerLayout from "./owner/OwnerLayout";
-import API, { clearAuth, getAuth } from "./services/api";
+import API, { clearAuth, getAuth, saveAuth } from "./services/api";
 import "./styles/layout.css";
 
 function App() {
@@ -57,13 +58,15 @@ function App() {
           if (!prev) {
             return prev;
           }
-          return {
+          const nextAuth = {
             ...prev,
             user: {
               ...prev.user,
               ...me.data,
             },
           };
+          saveAuth(nextAuth);
+          return nextAuth;
         });
       } catch {
         clearAuth();
@@ -99,13 +102,22 @@ function AppBody({ auth, role, onLogin, onLogout }) {
     }
 
     const roleLinks = {
-      user: [{ to: "/booking", label: "Đặt chỗ" }],
+      user: [
+        { to: "/booking", label: "Đặt chỗ" },
+        { to: "/profile", label: "Hồ sơ" },
+      ],
       owner: [
         { to: "/owner", label: "Bảng Owner" },
         { to: "/booking", label: "Đặt chỗ" },
+        { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
-      admin: [{ to: "/admin", label: "Bảng Admin" }],
+      admin: [
+        { to: "/admin", label: "Bảng Admin" },
+        { to: "/booking", label: "Đặt chỗ" },
+        { to: "/profile", label: "Hồ sơ" },
+        { to: "/scan", label: "Quét QR vào/ra" },
+      ],
     };
 
     return [{ to: "/", label: "Trang bãi xe" }, ...(roleLinks[role] || [])];
@@ -114,26 +126,28 @@ function AppBody({ auth, role, onLogin, onLogout }) {
   return (
     <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}`}>
       {auth && !isOwnerWorkspace && !isAdminWorkspace && !isOwnerScanPage ? (
-          <nav className="app-nav">
-            <div className="app-nav-links">
-              {links.map((link) => (
-                <NavLink
-                  key={link.to}
-                  to={link.to}
-                  end={link.to === "/"}
-                  className={({ isActive }) => `app-link${isActive ? " active" : ""}`}
-                >
-                  {link.label}
-                </NavLink>
-              ))}
-            </div>
-            <div className="app-nav-user">
-              <span>{auth.user.email} ({role})</span>
-              <button type="button" className="app-logout-btn" onClick={onLogout}>
-                Đăng xuất
-              </button>
-            </div>
-          </nav>
+        <nav className="app-nav">
+          <div className="app-nav-links">
+            {links.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.to === "/"}
+                className={({ isActive }) => `app-link${isActive ? " active" : ""}`}
+              >
+                {link.label}
+              </NavLink>
+            ))}
+          </div>
+          <div className="app-nav-user">
+            <span>
+              {auth.user.email} ({role}){auth.user.phone ? ` • ${auth.user.phone}` : ""}{auth.user.vehicle_plate ? ` • ${auth.user.vehicle_plate}` : ""}
+            </span>
+            <button type="button" className="app-logout-btn" onClick={onLogout}>
+              Đăng xuất
+            </button>
+          </div>
+        </nav>
       ) : null}
 
       <Routes>
@@ -150,6 +164,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           element={auth ? <Booking /> : <Navigate to="/login" replace />}
         />
         <Route
+          path="/profile"
+          element={auth ? <Profile onAuthUpdated={onLogin} /> : <Navigate to="/login" replace />}
+        />
+        <Route
           path="/payment/:bookingId"
           element={auth ? <Payment /> : <Navigate to="/login" replace />}
         />
@@ -159,7 +177,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         />
         <Route
           path="/scan"
-          element={auth && role === "owner" ? <Scan /> : <Navigate to="/" replace />}
+          element={auth && (role === "owner" || role === "admin") ? <Scan /> : <Navigate to="/" replace />}
         />
         <Route
           path="/owner"

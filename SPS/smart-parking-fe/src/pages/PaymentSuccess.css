@@ -51,6 +51,29 @@
   flex-wrap: wrap;
 }
 
+.payment-success-btn {
+  border: 1px solid rgba(20, 57, 93, 0.3);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.payment-success-btn.secondary {
+  background: #eef6fb;
+  color: #1d405f;
+}
+
+.payment-success-btn.secondary:hover {
+  background: #e1eef8;
+}
+
+.payment-success-share-notice {
+  margin-top: 10px;
+  color: #135d69;
+  font-weight: 700;
+}
+
 @media (max-width: 760px) {
   .payment-success-shell {
     padding: 12px;

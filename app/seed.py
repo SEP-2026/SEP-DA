@@ -1,5 +1,5 @@
 from app.database import SessionLocal
-from app.models.models import ParkingLot, ParkingPrice, ParkingSlot, User
+from app.models.models import ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
 from werkzeug.security import generate_password_hash
 
 db = SessionLocal()
@@ -38,6 +38,10 @@ def seed_default_user():
             "email": "user1@gmail.com",
             "phone": "0900000000",
             "vehicle_plate": "30A-12345",
+            "vehicle_color": "Đen",
+            "brand": "VinFast",
+            "vehicle_model": "VF e34",
+            "seat_count": 5,
             "role": "user",
             "password": "123456",
         },
@@ -46,6 +50,10 @@ def seed_default_user():
             "email": "owner1@gmail.com",
             "phone": "0900000001",
             "vehicle_plate": "59A-88888",
+            "vehicle_color": "Trắng",
+            "brand": "Toyota",
+            "vehicle_model": "Vios",
+            "seat_count": 5,
             "role": "owner",
             "password": "123456",
         },
@@ -54,6 +62,10 @@ def seed_default_user():
             "email": "admin1@gmail.com",
             "phone": "0900000002",
             "vehicle_plate": "51A-99999",
+            "vehicle_color": "Xanh",
+            "brand": "Kia",
+            "vehicle_model": "Morning",
+            "seat_count": 4,
             "role": "admin",
             "password": "123456",
         },
@@ -67,6 +79,7 @@ def seed_default_user():
                 email=item["email"],
                 phone=item["phone"],
                 vehicle_plate=item["vehicle_plate"],
+                vehicle_color=item["vehicle_color"],
                 role=item["role"],
                 is_active=1,
             )
@@ -75,12 +88,25 @@ def seed_default_user():
         user.name = item["name"]
         user.phone = item["phone"]
         user.vehicle_plate = item["vehicle_plate"]
+        user.vehicle_color = item["vehicle_color"]
         user.role = item["role"]
         user.email = item["email"]
         user.password = item["password"]
         user.password_hash = generate_password_hash(item["password"])
         user.status = "active"
         user.is_active = 1
+
+        db.flush()
+        vehicle = db.query(UserVehicle).filter(UserVehicle.user_id == user.id).first()
+        if not vehicle:
+            vehicle = UserVehicle(user_id=user.id)
+            db.add(vehicle)
+
+        vehicle.license_plate = item["vehicle_plate"]
+        vehicle.vehicle_color = item["vehicle_color"]
+        vehicle.brand = item["brand"]
+        vehicle.vehicle_model = item["vehicle_model"]
+        vehicle.seat_count = item["seat_count"]
 
     db.commit()
     print("Seeded default users!")

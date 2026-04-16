@@ -1,4 +1,5 @@
 import math
+import re
 from datetime import datetime, timezone
 import os
 import unicodedata
@@ -14,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Booking, ParkingLot, ParkingPrice, ParkingSlot, Payment, User
+from app.models.models import Booking, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
 
 router = APIRouter()
@@ -27,6 +28,9 @@ class BookingCreateRequest(BaseModel):
     owner_name: str = Field(min_length=1, max_length=255)
     vehicle_type: str | None = Field(default=None, max_length=50)
     brand: str | None = Field(default=None, max_length=100)
+    vehicle_model: str | None = Field(default=None, max_length=100)
+    seat_count: int | None = Field(default=None, ge=1, le=99)
+    vehicle_color: str | None = Field(default=None, max_length=50)
     booking_mode: str = Field(default="hourly", max_length=20)
     month_count: int | None = Field(default=None, ge=1, le=24)
     checkin_time: datetime
@@ -380,6 +384,24 @@ def _create_booking_qr_content(booking: Booking, slot: ParkingSlot, user: User) 
     return json.dumps(qr_payload, ensure_ascii=False, separators=(",", ":"))
 
 
+def _extract_seat_count(vehicle_type: str | None) -> int | None:
+    if not vehicle_type:
+        return None
+    match = re.search(r"(\d+)", vehicle_type)
+    if not match:
+        return None
+    value = int(match.group(1))
+    return value if value > 0 else None
+
+
+def _extract_vehicle_model(vehicle_type: str | None) -> str | None:
+    if not vehicle_type:
+        return None
+    if "-" in vehicle_type:
+        return vehicle_type.split("-", 1)[0].strip() or None
+    return vehicle_type.strip() or None
+
+
 def _serialize_booking_response(
     booking: Booking,
     slot: ParkingSlot,
@@ -431,6 +453,7 @@ def get_my_booking_detail(
 
     parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
+    vehicle_profile = db.query(UserVehicle).filter(UserVehicle.user_id == current_user.id).first()
 
     payment_required = booking.status == "pending"
 
@@ -455,7 +478,12 @@ def get_my_booking_detail(
         },
         "vehicle": {
             "owner_name": current_user.name,
+            "phone": current_user.phone,
             "license_plate": current_user.vehicle_plate,
+            "vehicle_color": current_user.vehicle_color,
+            "brand": vehicle_profile.brand if vehicle_profile else None,
+            "vehicle_model": vehicle_profile.vehicle_model if vehicle_profile else None,
+            "seat_count": vehicle_profile.seat_count if vehicle_profile else None,
         },
     }
 
@@ -543,6 +571,23 @@ def create_booking(
         if not user:
             raise HTTPException(status_code=404, detail="Người dùng không tồn tại")
 
+        vehicle_profile = (
+            db.query(UserVehicle)
+            .filter(UserVehicle.user_id == user.id)
+            .with_for_update()
+            .first()
+        )
+        if not vehicle_profile:
+            vehicle_profile = UserVehicle(user_id=user.id)
+            db.add(vehicle_profile)
+
+        resolved_vehicle_model = (
+            payload.vehicle_model.strip()
+            if payload.vehicle_model and payload.vehicle_model.strip()
+            else _extract_vehicle_model(payload.vehicle_type)
+        )
+        resolved_seat_count = payload.seat_count or _extract_seat_count(payload.vehicle_type)
+
         active_booking = (
             db.query(Booking)
             .filter(
@@ -579,9 +624,13 @@ def create_booking(
                     active_parking,
                     {
                         "owner_name": user.name,
+                        "phone": user.phone,
                         "license_plate": user.vehicle_plate,
+                        "vehicle_color": vehicle_profile.vehicle_color or user.vehicle_color,
                         "vehicle_type": payload.vehicle_type,
-                        "brand": payload.brand,
+                        "brand": vehicle_profile.brand,
+                        "vehicle_model": vehicle_profile.vehicle_model,
+                        "seat_count": vehicle_profile.seat_count,
                     },
                     active_billing,
                     active_booking.booking_mode,
@@ -620,6 +669,16 @@ def create_booking(
             raise HTTPException(status_code=400, detail="Slot đã được đặt trong khung giờ này")
 
         user.vehicle_plate = payload.license_plate.strip().upper()
+        vehicle_profile.license_plate = user.vehicle_plate
+        if payload.vehicle_color and payload.vehicle_color.strip():
+            user.vehicle_color = payload.vehicle_color.strip()
+            vehicle_profile.vehicle_color = user.vehicle_color
+        if payload.brand and payload.brand.strip():
+            vehicle_profile.brand = payload.brand.strip()
+        if resolved_vehicle_model:
+            vehicle_profile.vehicle_model = resolved_vehicle_model
+        if resolved_seat_count is not None:
+            vehicle_profile.seat_count = resolved_seat_count
         if payload.owner_name.strip() and not user.name:
             user.name = payload.owner_name.strip()
 
@@ -656,9 +715,13 @@ def create_booking(
             parking_lot=parking_lot,
             vehicle={
                 "owner_name": payload.owner_name.strip(),
+                "phone": user.phone,
                 "license_plate": user.vehicle_plate,
+                "vehicle_color": user.vehicle_color,
                 "vehicle_type": payload.vehicle_type,
-                "brand": payload.brand,
+                "brand": vehicle_profile.brand,
+                "vehicle_model": vehicle_profile.vehicle_model,
+                "seat_count": vehicle_profile.seat_count,
             },
             billing={
                 "requested_mode": booking_mode,
