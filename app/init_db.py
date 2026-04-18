@@ -18,8 +18,13 @@ def migrate_parking_lots_columns():
         alter_statements.append("ADD COLUMN latitude DECIMAL(10,6)")
     if "longitude" not in columns:
         alter_statements.append("ADD COLUMN longitude DECIMAL(10,6)")
+<<<<<<< HEAD
     if "owner_id" not in columns:
         alter_statements.append("ADD COLUMN owner_id INT NULL")
+=======
+    if "district_id" not in columns:
+        alter_statements.append("ADD COLUMN district_id BIGINT NULL")
+>>>>>>> 5ea5159 ( cập nhật trang bãi xe)
     if "has_roof" not in columns:
         alter_statements.append("ADD COLUMN has_roof TINYINT(1) NOT NULL DEFAULT 0")
     if "is_active" not in columns:
@@ -29,6 +34,7 @@ def migrate_parking_lots_columns():
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE parking_lots {', '.join(alter_statements)}"))
 
+<<<<<<< HEAD
     indexes = {index["name"] for index in inspector.get_indexes("parking_lots")}
     if "idx_parking_lots_owner_id" not in indexes:
         with engine.begin() as conn:
@@ -77,6 +83,8 @@ def migrate_parking_lots_columns():
             )
 
 
+=======
+>>>>>>> 5ea5159 ( cập nhật trang bãi xe)
 def migrate_users_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
@@ -101,6 +109,8 @@ def migrate_users_columns():
         alter_statements.append("ADD COLUMN vehicle_plate VARCHAR(30) NULL")
     if "vehicle_color" not in columns:
         alter_statements.append("ADD COLUMN vehicle_color VARCHAR(50) NULL")
+    if "managed_district_id" not in columns:
+        alter_statements.append("ADD COLUMN managed_district_id BIGINT NULL")
     if "is_active" not in columns:
         alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
     if "status" not in columns:
@@ -121,6 +131,160 @@ def migrate_users_columns():
     if "uq_users_email" not in indexes:
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX uq_users_email ON users (email)"))
+
+
+def migrate_districts_normalization():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "districts" not in table_names:
+        return
+
+    parking_columns = {column["name"] for column in inspector.get_columns("parking_lots")}
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    has_legacy_parking_district = "district" in parking_columns
+    has_legacy_user_managed_district = "managed_district" in user_columns
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT IGNORE INTO districts (name)
+                SELECT 'Quận Tân Phú'
+                """
+            )
+        )
+
+        if has_legacy_parking_district:
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO districts (name)
+                    SELECT DISTINCT TRIM(p.district)
+                    FROM parking_lots p
+                    WHERE p.district IS NOT NULL AND TRIM(p.district) <> ''
+                    """
+                )
+            )
+
+        if has_legacy_user_managed_district:
+            conn.execute(
+                text(
+                    """
+                    INSERT IGNORE INTO districts (name)
+                    SELECT DISTINCT TRIM(u.managed_district)
+                    FROM users u
+                    WHERE u.managed_district IS NOT NULL AND TRIM(u.managed_district) <> ''
+                    """
+                )
+            )
+
+        if has_legacy_parking_district:
+            conn.execute(
+                text(
+                    """
+                    UPDATE parking_lots p
+                    JOIN districts d ON d.name = TRIM(p.district)
+                    SET p.district_id = d.id
+                    WHERE p.district_id IS NULL
+                      AND p.district IS NOT NULL
+                      AND TRIM(p.district) <> ''
+                    """
+                )
+            )
+
+        if has_legacy_user_managed_district:
+            conn.execute(
+                text(
+                    """
+                    UPDATE users u
+                    JOIN districts d ON d.name = TRIM(u.managed_district)
+                    SET u.managed_district_id = d.id
+                    WHERE u.managed_district_id IS NULL
+                      AND u.managed_district IS NOT NULL
+                      AND TRIM(u.managed_district) <> ''
+                    """
+                )
+            )
+
+        conn.execute(
+            text(
+                """
+                UPDATE parking_lots p
+                JOIN districts d ON d.name = 'Quận Tân Phú'
+                SET p.district_id = d.id
+                WHERE p.district_id IS NULL
+                  AND (
+                    LOWER(p.address) LIKE '%tan phu%'
+                    OR LOWER(p.name) LIKE '%tan phu%'
+                  )
+                """
+            )
+        )
+
+        conn.execute(
+            text(
+                """
+                UPDATE users u
+                JOIN districts d ON d.name = 'Quận Tân Phú'
+                SET u.managed_district_id = d.id
+                WHERE u.managed_district_id IS NULL
+                  AND u.role = 'owner'
+                """
+            )
+        )
+
+    fk_checks = []
+    with engine.begin() as conn:
+        fk_checks = conn.execute(
+            text(
+                """
+                SELECT TABLE_NAME, COLUMN_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND REFERENCED_TABLE_NAME = 'districts'
+                  AND TABLE_NAME IN ('parking_lots', 'users')
+                  AND COLUMN_NAME IN ('district_id', 'managed_district_id')
+                """
+            )
+        ).mappings().all()
+
+        has_parking_fk = any(r["TABLE_NAME"] == "parking_lots" and r["COLUMN_NAME"] == "district_id" for r in fk_checks)
+        has_user_fk = any(r["TABLE_NAME"] == "users" and r["COLUMN_NAME"] == "managed_district_id" for r in fk_checks)
+
+        if "district_id" in parking_columns and not has_parking_fk:
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE parking_lots
+                    ADD CONSTRAINT fk_parking_lots_district_id
+                    FOREIGN KEY (district_id) REFERENCES districts(id)
+                    """
+                )
+            )
+
+        if "managed_district_id" in user_columns and not has_user_fk:
+            conn.execute(
+                text(
+                    """
+                    ALTER TABLE users
+                    ADD CONSTRAINT fk_users_managed_district_id
+                    FOREIGN KEY (managed_district_id) REFERENCES districts(id)
+                    """
+                )
+            )
+
+    # Legacy text columns are removed after data has been migrated to FK columns.
+    drop_statements = []
+    if "district" in parking_columns:
+        drop_statements.append("ALTER TABLE parking_lots DROP COLUMN district")
+    if "managed_district" in user_columns:
+        drop_statements.append("ALTER TABLE users DROP COLUMN managed_district")
+
+    if drop_statements:
+        with engine.begin() as conn:
+            for statement in drop_statements:
+                conn.execute(text(statement))
 
 
 def migrate_user_vehicles_table():
@@ -286,6 +450,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     migrate_parking_lots_columns()
     migrate_users_columns()
+    migrate_districts_normalization()
     migrate_user_vehicles_table()
     migrate_parking_slots_columns()
     migrate_bookings_columns()

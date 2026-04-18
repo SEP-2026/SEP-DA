@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.database import get_db
-from app.models.models import RevokedToken, User
+from app.models.models import District, RevokedToken, User
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -31,6 +31,20 @@ security = HTTPBearer(auto_error=False)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "3"))
+
+
+def _build_user_info(user: User) -> UserInfo:
+    return UserInfo(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        name=user.name,
+        phone=user.phone,
+        vehicle_plate=user.vehicle_plate,
+        vehicle_color=user.vehicle_color,
+        managed_district_id=user.managed_district_id,
+        managed_district=user.managed_district.name if user.managed_district else None,
+    )
 
 
 def _create_access_token(user: User) -> tuple[str, datetime, str]:
@@ -146,15 +160,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         message="Đăng nhập thành công",
         token=token,
         expires_in=int((expires_at - datetime.now(timezone.utc)).total_seconds()),
-        user=UserInfo(
-            id=user.id,
-            email=user.email,
-            role=user.role,
-            name=user.name,
-            phone=user.phone,
-            vehicle_plate=user.vehicle_plate,
-            vehicle_color=user.vehicle_color,
-        ),
+        user=_build_user_info(user),
     )
 
 
@@ -184,15 +190,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 
     return RegisterResponse(
         message="Tạo tài khoản user thành công",
-        user=UserInfo(
-            id=user.id,
-            email=user.email,
-            role=user.role,
-            name=user.name,
-            phone=user.phone,
-            vehicle_plate=user.vehicle_plate,
-            vehicle_color=user.vehicle_color,
-        ),
+        user=_build_user_info(user),
     )
 
 
@@ -223,15 +221,7 @@ def logout(
 
 @router.get("/me", response_model=UserInfo)
 def me(current_user: User = Depends(get_current_user)):
-    return UserInfo(
-        id=current_user.id,
-        email=current_user.email,
-        role=current_user.role,
-        name=current_user.name,
-        phone=current_user.phone,
-        vehicle_plate=current_user.vehicle_plate,
-        vehicle_color=current_user.vehicle_color,
-    )
+    return _build_user_info(current_user)
 
 
 @router.put("/me", response_model=UpdateProfileResponse)
@@ -254,6 +244,17 @@ def update_me(
         phone = payload.phone.strip()
         user.phone = phone or None
 
+    if payload.managed_district_id is not None:
+        if user.role not in {"owner", "admin"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Chỉ owner hoặc admin mới được cập nhật quận quản lý",
+            )
+        district = db.query(District).filter(District.id == payload.managed_district_id).first()
+        if not district:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quận không tồn tại")
+        user.managed_district_id = district.id
+
     if payload.email is not None:
         normalized_email = payload.email.lower().strip()
         if normalized_email != user.email:
@@ -267,15 +268,7 @@ def update_me(
 
     return UpdateProfileResponse(
         message="Cập nhật hồ sơ thành công",
-        user=UserInfo(
-            id=user.id,
-            email=user.email,
-            role=user.role,
-            name=user.name,
-            phone=user.phone,
-            vehicle_plate=user.vehicle_plate,
-            vehicle_color=user.vehicle_color,
-        ),
+        user=_build_user_info(user),
     )
 
 

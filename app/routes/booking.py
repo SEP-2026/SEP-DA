@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Booking, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
+from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
 
 router = APIRouter()
@@ -115,6 +115,51 @@ def get_slots(parking_id: int | None = None, db: Session = Depends(get_db)):
     return slots
 
 
+@router.get("/parking-lots/slots-overview")
+def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
+    lots = db.query(ParkingLot).filter(ParkingLot.is_active == 1).order_by(ParkingLot.id.asc()).all()
+
+    slot_rows = (
+        db.query(ParkingSlot)
+        .order_by(ParkingSlot.parking_id.asc(), ParkingSlot.code.asc())
+        .all()
+    )
+
+    slots_by_parking: dict[int, list[ParkingSlot]] = {}
+    for slot in slot_rows:
+        if slot.parking_id is None:
+            continue
+        slots_by_parking.setdefault(slot.parking_id, []).append(slot)
+
+    result = []
+    for lot in lots:
+        lot_slots = slots_by_parking.get(lot.id, [])
+        available_count = sum(1 for slot in lot_slots if slot.status == "available")
+        occupied_count = len(lot_slots) - available_count
+
+        result.append(
+            {
+                "parking_id": lot.id,
+                "parking_name": lot.name,
+                "parking_address": lot.address,
+                "district": lot.district.name if lot.district else None,
+                "available_slots": available_count,
+                "occupied_or_reserved_slots": occupied_count,
+                "total_slots": len(lot_slots),
+                "slots": [
+                    {
+                        "id": slot.id,
+                        "code": slot.code,
+                        "status": slot.status,
+                    }
+                    for slot in lot_slots
+                ],
+            }
+        )
+
+    return result
+
+
 @router.get("/search-parking")
 def search_parking(
     address: str,
@@ -141,6 +186,7 @@ def search_parking(
             p.id,
             p.name,
             p.address,
+            d.name AS district,
             p.latitude,
             p.longitude,
             p.has_roof,
@@ -158,6 +204,7 @@ def search_parking(
             ) AS distance
         FROM parking_lots p
         JOIN parking_prices pr ON p.id = pr.parking_id
+        LEFT JOIN districts d ON d.id = p.district_id
                 WHERE p.is_active = 1
                     AND p.latitude IS NOT NULL
                     AND p.longitude IS NOT NULL
@@ -205,6 +252,7 @@ def search_parking_by_coords(
             p.id,
             p.name,
             p.address,
+            d.name AS district,
             p.latitude,
             p.longitude,
             p.has_roof,
@@ -222,6 +270,7 @@ def search_parking_by_coords(
             ) AS distance
         FROM parking_lots p
         JOIN parking_prices pr ON p.id = pr.parking_id
+                LEFT JOIN districts d ON d.id = p.district_id
         WHERE p.is_active = 1
           AND p.latitude IS NOT NULL
           AND p.longitude IS NOT NULL
@@ -244,6 +293,34 @@ def search_parking_by_coords(
             for row in rows
         ],
     }
+
+
+@router.get("/owner/parking-lots")
+def get_owner_parking_lots(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Chỉ owner mới được xem danh sách bãi theo quận quản lý")
+
+    if not current_user.managed_district_id:
+        raise HTTPException(status_code=400, detail="Owner chưa được gán quận quản lý")
+
+    district = db.query(District).filter(District.id == current_user.managed_district_id).first()
+    if not district:
+        raise HTTPException(status_code=400, detail="Quận quản lý của owner không hợp lệ")
+
+    lots = (
+        db.query(ParkingLot)
+        .filter(
+            ParkingLot.is_active == 1,
+            ParkingLot.district_id == district.id,
+        )
+        .order_by(ParkingLot.id.asc())
+        .all()
+    )
+
+    return lots
 
 
 def _ensure_qr_directory() -> None:

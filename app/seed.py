@@ -1,8 +1,26 @@
 from app.database import SessionLocal
-from app.models.models import ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
+from app.models.models import District, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
 from werkzeug.security import generate_password_hash
 
 db = SessionLocal()
+
+
+def seed_districts() -> dict[str, int]:
+    district_names = [
+        "Quận 1",
+        "Quận 3",
+        "Quận Tân Phú",
+    ]
+
+    for name in district_names:
+        district = db.query(District).filter(District.name == name).first()
+        if not district:
+            db.add(District(name=name))
+
+    db.commit()
+
+    districts = db.query(District).all()
+    return {item.name: item.id for item in districts}
 
 
 def seed_slots():
@@ -31,7 +49,7 @@ def seed_slots():
     print("Seeded slots!")
 
 
-def seed_default_user():
+def seed_default_user(district_map: dict[str, int]):
     accounts = [
         {
             "name": "Demo User",
@@ -51,6 +69,7 @@ def seed_default_user():
             "phone": "0900000001",
             "vehicle_plate": "59A-88888",
             "vehicle_color": "Trắng",
+            "managed_district_name": "Quận Tân Phú",
             "brand": "Toyota",
             "vehicle_model": "Vios",
             "seat_count": 5,
@@ -80,6 +99,7 @@ def seed_default_user():
                 phone=item["phone"],
                 vehicle_plate=item["vehicle_plate"],
                 vehicle_color=item["vehicle_color"],
+                managed_district_id=district_map.get(item.get("managed_district_name", "")),
                 role=item["role"],
                 is_active=1,
             )
@@ -89,6 +109,7 @@ def seed_default_user():
         user.phone = item["phone"]
         user.vehicle_plate = item["vehicle_plate"]
         user.vehicle_color = item["vehicle_color"]
+        user.managed_district_id = district_map.get(item.get("managed_district_name", ""))
         user.role = item["role"]
         user.email = item["email"]
         user.password = item["password"]
@@ -112,11 +133,12 @@ def seed_default_user():
     print("Seeded default users!")
 
 
-def seed_parking_lots_and_prices():
+def seed_parking_lots_and_prices(district_map: dict[str, int]):
     lots = [
         {
             "name": "Bai xe Nguyen Van Sang",
             "address": "Nguyen Van Sang, Tan Phu, TP.HCM",
+            "district_name": "Quận Tân Phú",
             "latitude": 10.7915,
             "longitude": 106.6261,
             "has_roof": 1,
@@ -127,6 +149,7 @@ def seed_parking_lots_and_prices():
         {
             "name": "Bai xe Tan Ky Tan Quy",
             "address": "Tan Ky Tan Quy, Tan Phu, TP.HCM",
+            "district_name": "Quận Tân Phú",
             "latitude": 10.7932,
             "longitude": 106.6250,
             "has_roof": 0,
@@ -137,6 +160,7 @@ def seed_parking_lots_and_prices():
         {
             "name": "Bai xe Luy Ban Bich",
             "address": "Luy Ban Bich, Tan Phu, TP.HCM",
+            "district_name": "Quận Tân Phú",
             "latitude": 10.7818,
             "longitude": 106.6364,
             "has_roof": 1,
@@ -147,6 +171,7 @@ def seed_parking_lots_and_prices():
         {
             "name": "Bai xe Au Co",
             "address": "Au Co, Tan Phu, TP.HCM",
+            "district_name": "Quận Tân Phú",
             "latitude": 10.7864,
             "longitude": 106.6402,
             "has_roof": 0,
@@ -157,6 +182,7 @@ def seed_parking_lots_and_prices():
         {
             "name": "Bai xe Truong Chinh",
             "address": "Truong Chinh, Tan Phu, TP.HCM",
+            "district_name": "Quận Tân Phú",
             "latitude": 10.8031,
             "longitude": 106.6287,
             "has_roof": 1,
@@ -172,6 +198,7 @@ def seed_parking_lots_and_prices():
             lot = ParkingLot(
                 name=item["name"],
                 address=item["address"],
+                district_id=district_map.get(item["district_name"]),
                 latitude=item["latitude"],
                 longitude=item["longitude"],
                 has_roof=item["has_roof"],
@@ -181,6 +208,7 @@ def seed_parking_lots_and_prices():
             db.flush()
         else:
             lot.address = item["address"]
+            lot.district_id = district_map.get(item["district_name"])
             lot.latitude = item["latitude"]
             lot.longitude = item["longitude"]
             lot.has_roof = item["has_roof"]
@@ -205,6 +233,7 @@ def seed_parking_lots_and_prices():
 
 
 if __name__ == "__main__":
-    seed_parking_lots_and_prices()
+    district_map = seed_districts()
+    seed_parking_lots_and_prices(district_map)
     seed_slots()
-    seed_default_user()
+    seed_default_user(district_map)

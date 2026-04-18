@@ -14,6 +14,8 @@ class UserInfo(BaseModel):
     phone: str | None = None
     vehicle_plate: str | None = None
     vehicle_color: str | None = None
+    managed_district_id: int | None = None
+    managed_district: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -46,6 +48,7 @@ class UpdateProfileRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=30)
+    managed_district_id: int | None = Field(default=None, ge=1)
 
 
 class UpdateProfileResponse(BaseModel):
