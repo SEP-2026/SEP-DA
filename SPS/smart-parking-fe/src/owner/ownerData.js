@@ -2,6 +2,7 @@ export const OWNER_NAV_ITEMS = [
   { to: "/owner", label: "Tổng quan", icon: "dashboard" },
   { to: "/owner/parking", label: "Quản lý bãi đỗ", icon: "parking" },
   { to: "/owner/bookings", label: "Quản lý đặt chỗ", icon: "booking" },
+  { to: "/owner/customers", label: "Quản lý khách hàng", icon: "customer" },
   { to: "/owner/revenue", label: "Doanh thu", icon: "revenue" },
   { to: "/owner/reviews", label: "Đánh giá", icon: "reviews" },
   { to: "/owner/settings", label: "Cài đặt bãi đỗ", icon: "settings" },
@@ -19,6 +20,10 @@ export const OWNER_ROUTE_META = {
   "/owner/bookings": {
     title: "Quản lý đặt chỗ",
     description: "Kiểm soát danh sách booking, xác nhận lịch vào bãi và xử lý thay đổi.",
+  },
+  "/owner/customers": {
+    title: "Quản lý khách hàng",
+    description: "Xem thông tin khách, lịch sử booking, thanh toán và hỗ trợ khi cần thiết.",
   },
   "/owner/revenue": {
     title: "Doanh thu",
