@@ -5,9 +5,10 @@ import "./Payment.css";
 
 const formatMoney = (value) => Number(value || 0).toLocaleString("vi-VN");
 const STATIC_PAYMENT_QR = "/payment/merchant-qr.png";
-const VIETQR_BANK_ID = import.meta.env.VITE_VIETQR_BANK_ID || "";
-const VIETQR_ACCOUNT_NO = import.meta.env.VITE_VIETQR_ACCOUNT_NO || "";
-const VIETQR_ACCOUNT_NAME = import.meta.env.VITE_VIETQR_ACCOUNT_NAME || "";
+const VIETQR_BANK_ID = "VCB";
+const VIETQR_ACCOUNT_NO = "1021209511";
+const VIETQR_ACCOUNT_NAME = "SMART PARKING";
+
 
 const buildDynamicVietQrUrl = (amount, bookingId) => {
   if (!VIETQR_BANK_ID || !VIETQR_ACCOUNT_NO) {
@@ -21,6 +22,12 @@ const buildDynamicVietQrUrl = (amount, bookingId) => {
   return `https://img.vietqr.io/image/${VIETQR_BANK_ID}-${VIETQR_ACCOUNT_NO}-compact2.png?amount=${amountValue}&addInfo=${addInfo}&accountName=${accountName}`;
 };
 
+const getTotalPaymentAmount = (payment) => {
+  const amount = Number(payment?.amount || 0);
+  const overtime = Number(payment?.overtime_fee || 0);
+  return amount + overtime;
+};
+
 export default function Payment() {
   const { bookingId } = useParams();
   const location = useLocation();
@@ -32,8 +39,8 @@ export default function Payment() {
   const [payment, setPayment] = useState(null);
   const [staticQrMissing, setStaticQrMissing] = useState(false);
   const dynamicQrUrl = useMemo(
-    () => buildDynamicVietQrUrl(payment?.amount, payment?.booking_id),
-    [payment?.amount, payment?.booking_id],
+    () => buildDynamicVietQrUrl(getTotalPaymentAmount(payment), payment?.booking_id),
+    [payment?.amount, payment?.overtime_fee, payment?.booking_id],
   );
 
   const numericBookingId = useMemo(() => Number(bookingId), [bookingId]);
@@ -112,41 +119,31 @@ export default function Payment() {
             <p><strong>Booking ID:</strong> {payment.booking_id}</p>
             <p><strong>Số tiền dự kiến:</strong> {formatMoney(payment.amount)}đ</p>
             <p><strong>Phí lố giờ:</strong> {formatMoney(payment.overtime_fee)}đ</p>
+            <p><strong>Tổng tiền phải thanh toán:</strong> {formatMoney(getTotalPaymentAmount(payment))}đ</p>
             <p><strong>Trạng thái:</strong> {payment.payment_status}</p>
             <p className="payment-note">Đường dẫn QR cố định: public/payment/merchant-qr.png</p>
 
             <p className="payment-note">
-              {dynamicQrUrl
-                ? "Mã QR tự động đúng số tiền cần thanh toán:"
-                : "Mã QR cố định để thanh toán:"}
+              Mã QR cố định thanh toán với số tiền động:
             </p>
             <div className="payment-qr-box">
-              <img
-                src={dynamicQrUrl || STATIC_PAYMENT_QR}
-                alt={dynamicQrUrl ? "QR VietQR động theo số tiền" : "QR thanh toán cố định"}
-                onError={() => setStaticQrMissing(true)}
-              />
+              {!staticQrMissing && dynamicQrUrl ? (
+                <img
+                  src={dynamicQrUrl}
+                  alt="QR VietQR động theo số tiền"
+                  onError={() => setStaticQrMissing(true)}
+                />
+              ) : payment.qr_code ? (
+                <img src={`http://localhost:8000/${payment.qr_code}`} alt="QR thanh toán VNPay fallback" />
+              ) : (
+                <p className="payment-note">Chưa có QR code để hiển thị</p>
+              )}
             </div>
 
             {!dynamicQrUrl && (
-              <p className="payment-note">
-                Để dùng QR động đúng số tiền, cấu hình env: VITE_VIETQR_BANK_ID, VITE_VIETQR_ACCOUNT_NO, VITE_VIETQR_ACCOUNT_NAME
+              <p className="payment-note" style={{ color: "red" }}>
+                ⚠️ Không thể tạo QR VietQR động.
               </p>
-            )}
-
-            {staticQrMissing && !dynamicQrUrl && payment.qr_code && (
-              <div className="payment-qr-box">
-                <p className="payment-note">
-                  Chưa tìm thấy ảnh QR cố định tại public/payment/merchant-qr.png, tạm dùng QR hệ thống.
-                </p>
-                <img src={`http://localhost:8000/${payment.qr_code}`} alt="QR thanh toán VNPay" />
-              </div>
-            )}
-
-            {payment.qr_url && (
-              <a href={payment.qr_url} target="_blank" rel="noreferrer" className="btn-secondary payment-link-btn">
-                Mở link VNPay
-              </a>
             )}
 
             <div className="payment-actions">
