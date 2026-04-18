@@ -274,6 +274,7 @@ export default function Booking() {
   const [searching, setSearching] = useState(false);
   const [mapError, setMapError] = useState("");
   const [error, setError] = useState("");
+  const [bookingError, setBookingError] = useState("");
   const [selectedLot, setSelectedLot] = useState(location.state?.selectedLot || null);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlotId, setSelectedSlotId] = useState("");
@@ -287,6 +288,7 @@ export default function Booking() {
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const bookingSectionRef = useRef(null);
+  const bookingSubmitLockRef = useRef(false);
   const bookingWindow = useMemo(() => buildBookingWindow(bookingForm), [bookingForm]);
   const estimatedCharge = useMemo(
     () => computeEstimatedCharge(selectedLot, bookingWindow),
@@ -305,6 +307,14 @@ export default function Booking() {
 
   const normalizeError = (err) => {
     const detail = err?.response?.data?.detail;
+    if (detail && typeof detail === "object") {
+      if (typeof detail.message === "string") {
+        return detail.message;
+      }
+      if (typeof detail.detail === "string") {
+        return detail.detail;
+      }
+    }
     if (typeof detail === "string") {
       return detail;
     }
@@ -504,7 +514,10 @@ export default function Booking() {
   };
 
   const handleSelectLot = (lot) => {
-    navigate("/booking", { state: { selectedLot: lot } });
+    setSelectedLot(lot);
+    setBookingResult(null);
+    setError("");
+    setBookingError("");
   };
 
   const handleBookingModeChange = (mode) => {
@@ -538,30 +551,49 @@ export default function Booking() {
   };
 
   const handleCreateBooking = async () => {
+    if (bookingLoading || bookingSubmitLockRef.current) {
+      return;
+    }
+
+    bookingSubmitLockRef.current = true;
+    setBookingError("");
+
     if (!selectedLot) {
-      setError("Vui lòng chọn bãi xe trước");
+      const message = "Vui lòng chọn bãi xe trước";
+      setError(message);
+      setBookingError(message);
+      bookingSubmitLockRef.current = false;
       return;
     }
 
     if (!selectedSlotId) {
-      setError("Vui lòng chọn slot trống");
+      const message = "Vui lòng chọn slot trống";
+      setError(message);
+      setBookingError(message);
+      bookingSubmitLockRef.current = false;
       return;
     }
 
     if (!bookingForm.ownerName.trim() || !bookingForm.licensePlate.trim()) {
-      setError("Vui lòng nhập tên chủ xe và biển số xe");
+      const message = "Vui lòng nhập tên chủ xe và biển số xe";
+      setError(message);
+      setBookingError(message);
+      bookingSubmitLockRef.current = false;
       return;
     }
 
     if (!bookingWindow.ok) {
-      setError(bookingWindow.error || "Thời gian booking không hợp lệ");
+      const message = bookingWindow.error || "Thời gian booking không hợp lệ";
+      setError(message);
+      setBookingError(message);
+      bookingSubmitLockRef.current = false;
       return;
     }
 
     try {
       setError("");
       setBookingLoading(true);
-      const res = await API.post("/booking/create", {
+      const pendingCreatePayload = {
         parking_id: selectedLot.id,
         slot_id: Number(selectedSlotId),
         license_plate: bookingForm.licensePlate.trim(),
@@ -575,16 +607,53 @@ export default function Booking() {
         month_count: bookingWindow.bookingMode === "monthly" ? bookingWindow.monthCount : null,
         checkin_time: bookingWindow.checkinDate.toISOString(),
         checkout_time: bookingWindow.checkoutDate.toISOString(),
-      });
+      };
+      const res = await API.post("/booking/create", pendingCreatePayload);
       navigate(`/payment/${res.data.booking_id}`, {
         state: {
           booking: res.data,
         },
       });
     } catch (err) {
+      const message = normalizeError(err);
+      const detail = err?.response?.data?.detail;
+      if (detail && typeof detail === "object" && detail.reason === "overlap_booking") {
+        navigate("/booking-history", {
+          state: {
+            conflictContext: {
+              ...detail,
+              pending_create_payload: {
+                parking_id: selectedLot?.id,
+                slot_id: Number(selectedSlotId),
+                license_plate: bookingForm.licensePlate.trim(),
+                owner_name: bookingForm.ownerName.trim(),
+                vehicle_type: `${bookingForm.vehicleType.trim()} - ${bookingForm.seats.trim()}`.trim() || null,
+                vehicle_model: bookingForm.vehicleType.trim() || null,
+                seat_count: parseSeatCount(bookingForm.seats),
+                brand: bookingForm.brand.trim() || null,
+                vehicle_color: bookingForm.vehicleColor.trim() || null,
+                booking_mode: bookingWindow.bookingMode,
+                month_count: bookingWindow.bookingMode === "monthly" ? bookingWindow.monthCount : null,
+                checkin_time: bookingWindow.checkinDate.toISOString(),
+                checkout_time: bookingWindow.checkoutDate.toISOString(),
+              },
+              requested_booking_view: {
+                parking_name: selectedLot?.name,
+                slot_code: availableSlots.find((slot) => String(slot.id) === String(selectedSlotId))?.code || null,
+                checkin_time: bookingWindow.checkinDate.toISOString(),
+                checkout_time: bookingWindow.checkoutDate.toISOString(),
+                estimated_total_amount: estimatedCharge.amount,
+              },
+            },
+          },
+        });
+        return;
+      }
       setBookingResult(null);
-      setError(normalizeError(err));
+      setError(message);
+      setBookingError(message);
     } finally {
+      bookingSubmitLockRef.current = false;
       setBookingLoading(false);
     }
   };
@@ -732,10 +801,10 @@ export default function Booking() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />
-            <button className="btn-primary" onClick={handleSearchNearby} disabled={searching}>
+            <button type="button" className="btn-primary" onClick={handleSearchNearby} disabled={searching}>
               {searching ? "Đang tìm..." : "Tìm bãi xe gần bạn"}
             </button>
-            <button className="btn-secondary" onClick={handleUseCurrentLocation} disabled={searching}>
+            <button type="button" className="btn-secondary" onClick={handleUseCurrentLocation} disabled={searching}>
               📍 Dùng vị trí hiện tại
             </button>
           </div>
@@ -777,10 +846,10 @@ export default function Booking() {
                     <p>💰 {Number(lot.price_per_hour).toLocaleString("vi-VN")}đ/giờ</p>
                     <p>💵 {Number(lot.price_per_day).toLocaleString("vi-VN")}đ/ngày - {Number(lot.price_per_month).toLocaleString("vi-VN")}đ/tháng</p>
                     <div className="lot-actions">
-                      <button className="btn-secondary" onClick={() => handleSelectLot(lot)}>
+                      <button type="button" className="btn-secondary" onClick={() => handleSelectLot(lot)}>
                         Chọn bãi xe này
                       </button>
-                      <button className="btn-primary" onClick={() => handleSelectLot(lot)}>
+                      <button type="button" className="btn-primary" onClick={() => handleSelectLot(lot)}>
                         Đặt ngay
                       </button>
                     </div>
@@ -1041,12 +1110,14 @@ export default function Booking() {
             </div>
 
             <div className="lot-actions center-actions">
-              <button className="btn-primary btn-primary-wide" onClick={handleCreateBooking} disabled={bookingLoading}>
+              <button type="button" className="btn-primary btn-primary-wide" onClick={handleCreateBooking} disabled={bookingLoading}>
                 {bookingLoading
                   ? "Đang tạo booking..."
                   : `XÁC NHẬN BOOKING (${estimatedCharge.amount.toLocaleString("vi-VN")} đ)`}
               </button>
             </div>
+
+            {(bookingError || error) && <p className="booking-error">{bookingError || error}</p>}
 
             {bookingResult && (
               <div className="booking-result">

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import Booking from "./pages/Booking";
+import BookingHistory from "./pages/BookingHistory";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
@@ -93,9 +94,25 @@ function App() {
 
 function AppBody({ auth, role, onLogin, onLogout }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const isOwnerWorkspace = location.pathname.startsWith("/owner");
   const isAdminWorkspace = location.pathname.startsWith("/admin");
   const isOwnerScanPage = location.pathname.startsWith("/scan");
+
+  const navigateWithFallback = (to) => {
+    navigate(to);
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.setTimeout(() => {
+      const targetPath = to.startsWith("/") ? to : `/${to}`;
+      if (window.location.pathname !== targetPath) {
+        window.location.assign(targetPath);
+      }
+    }, 120);
+  };
 
   const links = useMemo(() => {
     if (!auth) {
@@ -105,17 +122,20 @@ function AppBody({ auth, role, onLogin, onLogout }) {
     const roleLinks = {
       user: [
         { to: "/booking", label: "Đặt chỗ" },
+        { to: "/booking-history", label: "Lịch sử booking" },
         { to: "/profile", label: "Hồ sơ" },
       ],
       owner: [
         { to: "/owner", label: "Bảng Owner" },
         { to: "/booking", label: "Đặt chỗ" },
+        { to: "/booking-history", label: "Lịch sử booking" },
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
       admin: [
         { to: "/admin", label: "Bảng Admin" },
         { to: "/booking", label: "Đặt chỗ" },
+        { to: "/booking-history", label: "Lịch sử booking" },
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
@@ -135,6 +155,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
                 to={link.to}
                 end={link.to === "/"}
                 className={({ isActive }) => `app-link${isActive ? " active" : ""}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateWithFallback(link.to);
+                }}
               >
                 {link.label}
               </NavLink>
@@ -163,6 +187,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         <Route
           path="/booking"
           element={auth ? <Booking /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/booking-history"
+          element={auth ? <BookingHistory /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/profile"

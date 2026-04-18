@@ -12,6 +12,71 @@
   padding: 22px 22px 30px;
 }
 
+.parking-lot-list {
+  display: grid;
+  gap: 18px;
+}
+
+.parking-lot-card {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(33, 56, 83, 0.14);
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 12px 24px rgba(12, 34, 54, 0.06);
+}
+
+.parking-lot-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.parking-lot-name {
+  margin: 0;
+  font-size: clamp(22px, 2.8vw, 34px);
+  color: #143554;
+}
+
+.parking-lot-address,
+.parking-lot-district {
+  margin: 4px 0 0;
+  color: #36526d;
+}
+
+.parking-lot-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.stat-available {
+  background: rgba(50, 168, 82, 0.14);
+  color: #1d6a36;
+}
+
+.stat-occupied {
+  background: rgba(220, 53, 69, 0.14);
+  color: #9d2030;
+}
+
+.stat-total {
+  background: rgba(31, 56, 80, 0.1);
+  color: #1f3850;
+}
+
 .parking-title {
   margin: 0 0 14px;
   font-size: clamp(30px, 3.2vw, 48px);
