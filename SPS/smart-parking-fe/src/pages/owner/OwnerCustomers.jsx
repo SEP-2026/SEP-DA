@@ -1,55 +1,51 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import API from "../../services/api";
 import { formatCurrency, formatDateTime, SectionCard, StatusBadge } from "../../owner/OwnerUI";
-import { useOwnerContext } from "../../owner/useOwnerContext";
 
 export default function OwnerCustomers() {
-  const { ownerData } = useOwnerContext();
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
-  // Extract unique customers from bookings
+  // Lấy dữ liệu khách hàng từ API
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const res = await API.get("/owner/customers");
+        setCustomers(res.data.customers || []);
+      } catch (err) {
+        setError(err?.response?.data?.detail || "Lỗi khi lấy dữ liệu khách hàng");
+        setCustomers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCustomers();
+  }, []);
+
+  // Tạo map khách hàng từ dữ liệu API
   const customersMap = useMemo(() => {
     const map = new Map();
-    ownerData.bookings.forEach((booking) => {
-      if (!map.has(booking.user)) {
-        map.set(booking.user, {
-          id: booking.id,
-          name: booking.user,
-          phone: booking.phone,
-          bookings: [],
-          totalSpent: 0,
-          vehicles: [],
-        });
-      }
-      const customer = map.get(booking.user);
-      customer.bookings.push(booking);
-      customer.totalSpent += booking.price;
-
-      // Add unique vehicles
-      if (!customer.vehicles.find((v) => v.plate === booking.plate)) {
-        customer.vehicles.push({
-          plate: booking.plate,
-          type: booking.type || "Không xác định",
-          firstUsed: booking.startTime,
-        });
-      }
+    customers.forEach((customer) => {
+      map.set(customer.name, {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        bookings: customer.bookings || [],
+        totalSpent: customer.total_spent || 0,
+        vehicles: customer.vehicles || [],
+        transactions: customer.transactions || [],
+        paidAmount: customer.paid_amount || 0,
+        pendingAmount: customer.pending_amount || 0,
+      });
     });
-
-    // Calculate payment status from transactions
-    map.forEach((customer) => {
-      customer.transactions = ownerData.transactions.filter((tx) =>
-        customer.bookings.some((b) => b.code === tx.bookingCode)
-      );
-      customer.paidAmount = customer.transactions
-        .filter((tx) => tx.status === "paid")
-        .reduce((sum, tx) => sum + tx.amount, 0);
-      customer.pendingAmount = customer.transactions
-        .filter((tx) => tx.status === "pending")
-        .reduce((sum, tx) => sum + tx.amount, 0);
-    });
-
     return map;
-  }, [ownerData.bookings, ownerData.transactions]);
+  }, [customers]);
 
   const filteredCustomers = useMemo(() => {
     const list = Array.from(customersMap.values());
@@ -80,53 +76,59 @@ export default function OwnerCustomers() {
             placeholder="Tìm theo tên hoặc số điện thoại..."
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
+            disabled={loading}
           />
         }
       >
-        <div className="owner-table-shell">
-          <table className="owner-table">
-            <thead>
-              <tr>
-                <th>Khách hàng</th>
-                <th>Số điện thoại</th>
-                <th>Lần booking</th>
-                <th>Tổng tiền</th>
-                <th>Đã thanh toán</th>
-                <th>Chưa thanh toán</th>
-                <th>Hành động</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map((customer) => (
-                  <tr key={customer.id}>
-                    <td>{customer.name}</td>
-                    <td>{customer.phone}</td>
-                    <td>{customer.bookings.length}</td>
-                    <td>{formatCurrency(customer.totalSpent)}</td>
-                    <td className="table-cell-green">{formatCurrency(customer.paidAmount)}</td>
-                    <td className="table-cell-orange">{formatCurrency(customer.pendingAmount)}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-primary owner-btn owner-btn--small"
-                        onClick={() => setSelectedCustomer(customer.name)}
-                      >
-                        Xem chi tiết
-                      </button>
+        {error && <p style={{ color: "#e74c3c", marginBottom: "15px" }}>{error}</p>}
+        {loading && <p style={{ textAlign: "center", padding: "20px" }}>Đang tải dữ liệu khách hàng...</p>}
+        
+        {!loading && (
+          <div className="owner-table-shell">
+            <table className="owner-table">
+              <thead>
+                <tr>
+                  <th>Khách hàng</th>
+                  <th>Số điện thoại</th>
+                  <th>Lần booking</th>
+                  <th>Tổng tiền</th>
+                  <th>Đã thanh toán</th>
+                  <th>Chưa thanh toán</th>
+                  <th>Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCustomers.length > 0 ? (
+                  filteredCustomers.map((customer) => (
+                    <tr key={customer.id}>
+                      <td>{customer.name}</td>
+                      <td>{customer.phone}</td>
+                      <td>{customer.bookings.length}</td>
+                      <td>{formatCurrency(customer.totalSpent)}</td>
+                      <td className="table-cell-green">{formatCurrency(customer.paidAmount)}</td>
+                      <td className="table-cell-orange">{formatCurrency(customer.pendingAmount)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-primary owner-btn owner-btn--small"
+                          onClick={() => setSelectedCustomer(customer.name)}
+                        >
+                          Xem chi tiết
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
+                      {loading ? "Đang tải..." : "Không tìm thấy khách hàng"}
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
-                    Không tìm thấy khách hàng
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </SectionCard>
 
       {customerDetails ? (
@@ -167,7 +169,7 @@ export default function OwnerCustomers() {
                     <div key={vehicle.plate} className="owner-vehicle-card">
                       <strong>Biển số: {vehicle.plate}</strong>
                       <p>Loại xe: {vehicle.type}</p>
-                      <p className="text-sm">Lần đầu: {formatDateTime(vehicle.firstUsed)}</p>
+                      {vehicle.firstUsed && <p className="text-sm">Lần đầu: {formatDateTime(vehicle.firstUsed)}</p>}
                     </div>
                   ))}
                 </div>
@@ -179,34 +181,38 @@ export default function OwnerCustomers() {
             {/* Lịch sử booking */}
             <div className="owner-section">
               <h3>Lịch sử đặt chỗ</h3>
-              <div className="owner-table-shell">
-                <table className="owner-table">
-                  <thead>
-                    <tr>
-                      <th>Mã đơn</th>
-                      <th>Biển số</th>
-                      <th>Vào</th>
-                      <th>Ra</th>
-                      <th>Giá tiền</th>
-                      <th>Trạng thái</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customerDetails.bookings.map((booking) => (
-                      <tr key={booking.id}>
-                        <td>{booking.code}</td>
-                        <td>{booking.plate}</td>
-                        <td>{formatDateTime(booking.startTime)}</td>
-                        <td>{formatDateTime(booking.endTime)}</td>
-                        <td>{formatCurrency(booking.price)}</td>
-                        <td>
-                          <StatusBadge status={booking.status} />
-                        </td>
+              {customerDetails.bookings.length > 0 ? (
+                <div className="owner-table-shell">
+                  <table className="owner-table">
+                    <thead>
+                      <tr>
+                        <th>Mã đơn</th>
+                        <th>Biển số</th>
+                        <th>Vào</th>
+                        <th>Ra</th>
+                        <th>Giá tiền</th>
+                        <th>Trạng thái</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {customerDetails.bookings.map((booking) => (
+                        <tr key={booking.id}>
+                          <td>{booking.code}</td>
+                          <td>{booking.plate}</td>
+                          <td>{formatDateTime(booking.start_time)}</td>
+                          <td>{formatDateTime(booking.end_time)}</td>
+                          <td>{formatCurrency(booking.price)}</td>
+                          <td>
+                            <StatusBadge status={booking.status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>Không có booking nào</p>
+              )}
             </div>
 
             {/* Lịch sử thanh toán */}
@@ -229,7 +235,7 @@ export default function OwnerCustomers() {
                       {customerDetails.transactions.map((tx) => (
                         <tr key={tx.id}>
                           <td>{tx.id}</td>
-                          <td>{tx.bookingCode}</td>
+                          <td>{tx.booking_code}</td>
                           <td>{tx.method}</td>
                           <td>{formatCurrency(tx.amount)}</td>
                           <td>{formatDateTime(tx.time)}</td>
