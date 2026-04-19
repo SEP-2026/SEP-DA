@@ -126,9 +126,6 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         { to: "/profile", label: "Hồ sơ" },
       ],
       owner: [
-        { to: "/owner", label: "Bảng Owner" },
-        { to: "/booking", label: "Đặt chỗ" },
-        { to: "/booking-history", label: "Lịch sử booking" },
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
@@ -182,7 +179,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         />
         <Route
           path="/"
-          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : role === "owner" ? <Navigate to="/owner" replace /> : <Home />) : <Navigate to="/login" replace />}
+          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : <Home role={role} />) : <Navigate to="/login" replace />}
         />
         <Route
           path="/booking"
