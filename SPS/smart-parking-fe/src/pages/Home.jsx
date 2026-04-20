@@ -49,11 +49,11 @@ function getDesktopColumns() {
 
 function getPopoverPosition(anchorRect, compact = false, slotIndex = 0) {
   if (!anchorRect || typeof window === "undefined") {
-    return { top: 0, left: 0, placement: "right", arrowOffset: 48, maxHeight: null, width: compact ? 420 : 520 };
+    return { top: 0, left: 0, placement: "right", arrowOffset: 48, maxHeight: null, width: compact ? 420 : 520, overflowBelow: 0 };
   }
 
   if (window.innerWidth <= 640) {
-    return { top: 0, left: 0, placement: "sheet", arrowOffset: 0, maxHeight: Math.round(window.innerHeight * 0.62), width: 0 };
+    return { top: 0, left: 0, placement: "sheet", arrowOffset: 0, maxHeight: Math.round(window.innerHeight * 0.62), width: 0, overflowBelow: 0 };
   }
 
   const width = Math.min(compact ? 420 : 520, window.innerWidth - 24);
@@ -102,11 +102,14 @@ function getPopoverPosition(anchorRect, compact = false, slotIndex = 0) {
   }
 
   const top = scrollY + (placement === "bottom" ? anchorBottom + gap : anchorTop + 6);
+  const popoverHeight = compact ? 320 : 560;
+  const viewportBottom = scrollY + window.innerHeight;
+  const overflowBelow = Math.max(0, top + popoverHeight + margin - viewportBottom);
   const arrowOffset = placement === "bottom"
     ? Math.max(30, Math.min(width - 30, scrollX + anchorCenterX - left))
-    : Math.max(26, Math.min((compact ? 320 : 560) - 26, anchorCenterY - anchorTop + 6));
+    : Math.max(26, Math.min(popoverHeight - 26, anchorCenterY - anchorTop + 6));
 
-  return { top, left, placement, arrowOffset, maxHeight: null, width };
+  return { top, left, placement, arrowOffset, maxHeight: null, width, overflowBelow };
 }
 
 function getStatusTone(status) {
@@ -127,46 +130,10 @@ function getStatusTone(status) {
   return "info";
 }
 
-function buildOwnerSlotLookup(ownerBootstrap) {
-  const ownerParkingId = ownerBootstrap?.parkingLot?.id;
-  const slots = Array.isArray(ownerBootstrap?.slots) ? ownerBootstrap.slots : [];
-  const bookings = Array.isArray(ownerBootstrap?.bookings) ? ownerBootstrap.bookings : [];
-
-  const slotMap = new Map(
-    slots.map((slot) => [
-      String(slot.code),
-      {
-        ...slot,
-        booking: null,
-      },
-    ]),
-  );
-
-  bookings.forEach((booking) => {
-    if (!OWNER_VISIBLE_BOOKING_STATUSES.has(booking.status)) {
-      return;
-    }
-
-    const slotKey = String(booking.slotCode);
-    if (!slotMap.has(slotKey)) {
-      return;
-    }
-
-    const existing = slotMap.get(slotKey);
-    slotMap.set(slotKey, {
-      ...existing,
-      booking,
-    });
-  });
-
-  return { ownerParkingId, slotMap };
-}
-
 export default function Home({ role = "" }) {
   const [parkingLots, setParkingLots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [ownerBootstrap, setOwnerBootstrap] = useState(null);
   const popoverRef = useRef(null);
 
   const isOwner = role === "owner";
@@ -178,12 +145,7 @@ export default function Home({ role = "" }) {
       setLoading(true);
 
       try {
-        const requests = [API.get("/parking-lots/slots-overview")];
-        if (isOwner) {
-          requests.push(API.get("/owner/bootstrap"));
-        }
-
-        const [overviewRes, ownerRes] = await Promise.all(requests);
+        const overviewRes = await API.get(isOwner ? "/owner/parking-lots/slots-overview" : "/parking-lots/slots-overview");
         if (!active) {
           return;
         }
@@ -196,13 +158,11 @@ export default function Home({ role = "" }) {
         }));
 
         setParkingLots(normalizedLots);
-        setOwnerBootstrap(ownerRes?.data || null);
       } catch {
         if (!active) {
           return;
         }
         setParkingLots([]);
-        setOwnerBootstrap(null);
       } finally {
         if (active) {
           setLoading(false);
@@ -216,8 +176,6 @@ export default function Home({ role = "" }) {
       active = false;
     };
   }, [isOwner]);
-
-  const ownerSlotLookup = useMemo(() => buildOwnerSlotLookup(ownerBootstrap), [ownerBootstrap]);
 
   useEffect(() => {
     if (!selectedSlot) {
@@ -269,32 +227,86 @@ export default function Home({ role = "" }) {
     };
   }, [selectedSlot]);
 
+  useEffect(() => {
+    if (!selectedSlot?.slot?.id || !isOwner) {
+      return undefined;
+    }
+
+    let active = true;
+
+    const loadSlotDetail = async () => {
+      try {
+        const response = await API.get(`/owner/slots/${selectedSlot.slot.id}/detail`);
+        if (!active) {
+          return;
+        }
+        setSelectedSlot((prev) => {
+          if (!prev || prev.slot.id !== selectedSlot.slot.id) {
+            return prev;
+          }
+          return {
+            ...prev,
+            detail: response.data,
+            detailLoading: false,
+            detailError: "",
+          };
+        });
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        setSelectedSlot((prev) => {
+          if (!prev || prev.slot.id !== selectedSlot.slot.id) {
+            return prev;
+          }
+          return {
+            ...prev,
+            detail: null,
+            detailLoading: false,
+            detailError: error?.response?.data?.detail || "Không tải được chi tiết chỗ đỗ.",
+          };
+        });
+      }
+    };
+
+    loadSlotDetail();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedSlot?.slot?.id, isOwner]);
+
   const handleSlotClick = (lot, slot, slotIndex, event) => {
     if (!isOwner) {
       return;
     }
 
-    const ownerSlotDetail = lot.parking_id === ownerSlotLookup.ownerParkingId
-      ? ownerSlotLookup.slotMap.get(String(slot.code)) || null
-      : null;
     const anchorRect = event.currentTarget.getBoundingClientRect();
 
     setSelectedSlot({
       lot,
       slot,
-      ownerSlotDetail,
       slotIndex,
       anchorRect,
       anchorCenterX: anchorRect.left + anchorRect.width / 2,
       anchorCenterY: anchorRect.top + anchorRect.height / 2,
+      detail: null,
+      detailLoading: true,
+      detailError: "",
     });
   };
 
-  const isCompactPopover = Boolean(selectedSlot) && !selectedSlot.ownerSlotDetail?.booking && !selectedSlot.ownerSlotDetail;
+  const slotDetail = selectedSlot?.detail || null;
+  const detailedSlot = slotDetail?.slot || null;
+  const detailParking = slotDetail?.parking || null;
+  const detailBooking = slotDetail?.booking || null;
+  const hasOwnerDetail = Boolean(slotDetail?.access?.has_owner_detail);
+  const isCompactPopover = Boolean(selectedSlot) && !selectedSlot?.detailLoading && !hasOwnerDetail && !detailBooking;
   const popoverPosition = useMemo(
     () => getPopoverPosition(selectedSlot?.anchorRect, isCompactPopover, selectedSlot?.slotIndex || 0),
     [selectedSlot?.anchorRect, isCompactPopover, selectedSlot?.slotIndex],
   );
+  const pageSpacerHeight = selectedSlot ? Math.max(0, (popoverPosition.overflowBelow || 0) + 24) : 0;
 
   return (
     <section className="page-wrap parking-home">
@@ -408,23 +420,23 @@ export default function Home({ role = "" }) {
               <div className="parking-modal-section">
                 <h3>Trạng thái bãi</h3>
                 <div className="parking-detail-list">
-                  <div><span>Bãi xe</span><strong>{selectedSlot.lot.parking_name}</strong></div>
-                  <div><span>Địa chỉ</span><strong>{selectedSlot.lot.parking_address}</strong></div>
-                  <div><span>Quận</span><strong>{selectedSlot.lot.district || "Chưa có"}</strong></div>
-                  <div><span>Mã ô</span><strong>{selectedSlot.slot.code}</strong></div>
+                  <div><span>Bãi xe</span><strong>{detailParking?.name || selectedSlot.lot.parking_name}</strong></div>
+                  <div><span>Địa chỉ</span><strong>{detailParking?.address || selectedSlot.lot.parking_address}</strong></div>
+                  <div><span>Quận</span><strong>{detailParking?.district || selectedSlot.lot.district || "Chưa có"}</strong></div>
+                  <div><span>Mã ô</span><strong>{detailedSlot?.code || selectedSlot.slot.code}</strong></div>
                   <div>
                     <span>Trạng thái</span>
                     <strong>
-                      <span className={`parking-status-pill parking-status-pill--${getStatusTone(selectedSlot.slot.status)}`}>
-                        {formatStatusLabel(selectedSlot.slot.status)}
+                      <span className={`parking-status-pill parking-status-pill--${getStatusTone(detailedSlot?.status || selectedSlot.slot.status)}`}>
+                        {formatStatusLabel(detailedSlot?.status || selectedSlot.slot.status)}
                       </span>
                     </strong>
                   </div>
                   <div>
                     <span>Quyền owner</span>
                     <strong>
-                      <span className={`parking-status-pill parking-status-pill--${selectedSlot.ownerSlotDetail ? "info" : "muted"}`}>
-                        {selectedSlot.ownerSlotDetail ? "Có dữ liệu chi tiết" : "Chỉ xem trạng thái chung"}
+                      <span className={`parking-status-pill parking-status-pill--${hasOwnerDetail ? "info" : "muted"}`}>
+                        {selectedSlot.detailLoading ? "Đang tải..." : hasOwnerDetail ? "Có dữ liệu chi tiết" : "Chỉ xem trạng thái chung"}
                       </span>
                     </strong>
                   </div>
@@ -433,12 +445,16 @@ export default function Home({ role = "" }) {
 
               <div className="parking-modal-section">
                 <h3>Thông tin vị trí</h3>
-                {selectedSlot.ownerSlotDetail ? (
+                {selectedSlot.detailLoading ? (
+                  <p className="parking-modal-note">Đang tải dữ liệu chi tiết từ hệ thống...</p>
+                ) : selectedSlot.detailError ? (
+                  <p className="parking-modal-note">{selectedSlot.detailError}</p>
+                ) : hasOwnerDetail && detailedSlot ? (
                   <div className="parking-detail-list">
-                    <div><span>Khu vực</span><strong>{selectedSlot.ownerSlotDetail.zone}</strong></div>
-                    <div><span>Tầng</span><strong>{selectedSlot.ownerSlotDetail.level}</strong></div>
-                    <div><span>Loại xe</span><strong>{selectedSlot.ownerSlotDetail.type}</strong></div>
-                    <div><span>Cập nhật</span><strong>{formatDateTime(selectedSlot.ownerSlotDetail.updatedAt)}</strong></div>
+                    <div><span>Khu vực</span><strong>{detailedSlot.zone}</strong></div>
+                    <div><span>Tầng</span><strong>{detailedSlot.level}</strong></div>
+                    <div><span>Loại xe</span><strong>{detailedSlot.type}</strong></div>
+                    <div><span>Cập nhật</span><strong>{formatDateTime(detailedSlot.updatedAt)}</strong></div>
                   </div>
                 ) : (
                   <p className="parking-modal-note">
@@ -450,26 +466,28 @@ export default function Home({ role = "" }) {
 
             <div className="parking-modal-section">
               <h3>Thông tin xe / booking</h3>
-              {selectedSlot.ownerSlotDetail?.booking ? (
+              {selectedSlot.detailLoading ? (
+                <p className="parking-modal-note">Đang tải booking hiện tại của ô này...</p>
+              ) : detailBooking ? (
                 <div className="parking-detail-list">
-                  <div><span>Mã booking</span><strong>{selectedSlot.ownerSlotDetail.booking.code}</strong></div>
+                  <div><span>Mã booking</span><strong>{detailBooking.code}</strong></div>
                   <div>
                     <span>Trạng thái booking</span>
                     <strong>
-                      <span className={`parking-status-pill parking-status-pill--${getStatusTone(selectedSlot.ownerSlotDetail.booking.status)}`}>
-                        {formatStatusLabel(selectedSlot.ownerSlotDetail.booking.status)}
+                      <span className={`parking-status-pill parking-status-pill--${getStatusTone(detailBooking.status)}`}>
+                        {formatStatusLabel(detailBooking.status)}
                       </span>
                     </strong>
                   </div>
-                  <div><span>Chủ xe</span><strong>{selectedSlot.ownerSlotDetail.booking.user}</strong></div>
-                  <div><span>Biển số</span><strong>{selectedSlot.ownerSlotDetail.booking.plate}</strong></div>
-                  <div><span>Số điện thoại</span><strong>{selectedSlot.ownerSlotDetail.booking.phone}</strong></div>
-                  <div><span>Giờ vào</span><strong>{formatDateTime(selectedSlot.ownerSlotDetail.booking.startTime)}</strong></div>
-                  <div><span>Giờ ra</span><strong>{formatDateTime(selectedSlot.ownerSlotDetail.booking.endTime)}</strong></div>
+                  <div><span>Chủ xe</span><strong>{detailBooking.user}</strong></div>
+                  <div><span>Biển số</span><strong>{detailBooking.plate}</strong></div>
+                  <div><span>Số điện thoại</span><strong>{detailBooking.phone}</strong></div>
+                  <div><span>Giờ vào</span><strong>{formatDateTime(detailBooking.startTime)}</strong></div>
+                  <div><span>Giờ ra</span><strong>{formatDateTime(detailBooking.endTime)}</strong></div>
                 </div>
               ) : (
                 <p className="parking-modal-note">
-                  {selectedSlot.slot.status === "available"
+                  {(detailedSlot?.status || selectedSlot.slot.status) === "available"
                     ? "Ô này đang trống."
                     : "Chưa có dữ liệu booking chi tiết cho ô này."}
                 </p>
@@ -478,6 +496,7 @@ export default function Home({ role = "" }) {
           </div>
         </div>
       , document.body) : null}
+      {pageSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${pageSpacerHeight}px` }} /> : null}
     </section>
   );
 }
