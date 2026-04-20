@@ -5,8 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.database import engine
 from app.routes import admin, auth, booking, owner, payment, vehicle
+from app.security.gateway import SecurityGatewayMiddleware
 
 app = FastAPI()
+
+app.add_middleware(SecurityGatewayMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import API, { saveAuth } from "../services/api";
+import { isStrongPassword, PASSWORD_POLICY_TEXT } from "../services/passwordPolicy";
 import "./Login.css";
 
 export default function Login({ onLogin }) {
@@ -57,6 +58,11 @@ export default function Login({ onLogin }) {
 
     if (!registerName.trim()) {
       setError("Vui lòng nhập họ tên");
+      return;
+    }
+
+    if (!isStrongPassword(registerPassword)) {
+      setError(PASSWORD_POLICY_TEXT);
       return;
     }
 
@@ -201,13 +207,14 @@ export default function Login({ onLogin }) {
                 id="register-password"
                 className="login-input"
                 type="password"
-                minLength={6}
+                minLength={8}
                 value={registerPassword}
                 onChange={(event) => setRegisterPassword(event.target.value)}
-                placeholder="Tối thiểu 6 ký tự"
+                placeholder="Ví dụ: Longtu26@"
                 required
               />
             </div>
+            <p className="register-note">{PASSWORD_POLICY_TEXT}</p>
 
             <label className="login-label" htmlFor="register-phone">Số điện thoại (tùy chọn)</label>
             <div className="input-shell">

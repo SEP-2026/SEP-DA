@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { SectionCard } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
+import { isStrongPassword, PASSWORD_POLICY_TEXT } from "../../services/passwordPolicy";
 
 export default function OwnerSettings() {
   const { auth, ownerData, actions } = useOwnerContext();
@@ -44,6 +45,12 @@ export default function OwnerSettings() {
           className="owner-settings-form"
           onSubmit={async (event) => {
             event.preventDefault();
+            if (accountForm.password || accountForm.confirmPassword) {
+              if (!isStrongPassword(accountForm.password)) {
+                window.alert(PASSWORD_POLICY_TEXT);
+                return;
+              }
+            }
             const ok = await actions.updateAccount(accountForm);
             if (ok) {
               setAccountSaved(true);
@@ -60,18 +67,19 @@ export default function OwnerSettings() {
           </label>
           <label>
             Mật khẩu mới
-            <input className="owner-input" type="password" value={accountForm.password} onChange={(event) => {
+            <input className="owner-input" type="password" minLength={8} value={accountForm.password} onChange={(event) => {
               setAccountSaved(false);
               setAccountForm((prev) => ({ ...prev, password: event.target.value }));
             }} />
           </label>
           <label>
             Nhập lại mật khẩu
-            <input className="owner-input" type="password" value={accountForm.confirmPassword} onChange={(event) => {
+            <input className="owner-input" type="password" minLength={8} value={accountForm.confirmPassword} onChange={(event) => {
               setAccountSaved(false);
               setAccountForm((prev) => ({ ...prev, confirmPassword: event.target.value }));
             }} />
           </label>
+          <p className="owner-save-note owner-form-span">{PASSWORD_POLICY_TEXT}</p>
           <div className="owner-settings-actions owner-form-span">
             {accountSaved ? <p className="owner-save-note">Đã lưu thông tin tài khoản.</p> : <span />}
             <button type="submit" className="btn-primary owner-btn">Cập nhật tài khoản</button>

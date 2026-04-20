@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash
 from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Review, User
 from app.routes.auth import get_current_user
+from app.security.password_policy import ensure_strong_password
 
 router = APIRouter(prefix="/owner", tags=["owner"])
 
@@ -557,7 +558,8 @@ def update_owner_account(
     if payload.password or payload.confirmPassword:
         if not payload.password or payload.password != payload.confirmPassword:
             raise HTTPException(status_code=400, detail="Mật khẩu xác nhận không khớp")
-        current_user.password = payload.password
+        ensure_strong_password(payload.password)
+        current_user.password = "__legacy_disabled__"
         current_user.password_hash = generate_password_hash(payload.password)
 
     current_user.email = normalized_email

@@ -99,6 +99,7 @@ export default function OwnerLayout({ auth, onLogout }) {
 
   const meta = OWNER_ROUTE_META[location.pathname] || OWNER_ROUTE_META["/owner"];
   const notificationsCount = ownerData.activities.length;
+  const ownerDisplayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "Owner";
 
   const actions = {
     async addSlot(payload) {
@@ -237,11 +238,11 @@ export default function OwnerLayout({ auth, onLogout }) {
               <OwnerIcon name="bell" className="owner-menu-icon" />
               <span>{notificationsCount}</span>
             </div>
-            <div className="owner-role-pill">Vai trò: {auth?.user?.role || "owner"}</div>
+            <div className="owner-role-pill">Tài khoản vận hành</div>
             <div className="owner-avatar" title={syncNote}>
-              <div className="owner-avatar-mark">{(auth?.user?.name || auth?.user?.email || "O").slice(0, 1).toUpperCase()}</div>
+              <div className="owner-avatar-mark">{ownerDisplayName.slice(0, 1).toUpperCase()}</div>
               <div>
-                <strong>{auth?.user?.name || auth?.user?.email}</strong>
+                <strong>{ownerDisplayName}</strong>
                 <span>{syncNote}</span>
               </div>
             </div>
