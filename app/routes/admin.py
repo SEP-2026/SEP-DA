@@ -118,15 +118,22 @@ def _owner_parking_maps(db: Session) -> tuple[dict[int, ParkingLot], dict[int, U
         for item in db.query(ParkingLot).filter(ParkingLot.id.in_(parking_ids)).all()
     } if parking_ids else {}
 
-    lot_by_owner: dict[int, ParkingLot] = {}
+    # Build mapping owner_id -> comma-separated parking lot names
+    temp_map: dict[int, list[ParkingLot]] = {}
     owner_by_lot: dict[int, User] = {}
     for assignment in assignments:
         owner_id = int(assignment.owner_id)
         parking_id = int(assignment.parking_id)
-        if owner_id not in lot_by_owner and parking_id in parking_lots:
-            lot_by_owner[owner_id] = parking_lots[parking_id]
+        if parking_id in parking_lots:
+            temp_map.setdefault(owner_id, []).append(parking_lots[parking_id])
         if parking_id not in owner_by_lot and owner_id in owners:
             owner_by_lot[parking_id] = owners[owner_id]
+
+    lot_by_owner: dict[int, str] = {}
+    for owner_id, lots in temp_map.items():
+        names = [lot.name for lot in lots if lot and lot.name]
+        lot_by_owner[owner_id] = ", ".join(names) if names else ""
+
     return lot_by_owner, owner_by_lot
 
 
@@ -349,7 +356,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": owner.id,
             "name": owner.name,
             "email": owner.email,
-            "parkingLot": lot_by_owner[int(owner.id)].name if int(owner.id) in lot_by_owner and lot_by_owner[int(owner.id)] else "Chưa gán trong CSDL",
+            "parkingLot": lot_by_owner.get(int(owner.id)) if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "Chưa gán trong CSDL",
             "status": "active" if _to_status_label(owner) == "active" else "suspended",
             "performance": f"{booking_counts_by_user.get(int(owner.id), 0)} booking",
             "passwordHint": "Có thể reset từ admin",
@@ -522,7 +529,10 @@ def create_owner(
             db.add(price)
             # tạo 1 slot mặc định
             db.add(ParkingSlot(code=f"P{lot.id}-1", slot_number="1", parking_id=lot.id, status="available"))
-        _assign_owner_parking(db, owner.id, lot.id)
+        # Avoid raising conflict if lot is already assigned to another owner.
+        existing_assignment = db.query(OwnerParking).filter(OwnerParking.parking_id == lot.id).first()
+        if not existing_assignment:
+            db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
     db.commit()
     return {"message": "Tạo tài khoản owner thành công", "default_password": temporary_password}
 
