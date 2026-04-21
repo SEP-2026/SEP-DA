@@ -1187,3 +1187,45 @@ def check_out(booking_id: int, db: Session = Depends(get_db)):
         "overtime_fee": overtime_fee,
         "total_paid": round(float(payment.amount + payment.overtime_fee), 2) if payment else None,
     }
+
+
+@router.get("/bookings/{booking_id}/qr")
+def get_booking_qr(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get QR code for a booking.
+    Only the booking owner or admin can access this.
+    """
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking không tồn tại")
+    
+    # Check access: only owner or admin
+    if booking.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem QR của booking này")
+    
+    # If QR hasn't been generated yet, generate it now
+    if not booking.qr_code_path:
+        from app.services.qr_service import generate_booking_qr_code
+        qr_result = generate_booking_qr_code(booking_id, db)
+        if not qr_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Không thể tạo mã QR: {qr_result.get('error', 'Unknown error')}"
+            )
+    
+    # Refresh to get latest data
+    db.refresh(booking)
+    
+    return {
+        "booking_id": booking.id,
+        "qr_url": f"/qrcodes/{booking.qr_code_path.split('/')[-1]}",
+        "qr_code_path": booking.qr_code_path,
+        "generated_at": booking.qr_generated_at,
+        "booking_status": booking.status,
+        "checkin_time": booking.start_time,
+        "checkout_time": booking.expire_time,
+    }

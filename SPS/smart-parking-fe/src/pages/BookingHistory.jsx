@@ -126,6 +126,7 @@ export default function BookingHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [qrModal, setQrModal] = useState({ isOpen: false, bookingId: null, qrUrl: null, loading: false });
 
   const initialConflict = location.state?.conflictContext || null;
   const [conflictContext, setConflictContext] = useState(initialConflict);
@@ -221,6 +222,42 @@ export default function BookingHistory() {
   const refreshBookings = async () => {
     const res = await API.get("/booking/my");
     setBookings(res.data || []);
+  };
+
+  const handleViewQr = async (bookingId) => {
+    setQrModal({ isOpen: true, bookingId, qrUrl: null, loading: true });
+    try {
+      const res = await API.get(`/bookings/${bookingId}/qr`);
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+      const fullQrUrl = `${baseUrl}${res.data.qr_url}`;
+      setQrModal({ isOpen: true, bookingId, qrUrl: fullQrUrl, loading: false });
+    } catch (err) {
+      setQrModal({ isOpen: true, bookingId, qrUrl: null, loading: false, error: err?.response?.data?.detail || "Lỗi tải QR" });
+    }
+  };
+
+  const handleDownloadQr = async () => {
+    if (!qrModal.qrUrl) {
+      return;
+    }
+    try {
+      const response = await fetch(qrModal.qrUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `booking-${qrModal.bookingId}-qr.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // Handle download error silently
+    }
+  };
+
+  const closeQrModal = () => {
+    setQrModal({ isOpen: false, bookingId: null, qrUrl: null, loading: false });
   };
 
   const handleKeepOldBooking = () => {
@@ -450,6 +487,16 @@ export default function BookingHistory() {
                 <p><strong>Tổng tiền:</strong> {Number(item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
                 {directionsUrl && mapUrl && (
                   <div className="history-item-actions">
+                    {item.status !== "pending" && (
+                      <button
+                        type="button"
+                        className="btn-qr"
+                        onClick={() => handleViewQr(item.booking_id)}
+                        title="Xem mã QR"
+                      >
+                        <span>Xem QR</span>
+                      </button>
+                    )}
                     <a
                       href={directionsUrl}
                       target="_blank"
@@ -478,6 +525,28 @@ export default function BookingHistory() {
           </div>
         </section>
       </div>
+
+      {/* QR Code Modal */}
+      {qrModal.isOpen && (
+        <div className="qr-modal-overlay" onClick={closeQrModal}>
+          <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="qr-modal-close" onClick={closeQrModal}>×</button>
+            <h2>Mã QR - Booking #{qrModal.bookingId}</h2>
+            {qrModal.loading && <p>Đang tải mã QR...</p>}
+            {qrModal.error && <p className="qr-modal-error">{qrModal.error}</p>}
+            {qrModal.qrUrl && (
+              <>
+                <div className="qr-modal-image">
+                  <img src={qrModal.qrUrl} alt="QR Code" />
+                </div>
+                <button className="qr-modal-download" onClick={handleDownloadQr}>
+                  Tải QR
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
