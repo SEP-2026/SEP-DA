@@ -134,3 +134,14 @@ class ParkingPrice(Base):
     price_per_month = Column(Float, nullable=False)
 
     parking = relationship("ParkingLot")
+
+
+class OwnerParking(Base):
+    __tablename__ = "owner_parking"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
+
+    owner = relationship("User")
+    parking_lot = relationship("ParkingLot")
