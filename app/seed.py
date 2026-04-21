@@ -1,5 +1,5 @@
 from app.database import SessionLocal
-from app.models.models import District, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
+from app.models.models import District, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
 from werkzeug.security import generate_password_hash
 
 db = SessionLocal()
@@ -24,26 +24,34 @@ def seed_districts() -> dict[str, int]:
 
 
 def seed_slots():
-    first_lot = db.query(ParkingLot).order_by(ParkingLot.id.asc()).first()
-    if not first_lot:
+    parking_lots = db.query(ParkingLot).order_by(ParkingLot.id.asc()).all()
+    if not parking_lots:
         print("No parking lot found for slot seeding")
         return
 
-    for i in range(1, 11):
-        code = f"A{i}"
-        exists = db.query(ParkingSlot).filter(ParkingSlot.code == code).first()
-        if not exists:
-            slot = ParkingSlot(
-                code=code,
-                slot_number=code,
-                parking_id=first_lot.id,
-                status="available",
+    for lot in parking_lots:
+        for i in range(1, 11):
+            code = f"A{i}"
+            exists = (
+                db.query(ParkingSlot)
+                .filter(
+                    ParkingSlot.parking_id == lot.id,
+                    ParkingSlot.slot_number == code,
+                )
+                .first()
             )
-            db.add(slot)
-        else:
-            exists.slot_number = exists.slot_number or code
-            if exists.parking_id is None:
-                exists.parking_id = first_lot.id
+            if not exists:
+                slot = ParkingSlot(
+                    code=f"{lot.id}-{code}",
+                    slot_number=code,
+                    parking_id=lot.id,
+                    status="available",
+                )
+                db.add(slot)
+            else:
+                exists.code = f"{lot.id}-{code}"
+                exists.slot_number = code
+                exists.parking_id = lot.id
 
     db.commit()
     print("Seeded slots!")
@@ -72,6 +80,32 @@ def seed_default_user(district_map: dict[str, int]):
             "managed_district_name": "Quận Tân Phú",
             "brand": "Toyota",
             "vehicle_model": "Vios",
+            "seat_count": 5,
+            "role": "owner",
+            "password": "123456",
+        },
+        {
+            "name": "Owner Quan 1",
+            "email": "owner2@gmail.com",
+            "phone": "0900000003",
+            "vehicle_plate": "51H-12345",
+            "vehicle_color": "Bạc",
+            "managed_district_name": "Quận 1",
+            "brand": "Hyundai",
+            "vehicle_model": "Accent",
+            "seat_count": 5,
+            "role": "owner",
+            "password": "123456",
+        },
+        {
+            "name": "Owner Quan 3",
+            "email": "owner3@gmail.com",
+            "phone": "0900000004",
+            "vehicle_plate": "59K-67890",
+            "vehicle_color": "Xám",
+            "managed_district_name": "Quận 3",
+            "brand": "Mazda",
+            "vehicle_model": "Mazda3",
             "seat_count": 5,
             "role": "owner",
             "password": "123456",
@@ -135,6 +169,72 @@ def seed_default_user(district_map: dict[str, int]):
 
 def seed_parking_lots_and_prices(district_map: dict[str, int]):
     lots = [
+        {
+            "name": "Bai xe Tao Dan",
+            "address": "Cong vien Tao Dan, Quan 1, TP.HCM",
+            "district_name": "Quận 1",
+            "latitude": 10.7734,
+            "longitude": 106.6917,
+            "has_roof": 1,
+            "price_per_hour": 15000,
+            "price_per_day": 90000,
+            "price_per_month": 2200000,
+        },
+        {
+            "name": "Ham Vincom Dong Khoi",
+            "address": "72 Le Thanh Ton, Quan 1, TP.HCM",
+            "district_name": "Quận 1",
+            "latitude": 10.7785,
+            "longitude": 106.7027,
+            "has_roof": 1,
+            "price_per_hour": 18000,
+            "price_per_day": 110000,
+            "price_per_month": 2500000,
+        },
+        {
+            "name": "Bai xe Nguyen Binh Khiem",
+            "address": "32 Nguyen Binh Khiem, Quan 1, TP.HCM",
+            "district_name": "Quận 1",
+            "latitude": 10.7871,
+            "longitude": 106.7044,
+            "has_roof": 0,
+            "price_per_hour": 14000,
+            "price_per_day": 85000,
+            "price_per_month": 2100000,
+        },
+        {
+            "name": "Bai xe Vo Van Tan",
+            "address": "Vo Van Tan, Quan 3, TP.HCM",
+            "district_name": "Quận 3",
+            "latitude": 10.7788,
+            "longitude": 106.6856,
+            "has_roof": 1,
+            "price_per_hour": 13000,
+            "price_per_day": 85000,
+            "price_per_month": 1900000,
+        },
+        {
+            "name": "Bai xe Cach Mang Thang 8",
+            "address": "Cach Mang Thang 8, Quan 3, TP.HCM",
+            "district_name": "Quận 3",
+            "latitude": 10.7797,
+            "longitude": 106.6809,
+            "has_roof": 0,
+            "price_per_hour": 12000,
+            "price_per_day": 80000,
+            "price_per_month": 1800000,
+        },
+        {
+            "name": "Bai xe Ho Xuan Huong",
+            "address": "Ho Xuan Huong, Quan 3, TP.HCM",
+            "district_name": "Quận 3",
+            "latitude": 10.7811,
+            "longitude": 106.6843,
+            "has_roof": 1,
+            "price_per_hour": 14000,
+            "price_per_day": 88000,
+            "price_per_month": 2000000,
+        },
         {
             "name": "Bai xe Nguyen Van Sang",
             "address": "Nguyen Van Sang, Tan Phu, TP.HCM",
@@ -232,8 +332,53 @@ def seed_parking_lots_and_prices(district_map: dict[str, int]):
     print("Seeded parking lots and prices!")
 
 
+def seed_owner_parking_assignments():
+    owners = (
+        db.query(User)
+        .filter(User.role == "owner")
+        .order_by(User.id.asc())
+        .all()
+    )
+
+    for owner in owners:
+        if owner.managed_district_id is None:
+            continue
+
+        district_lots = (
+            db.query(ParkingLot)
+            .filter(
+                ParkingLot.district_id == owner.managed_district_id,
+                ParkingLot.is_active == 1,
+            )
+            .order_by(ParkingLot.id.asc())
+            .all()
+        )
+
+        expected_parking_ids = {int(lot.id) for lot in district_lots}
+        for lot in district_lots:
+            exists = (
+                db.query(OwnerParking)
+                .filter(
+                    OwnerParking.owner_id == owner.id,
+                    OwnerParking.parking_id == lot.id,
+                )
+                .first()
+            )
+            if not exists:
+                db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
+
+        existing_assignments = db.query(OwnerParking).filter(OwnerParking.owner_id == owner.id).all()
+        for assignment in existing_assignments:
+            if int(assignment.parking_id) not in expected_parking_ids:
+                db.delete(assignment)
+
+    db.commit()
+    print("Seeded owner parking assignments!")
+
+
 if __name__ == "__main__":
     district_map = seed_districts()
     seed_parking_lots_and_prices(district_map)
     seed_slots()
     seed_default_user(district_map)
+    seed_owner_parking_assignments()
