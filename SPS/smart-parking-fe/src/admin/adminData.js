@@ -1,45 +1,45 @@
 export const ADMIN_NAV_ITEMS = [
-  { to: "/admin", label: "Dashboard", icon: "dashboard" },
-  { to: "/admin/users", label: "Users", icon: "users" },
-  { to: "/admin/owners", label: "Owners", icon: "owners" },
-  { to: "/admin/parking-lots", label: "Parking Lots", icon: "parking" },
-  { to: "/admin/bookings", label: "Bookings", icon: "booking" },
-  { to: "/admin/revenue", label: "Revenue", icon: "revenue" },
-  { to: "/admin/analytics", label: "Analytics", icon: "analytics" },
-  { to: "/admin/settings", label: "Settings", icon: "settings" },
+  { to: "/admin", label: "Bảng điều khiển", icon: "dashboard" },
+  { to: "/admin/users", label: "Người dùng", icon: "users" },
+  { to: "/admin/owners", label: "Chủ bãi", icon: "owners" },
+  { to: "/admin/parking-lots", label: "Bãi đỗ", icon: "parking" },
+  { to: "/admin/bookings", label: "Đặt chỗ", icon: "booking" },
+  { to: "/admin/revenue", label: "Doanh thu", icon: "revenue" },
+  { to: "/admin/analytics", label: "Phân tích", icon: "analytics" },
+  { to: "/admin/settings", label: "Cài đặt", icon: "settings" },
 ];
 
 export const ADMIN_ROUTE_META = {
   "/admin": {
-    title: "System Dashboard",
-    description: "Theo dõi tổng quan user, owner, parking lots, booking và doanh thu toàn hệ thống.",
+    title: "Bảng điều khiển hệ thống",
+    description: "Theo dõi tổng quan người dùng, chủ bãi, bãi đỗ, đặt chỗ và doanh thu toàn hệ thống.",
   },
   "/admin/users": {
-    title: "User Management",
+    title: "Quản lý người dùng",
     description: "Quản lý người dùng cuối, trạng thái tài khoản và hoạt động đặt chỗ.",
   },
   "/admin/owners": {
-    title: "Owner Management",
+    title: "Quản lý chủ bãi",
     description: "Quản trị tài khoản owner, bãi đang quản lý và hiệu suất vận hành.",
   },
   "/admin/parking-lots": {
-    title: "Parking Lots",
+    title: "Quản lý bãi đỗ",
     description: "Quản lý toàn bộ bãi đỗ trong hệ thống, duyệt bãi mới và khóa bãi vi phạm.",
   },
   "/admin/bookings": {
-    title: "Booking Control",
+    title: "Quản lý đặt chỗ",
     description: "Theo dõi booking toàn hệ thống, phát hiện bất thường và can thiệp khi cần.",
   },
   "/admin/revenue": {
-    title: "Revenue & Commission",
+    title: "Doanh thu & Hoa hồng",
     description: "Theo dõi doanh thu hệ thống và phần commission admin theo từng chu kỳ.",
   },
   "/admin/analytics": {
-    title: "Analytics",
+    title: "Phân tích",
     description: "Phân tích tăng trưởng user, hiệu suất bãi đỗ và tỷ lệ lấp đầy toàn hệ thống.",
   },
   "/admin/settings": {
-    title: "Logs & Security",
+    title: "Nhật ký & Bảo mật",
     description: "Theo dõi log hệ thống, lịch sử đăng nhập và cấu hình bảo mật quản trị.",
   },
 };

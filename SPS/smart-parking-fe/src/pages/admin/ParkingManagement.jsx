@@ -22,7 +22,7 @@ export default function ParkingManagement() {
               <tr>
                 <th>Tên bãi</th>
                 <th>Địa chỉ</th>
-                <th>Owner</th>
+                <th>Chủ bãi</th>
                 <th>Số slot</th>
                 <th>Trạng thái</th>
                 <th>Công suất</th>
@@ -60,10 +60,10 @@ export default function ParkingManagement() {
             </div>
             <form className="owner-form-grid" onSubmit={async (e) => { e.preventDefault(); await actions.addParkingLot({ ...form, slotCount: Number(form.slotCount) || 0, occupancy: Number(form.occupancy) || 0 }); setIsModalOpen(false); setForm(EMPTY_LOT); }}>
               <label>Tên bãi<input className="owner-input" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /></label>
-              <label>Owner<input className="owner-input" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} /></label>
+              <label>Chủ bãi<input className="owner-input" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} /></label>
               <label className="owner-form-span">Địa chỉ<input className="owner-input" value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} /></label>
               <label>Số slot<input className="owner-input" value={form.slotCount} onChange={(e) => setForm((p) => ({ ...p, slotCount: e.target.value }))} /></label>
-              <label>Trạng thái<select className="owner-input owner-select" value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}><option value="pending">Pending</option><option value="active">Active</option></select></label>
+              <label>Trạng thái<select className="owner-input owner-select" value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}><option value="pending">Chờ duyệt</option><option value="active">Hoạt động</option></select></label>
               <div className="owner-modal-actions">
                 <button type="button" className="btn-secondary owner-btn" onClick={() => setIsModalOpen(false)}>Hủy</button>
                 <button type="submit" className="btn-primary owner-btn">Lưu bãi đỗ</button>

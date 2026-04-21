@@ -152,7 +152,7 @@ def _serialize_slots_overview(parking_lots: list[ParkingLot], db: Session) -> li
     slot_rows = (
         db.query(ParkingSlot)
         .filter(ParkingSlot.parking_id.in_(parking_ids))
-        .order_by(ParkingSlot.parking_id.asc(), ParkingSlot.code.asc())
+        .order_by(ParkingSlot.parking_id.asc(), ParkingSlot.slot_number.asc(), ParkingSlot.code.asc())
         .all()
     )
 
@@ -178,7 +178,7 @@ def _serialize_slots_overview(parking_lots: list[ParkingLot], db: Session) -> li
             "slots": [
                 {
                     "id": slot.id,
-                    "code": slot.code,
+                    "code": slot.slot_number or slot.code,
                     "status": slot.status,
                 }
                 for slot in lot_slots
@@ -237,7 +237,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lot: ParkingLot | Non
         level_index = index // 20
         slot_rows.append({
             "id": slot.id,
-            "code": slot.code or slot.slot_number or f"S-{index + 1}",
+            "code": slot.slot_number or slot.code or f"S-{index + 1}",
             "zone": f"Khu {chr(65 + zone_index)}",
             "level": f"Tầng {level_index + 1}",
             "status": _owner_slot_status(slot.status, booking_statuses_by_slot.get(int(slot.id), set())),
@@ -259,7 +259,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lot: ParkingLot | Non
             "code": f"BK-{booking.id}",
             "user": user.name if user else "Unknown user",
             "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
-            "slotCode": slot.code if slot and slot.code else (slot.slot_number if slot and slot.slot_number else "Chưa có"),
+            "slotCode": slot.slot_number if slot and slot.slot_number else (slot.code if slot and slot.code else "Chưa có"),
             "zone": zone,
             "startTime": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
             "endTime": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
@@ -407,7 +407,7 @@ def get_owner_slot_detail(
         },
         "slot": {
             "id": slot.id,
-            "code": slot.code or slot.slot_number or f"Slot-{slot.id}",
+            "code": slot.slot_number or slot.code or f"Slot-{slot.id}",
             "status": effective_status,
             "rawStatus": slot.status,
             **layout_meta,

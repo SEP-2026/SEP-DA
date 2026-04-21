@@ -111,12 +111,12 @@ export default function AdminLayout({ auth, onLogout }) {
           <div className="admin-brand-mark">AD</div>
           <div>
             <strong>Smart Parking</strong>
-            <span>Admin Control Center</span>
+              <span>Trung tâm điều hành</span>
           </div>
         </div>
 
         <div className="admin-sidebar-panel">
-          <p className="admin-sidebar-title">System Navigation</p>
+          <p className="admin-sidebar-title">Điều hướng hệ thống</p>
           <nav className="admin-menu">
             {ADMIN_NAV_ITEMS.map((item) => (
               <NavLink
@@ -134,7 +134,7 @@ export default function AdminLayout({ auth, onLogout }) {
         </div>
 
         <div className="admin-sidebar-panel admin-sidebar-panel--compact">
-          <p className="admin-sidebar-title">Quick Links</p>
+          <p className="admin-sidebar-title">Liên kết nhanh</p>
           <Link to="/" className="admin-shortcut">Trang bãi xe</Link>
         </div>
 
@@ -151,7 +151,7 @@ export default function AdminLayout({ auth, onLogout }) {
               <AdminIcon name="menu" className="admin-menu-icon" />
             </button>
             <div>
-              <p className="admin-kicker">Admin Workspace</p>
+              <p className="admin-kicker">Bảng quản trị</p>
               <h1>{meta.title}</h1>
               <span>{meta.description}</span>
             </div>

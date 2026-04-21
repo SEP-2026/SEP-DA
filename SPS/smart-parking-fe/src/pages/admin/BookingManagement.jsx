@@ -7,12 +7,12 @@ export default function BookingManagement() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   return (
     <div className="owner-page-grid">
-      <SectionCard title="Toàn bộ booking" subtitle="Theo dõi booking toàn hệ thống, xem chi tiết và hủy khi cần.">
+      <SectionCard title="Toàn bộ đặt chỗ" subtitle="Theo dõi đặt chỗ toàn hệ thống, xem chi tiết và hủy khi cần.">
         <div className="owner-table-shell">
           <table className="owner-table">
             <thead>
               <tr>
-                <th>User</th><th>Biển số</th><th>Bãi đỗ</th><th>Check-in</th><th>Check-out</th><th>Trạng thái</th><th>Giá</th><th>Bất thường</th><th>Hành động</th>
+                <th>Người dùng</th><th>Biển số</th><th>Bãi đỗ</th><th>Giờ vào</th><th>Giờ ra</th><th>Trạng thái</th><th>Giá</th><th>Bất thường</th><th>Hành động</th>
               </tr>
             </thead>
             <tbody>
