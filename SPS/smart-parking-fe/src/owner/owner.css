@@ -862,6 +862,12 @@
   width: min(720px, 100%);
 }
 
+.owner-modal--large {
+  width: min(960px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 .owner-modal-head {
   display: flex;
   justify-content: space-between;
@@ -946,6 +952,30 @@
 
 .owner-detail-grid strong {
   color: #173f5f;
+}
+
+.owner-section {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(20, 57, 93, 0.08);
+}
+
+.owner-section h3 {
+  margin: 0 0 15px;
+  font-size: 1.1rem;
+  color: #2c3e50;
+}
+
+.text-green,
+.table-cell-green {
+  color: #27ae60;
+  font-weight: 600;
+}
+
+.text-orange,
+.table-cell-orange {
+  color: #e67e22;
+  font-weight: 600;
 }
 
 .owner-settings-actions {

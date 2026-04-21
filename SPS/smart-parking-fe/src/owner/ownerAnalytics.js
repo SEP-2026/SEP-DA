@@ -20,10 +20,22 @@ function endOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
 
+function endOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
 function addDays(date, days) {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
   return result;
+}
+
+function addMonths(date, months) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function startOfHour(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), 0, 0, 0);
 }
 
 function formatDateLabel(date) {
@@ -39,6 +51,10 @@ function formatMonthLabel(date) {
 
 function formatWeekLabel(date) {
   return `Tuần ${formatDateLabel(date)}`;
+}
+
+function formatHourLabel(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:00`;
 }
 
 function buildRangeBounds(dateFrom, dateTo, range) {
@@ -91,29 +107,66 @@ export function filterTransactionsByRange(transactions, dateFrom, dateTo, range)
   });
 }
 
-function createBucketKey(date, range) {
-  if (range === "week") {
-    return startOfWeek(date).toISOString();
+function getBucketMode(range) {
+  if (range === "day") {
+    return "hour";
   }
-  if (range === "month" || range === "quarter") {
-    return startOfMonth(date).toISOString();
+  if (range === "quarter") {
+    return "month";
   }
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+  return "day";
 }
 
-function createBucketLabel(date, range) {
-  if (range === "week") {
-    return formatWeekLabel(startOfWeek(date));
+function createBucketDate(date, mode) {
+  if (mode === "hour") {
+    return startOfHour(date);
   }
-  if (range === "month" || range === "quarter") {
-    return formatMonthLabel(startOfMonth(date));
+  if (mode === "month") {
+    return startOfMonth(date);
+  }
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function createBucketLabel(date, mode) {
+  if (mode === "hour") {
+    return formatHourLabel(date);
+  }
+  if (mode === "month") {
+    return formatMonthLabel(date);
   }
   return formatDateLabel(date);
 }
 
+function createEmptyBuckets(from, to, mode) {
+  const buckets = [];
+  let cursor = createBucketDate(from, mode);
+  const end = createBucketDate(to, mode);
+
+  while (cursor <= end) {
+    buckets.push({
+      key: cursor.toISOString(),
+      label: createBucketLabel(cursor, mode),
+      amount: 0,
+      date: new Date(cursor),
+    });
+    if (mode === "hour") {
+      cursor = new Date(cursor.getTime() + (60 * 60 * 1000));
+    } else if (mode === "month") {
+      cursor = addMonths(cursor, 1);
+    } else {
+      cursor = addDays(cursor, 1);
+    }
+  }
+
+  return buckets;
+}
+
 export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
   const { from, to } = buildRangeBounds(dateFrom, dateTo, range);
-  const buckets = new Map();
+  const mode = getBucketMode(range);
+  const buckets = new Map(
+    createEmptyBuckets(from, to, mode).map((bucket) => [bucket.key, bucket]),
+  );
 
   transactions
     .filter((item) => item.status === "paid")
@@ -122,8 +175,9 @@ export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
       if (date < from || date > to) {
         return;
       }
-      const key = createBucketKey(date, range);
-      const current = buckets.get(key) || { label: createBucketLabel(date, range), amount: 0, date };
+      const bucketDate = createBucketDate(date, mode);
+      const key = bucketDate.toISOString();
+      const current = buckets.get(key) || { label: createBucketLabel(bucketDate, mode), amount: 0, date: bucketDate };
       current.amount += Number(item.amount || 0);
       buckets.set(key, current);
     });
