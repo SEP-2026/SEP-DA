@@ -129,7 +129,7 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
 
     slot_rows = (
         db.query(ParkingSlot)
-        .order_by(ParkingSlot.parking_id.asc(), ParkingSlot.code.asc())
+        .order_by(ParkingSlot.parking_id.asc(), ParkingSlot.slot_number.asc(), ParkingSlot.code.asc())
         .all()
     )
 
@@ -157,7 +157,7 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
                 "slots": [
                     {
                         "id": slot.id,
-                        "code": slot.code,
+                        "code": slot.slot_number or slot.code,
                         "status": slot.status,
                     }
                     for slot in lot_slots
@@ -581,7 +581,7 @@ def _serialize_booking_response(
         },
         "slot": {
             "id": slot.id,
-            "code": slot.code,
+            "code": slot.slot_number or slot.code,
         },
         "vehicle": vehicle,
         "billing": billing,
@@ -631,7 +631,7 @@ def get_my_booking_detail(
         },
         "slot": {
             "id": slot.id if slot else None,
-            "code": slot.code if slot else None,
+            "code": (slot.slot_number or slot.code) if slot else None,
         },
         "vehicle": {
             "owner_name": current_user.name,
@@ -677,7 +677,7 @@ def get_gate_booking_detail(
         },
         "slot": {
             "id": slot.id if slot else None,
-            "code": slot.code if slot else None,
+            "code": (slot.slot_number or slot.code) if slot else None,
         },
         "vehicle": {
             "owner_name": user.name if user else None,
@@ -724,7 +724,7 @@ def get_my_bookings(
                 },
                 "slot": {
                     "id": slot.id if slot else None,
-                    "code": slot.code if slot else None,
+                    "code": (slot.slot_number or slot.code) if slot else None,
                 },
                 "vehicle": {
                     "license_plate": current_user.vehicle_plate,
