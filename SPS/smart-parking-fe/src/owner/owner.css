@@ -374,6 +374,14 @@
   overflow: auto;
 }
 
+/* For admin pages, limit table height and enable internal scrolling so page length doesn't grow */
+.admin-main .owner-table-shell,
+.admin-content .owner-table-shell {
+  /* limit height relative to admin content so internal scroll appears */
+  max-height: calc(100% - 220px);
+  overflow: auto;
+}
+
 .owner-table {
   width: 100%;
   border-collapse: collapse;
@@ -687,12 +695,14 @@
 .owner-modal-backdrop {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
+  /* use flex centering to reliably center modal */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 20px;
   background: rgba(8, 31, 50, 0.34);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  z-index: 9999;
 }
 
 .owner-modal {
@@ -701,6 +711,11 @@
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(252, 255, 255, 0.98), rgba(237, 247, 252, 0.96));
   box-shadow: 0 30px 50px rgba(11, 36, 61, 0.2);
+  /* position relative inside the flex-centered backdrop */
+  position: relative !important;
+  z-index: 10000;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
 }
 
 .owner-modal--detail {

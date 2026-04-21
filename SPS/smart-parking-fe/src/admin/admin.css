@@ -2,6 +2,9 @@
   display: grid;
   grid-template-columns: 286px minmax(0, 1fr);
   min-height: min(900px, calc(100vh - 36px));
+  /* Constrain admin shell to viewport and prevent body scrollbar */
+  height: 100vh;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(119, 198, 255, 0.08), transparent 22%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04));
@@ -127,6 +130,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Fix main area to viewport height so inner content can scroll */
+  height: calc(100vh - 48px);
 }
 
 .admin-topbar {
@@ -204,6 +209,9 @@
 .admin-content {
   display: grid;
   gap: 16px;
+  /* allow admin content to fit and delegate scrolling to inner components */
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .admin-state-card {

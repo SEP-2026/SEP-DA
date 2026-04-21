@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
 from app.routes.auth import get_current_user
 from app.security.password_policy import ensure_strong_password
+import unicodedata
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -50,9 +51,12 @@ class OwnerCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: str = Field(min_length=3, max_length=255)
     phone: str | None = Field(default=None, max_length=30)
-    parking_lot: str | None = Field(default=None, max_length=255)
+    parking_lot: str | None = Field(default=None, max_length=255, alias="parkingLot")
     status: str = Field(default="active", pattern="^(active|suspended)$")
     temporary_password: str | None = Field(default=None, min_length=6, max_length=255)
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class OwnerStatusUpdateRequest(BaseModel):
@@ -136,7 +140,29 @@ def _find_parking_lot_by_reference(db: Session, reference: str | None) -> Parkin
         lot = db.query(ParkingLot).filter(ParkingLot.id == int(normalized)).first()
         if lot:
             return lot
-    return db.query(ParkingLot).filter(ParkingLot.name == normalized).first()
+    # try exact name match first
+    lot = db.query(ParkingLot).filter(ParkingLot.name == normalized).first()
+    if lot:
+        return lot
+
+    # case-insensitive contains
+    lot = db.query(ParkingLot).filter(ParkingLot.name.ilike(f"%{normalized}%")).first()
+    if lot:
+        return lot
+
+    # normalize accents and try contains match
+    def _normalize_text(s: str) -> str:
+        return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").casefold()
+
+    try:
+        target = _normalize_text(normalized)
+        for lot in db.query(ParkingLot).all():
+            if lot.name and target in _normalize_text(lot.name):
+                return lot
+    except Exception:
+        pass
+
+    return None
 
 
 def _find_owner_by_reference(db: Session, reference: str | None) -> User | None:
@@ -323,7 +349,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": owner.id,
             "name": owner.name,
             "email": owner.email,
-            "parkingLot": lot_by_owner[int(owner.id)].name if int(owner.id) in lot_by_owner else "Chưa gán trong CSDL",
+            "parkingLot": lot_by_owner[int(owner.id)].name if int(owner.id) in lot_by_owner and lot_by_owner[int(owner.id)] else "Chưa gán trong CSDL",
             "status": "active" if _to_status_label(owner) == "active" else "suspended",
             "performance": f"{booking_counts_by_user.get(int(owner.id), 0)} booking",
             "passwordHint": "Có thể reset từ admin",
@@ -469,12 +495,33 @@ def create_owner(
     )
     db.add(owner)
     db.flush()
-
     if payload.parking_lot:
         lot = _find_parking_lot_by_reference(db, payload.parking_lot)
+        # nếu không tìm thấy bãi theo tham chiếu, thử tìm tên gần đúng (case-insensitive)
         if not lot:
-            db.rollback()
-            raise HTTPException(status_code=404, detail="Không tìm thấy bãi để gán cho owner")
+            normalized = payload.parking_lot.strip()
+            lot = db.query(ParkingLot).filter(ParkingLot.name.ilike(f"%{normalized}%")).first()
+        # nếu vẫn không có, tạo bãi mới tự động để gán (hành vi trước đó)
+        if not lot:
+            lot = ParkingLot(
+                name=payload.parking_lot.strip(),
+                address=payload.parking_lot.strip(),
+                latitude=10.0,
+                longitude=106.0,
+                has_roof=0,
+                is_active=1,
+            )
+            db.add(lot)
+            db.flush()
+            price = ParkingPrice(
+                parking_id=lot.id,
+                price_per_hour=10000,
+                price_per_day=70000,
+                price_per_month=1500000,
+            )
+            db.add(price)
+            # tạo 1 slot mặc định
+            db.add(ParkingSlot(code=f"P{lot.id}-1", slot_number="1", parking_id=lot.id, status="available"))
         _assign_owner_parking(db, owner.id, lot.id)
     db.commit()
     return {"message": "Tạo tài khoản owner thành công", "default_password": temporary_password}

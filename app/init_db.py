@@ -18,13 +18,8 @@ def migrate_parking_lots_columns():
         alter_statements.append("ADD COLUMN latitude DECIMAL(10,6)")
     if "longitude" not in columns:
         alter_statements.append("ADD COLUMN longitude DECIMAL(10,6)")
-<<<<<<< HEAD
-    if "owner_id" not in columns:
-        alter_statements.append("ADD COLUMN owner_id INT NULL")
-=======
     if "district_id" not in columns:
         alter_statements.append("ADD COLUMN district_id BIGINT NULL")
->>>>>>> 5ea5159 ( cập nhật trang bãi xe)
     if "has_roof" not in columns:
         alter_statements.append("ADD COLUMN has_roof TINYINT(1) NOT NULL DEFAULT 0")
     if "is_active" not in columns:
@@ -33,58 +28,6 @@ def migrate_parking_lots_columns():
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE parking_lots {', '.join(alter_statements)}"))
-
-<<<<<<< HEAD
-    indexes = {index["name"] for index in inspector.get_indexes("parking_lots")}
-    if "idx_parking_lots_owner_id" not in indexes:
-        with engine.begin() as conn:
-            conn.execute(text("CREATE INDEX idx_parking_lots_owner_id ON parking_lots (owner_id)"))
-
-    foreign_keys = inspector.get_foreign_keys("parking_lots")
-    has_owner_fk = any("owner_id" in (fk.get("constrained_columns") or []) for fk in foreign_keys)
-    if not has_owner_fk:
-        with engine.begin() as conn:
-            conn.execute(
-                text(
-                    """
-                    ALTER TABLE parking_lots
-                    ADD CONSTRAINT fk_parking_lots_owner_id
-                    FOREIGN KEY (owner_id) REFERENCES users(id)
-                    ON DELETE SET NULL
-                    """
-                )
-            )
-
-    with engine.begin() as conn:
-        owner_ids = [
-            row[0]
-            for row in conn.execute(
-                text(
-                    """
-                    SELECT users.id
-                    FROM users
-                    LEFT JOIN parking_lots ON parking_lots.owner_id = users.id
-                    WHERE users.role = 'owner' AND parking_lots.id IS NULL
-                    ORDER BY users.id
-                    """
-                )
-            ).fetchall()
-        ]
-        unassigned_lot_ids = [
-            row[0]
-            for row in conn.execute(
-                text("SELECT id FROM parking_lots WHERE owner_id IS NULL ORDER BY id")
-            ).fetchall()
-        ]
-        for owner_id, lot_id in zip(owner_ids, unassigned_lot_ids):
-            conn.execute(
-                text("UPDATE parking_lots SET owner_id = :owner_id WHERE id = :lot_id"),
-                {"owner_id": owner_id, "lot_id": lot_id},
-            )
-
-
-=======
->>>>>>> 5ea5159 ( cập nhật trang bãi xe)
 def migrate_users_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
