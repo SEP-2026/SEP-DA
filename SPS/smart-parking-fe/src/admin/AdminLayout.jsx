@@ -14,6 +14,7 @@ export default function AdminLayout({ auth, onLogout }) {
   const [loading, setLoading] = useState(true);
   const meta = ADMIN_ROUTE_META[location.pathname] || ADMIN_ROUTE_META["/admin"];
   const notificationsCount = adminData?.logs?.length || 0;
+  const adminDisplayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "Admin";
 
   const refreshAdminData = useCallback(async () => {
     setLoading(true);
@@ -160,11 +161,11 @@ export default function AdminLayout({ auth, onLogout }) {
               <AdminIcon name="bell" className="admin-menu-icon" />
               <span>{notificationsCount}</span>
             </div>
-            <div className="admin-role-pill">Role: Admin</div>
+            <div className="admin-role-pill">Trung tâm vận hành</div>
             <div className="admin-avatar">
-              <div className="admin-avatar-mark">{(auth?.user?.name || auth?.user?.email || "A").slice(0, 1).toUpperCase()}</div>
+              <div className="admin-avatar-mark">{adminDisplayName.slice(0, 1).toUpperCase()}</div>
               <div>
-                <strong>{auth?.user?.name || auth?.user?.email}</strong>
+                <strong>{adminDisplayName}</strong>
                 <span>{syncNote}</span>
               </div>
             </div>

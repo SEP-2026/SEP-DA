@@ -12,6 +12,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.database import get_db
 from app.models.models import District, RevokedToken, User
+from app.security.password_policy import ensure_strong_password
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -166,6 +167,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/register", response_model=RegisterResponse)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+    ensure_strong_password(payload.password)
     normalized_email = payload.email.lower().strip()
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
@@ -284,6 +286,8 @@ def change_password(
 
     if payload.old_password == payload.new_password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mật khẩu mới phải khác mật khẩu cũ")
+
+    ensure_strong_password(payload.new_password)
 
     password_ok = False
     if user.password_hash:

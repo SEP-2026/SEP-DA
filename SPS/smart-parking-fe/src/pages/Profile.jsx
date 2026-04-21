@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import API, { getAuth, saveAuth } from "../services/api";
+import { isStrongPassword, PASSWORD_POLICY_TEXT } from "../services/passwordPolicy";
 import "./Profile.css";
 
 const normalizeError = (err, fallback) => {
@@ -236,6 +237,11 @@ export default function Profile({ onAuthUpdated }) {
       return;
     }
 
+    if (!isStrongPassword(passwordForm.newPassword)) {
+      setPasswordNotice(PASSWORD_POLICY_TEXT);
+      return;
+    }
+
     try {
       setPasswordLoading(true);
       await API.post("/auth/change-password", {
@@ -429,7 +435,7 @@ export default function Profile({ onAuthUpdated }) {
                   <input
                     className="booking-input profile-input"
                     type="password"
-                    minLength={6}
+                    minLength={8}
                     value={passwordForm.newPassword}
                     onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
                   />
@@ -442,12 +448,14 @@ export default function Profile({ onAuthUpdated }) {
                   <input
                     className="booking-input profile-input"
                     type="password"
-                    minLength={6}
+                    minLength={8}
                     value={passwordForm.confirmPassword}
                     onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                   />
                   <span className="profile-input-icon-right" aria-hidden="true">◌</span>
                 </div>
+
+                <p className="profile-notice">{PASSWORD_POLICY_TEXT}</p>
 
                 <button className="profile-action-btn" type="submit" disabled={passwordLoading}>
                   {passwordLoading ? "Đang đổi mật khẩu..." : "→ Cập nhật mật khẩu"}

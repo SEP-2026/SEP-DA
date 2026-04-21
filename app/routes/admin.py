@@ -1,5 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+import secrets
+import string
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -9,6 +11,7 @@ from werkzeug.security import generate_password_hash
 from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
 from app.routes.auth import get_current_user
+from app.security.password_policy import ensure_strong_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -18,6 +21,25 @@ ADMIN_RUNTIME_SETTINGS = {
     "maintenanceWindow": "Chủ nhật 23:00 - 01:00",
     "alertThreshold": "85",
 }
+
+
+def _generate_strong_password(length: int = 12) -> str:
+    if length < 8:
+        length = 8
+
+    lower = secrets.choice(string.ascii_lowercase)
+    upper = secrets.choice(string.ascii_uppercase)
+    digit = secrets.choice(string.digits)
+    special = secrets.choice("@#$%!&*?-_")
+    remaining_len = max(length - 4, 0)
+    alphabet = string.ascii_letters + string.digits + "@#$%!&*?-_"
+    remaining = "".join(secrets.choice(alphabet) for _ in range(remaining_len))
+
+    chars = list(lower + upper + digit + special + remaining)
+    secrets.SystemRandom().shuffle(chars)
+    password = "".join(chars)
+    ensure_strong_password(password)
+    return password
 
 
 class UserStatusUpdateRequest(BaseModel):
@@ -432,6 +454,8 @@ def create_owner(
     if existing_user:
         raise HTTPException(status_code=409, detail="Email đã tồn tại")
 
+    temporary_password = _generate_strong_password()
+
     owner = User(
         name=payload.name.strip(),
         email=payload.email.lower().strip(),
@@ -440,8 +464,8 @@ def create_owner(
         vehicle_plate=None,
         status="active",
         is_active=1,
-        password="123456",
-        password_hash=generate_password_hash("123456"),
+        password="__legacy_disabled__",
+        password_hash=generate_password_hash(temporary_password),
     )
     db.add(owner)
     db.flush()
@@ -453,7 +477,7 @@ def create_owner(
             raise HTTPException(status_code=404, detail="Không tìm thấy bãi để gán cho owner")
         _assign_owner_parking(db, owner.id, lot.id)
     db.commit()
-    return {"message": "Tạo tài khoản owner thành công", "default_password": "123456"}
+    return {"message": "Tạo tài khoản owner thành công", "default_password": temporary_password}
 
 
 @router.patch("/owners/{owner_id}/status")
@@ -483,8 +507,8 @@ def reset_owner_password(
     if not owner:
         raise HTTPException(status_code=404, detail="Không tìm thấy owner")
 
-    temp_password = "123456"
-    owner.password = temp_password
+    temp_password = _generate_strong_password()
+    owner.password = "__legacy_disabled__"
     owner.password_hash = generate_password_hash(temp_password)
     db.commit()
     return {"message": "Đã reset mật khẩu owner", "temporary_password": temp_password}

@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash
 from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Review, User
 from app.routes.auth import get_current_user
+from app.security.password_policy import ensure_strong_password
 
 router = APIRouter(prefix="/owner", tags=["owner"])
 
@@ -62,6 +63,19 @@ def _get_primary_owner_parking(owner_id: int, db: Session) -> ParkingLot | None:
     return db.query(ParkingLot).filter(ParkingLot.id == assignment.parking_id).first()
 
 
+def _get_owner_parking_assignment(owner_id: int, parking_id: int | None, db: Session) -> OwnerParking | None:
+    if parking_id is None:
+        return None
+    return (
+        db.query(OwnerParking)
+        .filter(
+            OwnerParking.owner_id == owner_id,
+            OwnerParking.parking_id == parking_id,
+        )
+        .first()
+    )
+
+
 def _normalize_slot_status(value: str | None) -> str:
     mapping = {
         "available": "available",
@@ -110,6 +124,68 @@ def _slot_type_label(slot: ParkingSlot, index: int) -> str:
     if (slot.slot_type or "").lower() == "vip":
         return "SUV"
     return ["Sedan", "SUV", "EV"][index % 3]
+
+
+def _slot_layout_meta(slot: ParkingSlot, db: Session) -> dict:
+    lot_slots = (
+        db.query(ParkingSlot)
+        .filter(ParkingSlot.parking_id == slot.parking_id)
+        .order_by(ParkingSlot.id.asc())
+        .all()
+    )
+    slot_index = next((index for index, item in enumerate(lot_slots) if int(item.id) == int(slot.id)), 0)
+    zone_index = slot_index % 4
+    level_index = slot_index // 20
+    return {
+        "zone": f"Khu {chr(65 + zone_index)}",
+        "level": f"Tầng {level_index + 1}",
+        "type": _slot_type_label(slot, slot_index),
+        "updatedAt": datetime.utcnow().isoformat(),
+    }
+
+
+def _serialize_slots_overview(parking_lots: list[ParkingLot], db: Session) -> list[dict]:
+    parking_ids = [lot.id for lot in parking_lots]
+    if not parking_ids:
+      return []
+
+    slot_rows = (
+        db.query(ParkingSlot)
+        .filter(ParkingSlot.parking_id.in_(parking_ids))
+        .order_by(ParkingSlot.parking_id.asc(), ParkingSlot.code.asc())
+        .all()
+    )
+
+    slots_by_parking: dict[int, list[ParkingSlot]] = defaultdict(list)
+    for slot in slot_rows:
+        if slot.parking_id is None:
+            continue
+        slots_by_parking[int(slot.parking_id)].append(slot)
+
+    result = []
+    for lot in parking_lots:
+        lot_slots = slots_by_parking.get(int(lot.id), [])
+        available_count = sum(1 for slot in lot_slots if (slot.status or "").lower() == "available")
+        occupied_count = len(lot_slots) - available_count
+        result.append({
+            "parking_id": lot.id,
+            "parking_name": lot.name,
+            "parking_address": lot.address,
+            "district": lot.district.name if lot.district else None,
+            "available_slots": available_count,
+            "occupied_or_reserved_slots": occupied_count,
+            "total_slots": len(lot_slots),
+            "slots": [
+                {
+                    "id": slot.id,
+                    "code": slot.code,
+                    "status": slot.status,
+                }
+                for slot in lot_slots
+            ],
+        })
+
+    return result
 
 
 def _serialize_owner_bootstrap(current_user: User, parking_lot: ParkingLot | None, db: Session) -> dict:
@@ -265,6 +341,100 @@ def owner_bootstrap(
     return _serialize_owner_bootstrap(current_user, parking_lot, db)
 
 
+@router.get("/parking-lots/slots-overview")
+def get_owner_parking_lots_slots_overview(
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    assignments = (
+        db.query(OwnerParking)
+        .filter(OwnerParking.owner_id == current_user.id)
+        .order_by(OwnerParking.id.asc())
+        .all()
+    )
+    parking_ids = [assignment.parking_id for assignment in assignments]
+    if not parking_ids:
+        return []
+
+    parking_lots = (
+        db.query(ParkingLot)
+        .filter(ParkingLot.id.in_(parking_ids), ParkingLot.is_active == 1)
+        .order_by(ParkingLot.id.asc())
+        .all()
+    )
+    return _serialize_slots_overview(parking_lots, db)
+
+
+@router.get("/slots/{slot_id}/detail")
+def get_owner_slot_detail(
+    slot_id: int,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    slot = db.query(ParkingSlot).filter(ParkingSlot.id == slot_id).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Không tìm thấy chỗ đỗ")
+
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == slot.parking_id).first()
+    if not parking_lot:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bãi đỗ")
+
+    owner_assignment = _get_owner_parking_assignment(current_user.id, parking_lot.id, db)
+    has_owner_detail = owner_assignment is not None
+
+    active_bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.slot_id == slot.id,
+            Booking.status.in_(["pending", "booked", "checked_in"]),
+        )
+        .order_by(Booking.created_at.desc())
+        .all()
+    )
+    booking_statuses = {(item.status or "").lower() for item in active_bookings}
+    active_booking = active_bookings[0] if active_bookings else None
+    user = active_booking.user if active_booking else None
+    payment = db.query(Payment).filter(Payment.booking_id == active_booking.id).first() if active_booking else None
+    layout_meta = _slot_layout_meta(slot, db)
+    effective_status = _owner_slot_status(slot.status, booking_statuses)
+
+    return {
+        "parking": {
+            "id": parking_lot.id,
+            "name": parking_lot.name,
+            "address": parking_lot.address,
+            "district": parking_lot.district.name if parking_lot.district else None,
+        },
+        "slot": {
+            "id": slot.id,
+            "code": slot.code or slot.slot_number or f"Slot-{slot.id}",
+            "status": effective_status,
+            "rawStatus": slot.status,
+            **layout_meta,
+        },
+        "access": {
+            "has_owner_detail": has_owner_detail,
+            "owner_parking_id": owner_assignment.parking_id if owner_assignment else None,
+        },
+        "booking": (
+            {
+                "id": active_booking.id,
+                "code": f"BK-{active_booking.id}",
+                "status": _owner_booking_status(active_booking.status),
+                "startTime": (active_booking.start_time or active_booking.created_at or datetime.utcnow()).isoformat(),
+                "endTime": (active_booking.expire_time or active_booking.created_at or datetime.utcnow()).isoformat(),
+                "price": float(active_booking.total_amount or 0),
+                "user": user.name if user else "Unknown user",
+                "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
+                "phone": user.phone if user and user.phone else "Chưa có",
+                "paymentStatus": payment.payment_status if payment else None,
+            }
+            if has_owner_detail and active_booking
+            else None
+        ),
+    }
+
+
 @router.post("/slots")
 def create_owner_slot(
     payload: OwnerSlotCreateRequest,
@@ -388,7 +558,8 @@ def update_owner_account(
     if payload.password or payload.confirmPassword:
         if not payload.password or payload.password != payload.confirmPassword:
             raise HTTPException(status_code=400, detail="Mật khẩu xác nhận không khớp")
-        current_user.password = payload.password
+        ensure_strong_password(payload.password)
+        current_user.password = "__legacy_disabled__"
         current_user.password_hash = generate_password_hash(payload.password)
 
     current_user.email = normalized_email

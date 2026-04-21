@@ -98,6 +98,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
   const isOwnerWorkspace = location.pathname.startsWith("/owner");
   const isAdminWorkspace = location.pathname.startsWith("/admin");
   const isOwnerScanPage = location.pathname.startsWith("/scan");
+  const displayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "";
 
   const navigateWithFallback = (to) => {
     navigate(to);
@@ -126,9 +127,6 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         { to: "/profile", label: "Hồ sơ" },
       ],
       owner: [
-        { to: "/owner", label: "Bảng Owner" },
-        { to: "/booking", label: "Đặt chỗ" },
-        { to: "/booking-history", label: "Lịch sử booking" },
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
@@ -143,6 +141,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
 
     return [{ to: "/", label: "Trang bãi xe" }, ...(roleLinks[role] || [])];
   }, [auth, role]);
+
+  const userInfo = [displayName, auth?.user?.email, auth?.user?.phone, auth?.user?.vehicle_plate]
+    .filter(Boolean)
+    .join(" • ");
 
   return (
     <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}`}>
@@ -166,7 +168,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           </div>
           <div className="app-nav-user">
             <span>
-              {auth.user.email} ({role}){auth.user.phone ? ` • ${auth.user.phone}` : ""}{auth.user.vehicle_plate ? ` • ${auth.user.vehicle_plate}` : ""}
+              {userInfo}
             </span>
             <button type="button" className="app-logout-btn" onClick={onLogout}>
               Đăng xuất
@@ -182,7 +184,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         />
         <Route
           path="/"
-          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : role === "owner" ? <Navigate to="/owner" replace /> : <Home />) : <Navigate to="/login" replace />}
+          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : <Home role={role} />) : <Navigate to="/login" replace />}
         />
         <Route
           path="/booking"
