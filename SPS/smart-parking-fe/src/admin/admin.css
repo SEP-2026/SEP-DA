@@ -209,9 +209,9 @@
 .admin-content {
   display: grid;
   gap: 16px;
-  /* allow admin content to fit and delegate scrolling to inner components */
+  /* allow admin content to fit and enable scrolling when content is long */
   flex: 1 1 auto;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .admin-state-card {

@@ -374,11 +374,11 @@
   overflow: auto;
 }
 
-/* For admin pages, limit table height and enable internal scrolling so page length doesn't grow */
+/* For admin pages, allow table to grow and rely on page scrolling when needed */
 .admin-main .owner-table-shell,
 .admin-content .owner-table-shell {
-  /* limit height relative to admin content so internal scroll appears */
-  max-height: calc(100% - 220px);
+  /* don't artificially cap the table height inside admin shell */
+  max-height: none;
   overflow: auto;
 }
 

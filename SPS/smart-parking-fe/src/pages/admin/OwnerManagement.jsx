@@ -58,7 +58,27 @@ export default function OwnerManagement() {
               <div><h2>Tạo chủ bãi mới</h2><p>Cấp tài khoản mới cho đối tác quản lý bãi.</p></div>
               <button type="button" className="owner-modal-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
-            <form className="owner-form-grid" onSubmit={async (e) => { e.preventDefault(); await actions.addOwner(form); setIsModalOpen(false); setForm(EMPTY_OWNER); }}>
+            <form
+              className="owner-form-grid"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                // basic validation
+                if (!form.name.trim() || !form.email.trim()) {
+                  window.alert("Vui lòng nhập tên và email.");
+                  return;
+                }
+                // map parkingLot into an array to match common backend shapes
+                const payload = {
+                  name: form.name,
+                  email: form.email,
+                  parking_lots: form.parkingLot ? [form.parkingLot] : [],
+                  status: form.status || "active",
+                };
+                await actions.addOwner(payload);
+                setIsModalOpen(false);
+                setForm(EMPTY_OWNER);
+              }}
+            >
               <label>Tên chủ bãi<input className="owner-input" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} /></label>
               <label>Email<input className="owner-input" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} /></label>
               <label className="owner-form-span">Bãi quản lý<input className="owner-input" value={form.parkingLot} onChange={(e) => setForm((p) => ({ ...p, parkingLot: e.target.value }))} /></label>
