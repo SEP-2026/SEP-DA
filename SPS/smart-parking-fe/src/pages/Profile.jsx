@@ -22,16 +22,22 @@ const normalizeError = (err, fallback) => {
 
 export default function Profile({ onAuthUpdated }) {
   const auth = getAuth();
+  const role = auth?.user?.role || "user";
+  const isVehicleProfileAvailable = role === "user";
+  const isOwner = role === "owner";
+  const isAdmin = role === "admin";
   const [activeSection, setActiveSection] = useState("personal");
 
   const [loading, setLoading] = useState(true);
   const [personalLoading, setPersonalLoading] = useState(false);
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [managerLoading, setManagerLoading] = useState(false);
 
   const [personalNotice, setPersonalNotice] = useState("");
   const [vehicleNotice, setVehicleNotice] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
+  const [managerNotice, setManagerNotice] = useState("");
 
   const [personalForm, setPersonalForm] = useState({
     name: "",
@@ -52,9 +58,18 @@ export default function Profile({ onAuthUpdated }) {
     newPassword: "",
     confirmPassword: "",
   });
+  const [managerInfo, setManagerInfo] = useState({
+    managedDistrict: "",
+    managedLotsCount: 0,
+    totalSlots: 0,
+    occupiedSlots: 0,
+  });
 
   const greetingName = useMemo(() => personalForm.name || auth?.user?.name || "User", [personalForm.name, auth?.user?.name]);
   const sectionTitle = useMemo(() => {
+    if (activeSection === "manager") {
+      return isAdmin ? "Thông tin quản trị" : "Thông tin quản lý";
+    }
     if (activeSection === "vehicle") {
       return "Thông tin xe";
     }
@@ -68,13 +83,22 @@ export default function Profile({ onAuthUpdated }) {
     const loadProfile = async () => {
       try {
         setLoading(true);
-        const [meRes, vehicleRes] = await Promise.all([
-          API.get("/auth/me"),
-          API.get("/vehicle/my"),
-        ]);
+        const requests = [API.get("/auth/me")];
+        if (isVehicleProfileAvailable) {
+          requests.push(API.get("/vehicle/my"));
+        }
+        if (isOwner) {
+          requests.push(API.get("/owner/parking-lots/slots-overview"));
+        }
+
+        const responses = await Promise.all(requests);
+        const meRes = responses[0];
+        const vehicleRes = isVehicleProfileAvailable ? responses[1] : null;
+        const ownerOverviewRes = isOwner ? responses[responses.length - 1] : null;
 
         const me = meRes.data || {};
-        const vehicle = vehicleRes.data?.vehicle || {};
+        const vehicle = vehicleRes?.data?.vehicle || {};
+        const ownerLots = Array.isArray(ownerOverviewRes?.data) ? ownerOverviewRes.data : [];
 
         setPersonalForm({
           name: me.name || "",
@@ -89,6 +113,24 @@ export default function Profile({ onAuthUpdated }) {
           seatCount: vehicle.seat_count ? String(vehicle.seat_count) : "",
           vehicleColor: vehicle.vehicle_color || me.vehicle_color || "",
         });
+
+        if (isOwner) {
+          const totalSlots = ownerLots.reduce((sum, lot) => sum + Number(lot.total_slots || 0), 0);
+          const occupiedSlots = ownerLots.reduce((sum, lot) => sum + Number(lot.occupied_or_reserved_slots || 0), 0);
+          setManagerInfo({
+            managedDistrict: me.managed_district || "",
+            managedLotsCount: ownerLots.length,
+            totalSlots,
+            occupiedSlots,
+          });
+        } else if (isAdmin) {
+          setManagerInfo({
+            managedDistrict: "",
+            managedLotsCount: 0,
+            totalSlots: 0,
+            occupiedSlots: 0,
+          });
+        }
 
         if (auth?.token) {
           const nextAuth = {
@@ -111,7 +153,7 @@ export default function Profile({ onAuthUpdated }) {
     };
 
     loadProfile();
-  }, []);
+  }, [isAdmin, isOwner, isVehicleProfileAvailable]);
 
   const handleSavePersonal = async (event) => {
     event.preventDefault();
@@ -262,6 +304,23 @@ export default function Profile({ onAuthUpdated }) {
     }
   };
 
+  const handleSaveManager = async (event) => {
+    event.preventDefault();
+    setManagerNotice("");
+
+    if (!managerInfo.managedDistrict.trim()) {
+      setManagerNotice(isAdmin ? "Thông tin quản trị đang trống" : "Owner chưa được gán quận quản lý");
+      return;
+    }
+
+    try {
+      setManagerLoading(true);
+      setManagerNotice(isAdmin ? "Thông tin quản trị đang được đồng bộ." : "Thông tin quản lý đã được đồng bộ từ hệ thống.");
+    } finally {
+      setManagerLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <section className="page-wrap">
@@ -293,14 +352,25 @@ export default function Profile({ onAuthUpdated }) {
               <span aria-hidden="true">🪪</span>
               Thông tin cá nhân
             </button>
-            <button
-              type="button"
-              className={`profile-menu-item ${activeSection === "vehicle" ? "is-active" : ""}`}
-              onClick={() => setActiveSection("vehicle")}
-            >
-              <span aria-hidden="true">🚗</span>
-              Thông tin xe
-            </button>
+            {isVehicleProfileAvailable ? (
+              <button
+                type="button"
+                className={`profile-menu-item ${activeSection === "vehicle" ? "is-active" : ""}`}
+                onClick={() => setActiveSection("vehicle")}
+              >
+                <span aria-hidden="true">🚗</span>
+                Thông tin xe
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`profile-menu-item ${activeSection === "manager" ? "is-active" : ""}`}
+                onClick={() => setActiveSection("manager")}
+              >
+                <span aria-hidden="true">{isAdmin ? "🛠" : "🅿"}</span>
+                {isAdmin ? "Thông tin quản trị" : "Thông tin quản lý"}
+              </button>
+            )}
             <button
               type="button"
               className={`profile-menu-item ${activeSection === "password" ? "is-active" : ""}`}
@@ -354,7 +424,65 @@ export default function Profile({ onAuthUpdated }) {
               </form>
             )}
 
-            {activeSection === "vehicle" && (
+            {activeSection === "manager" && (
+              <form className="profile-card" onSubmit={handleSaveManager}>
+                <div className="profile-manager-grid">
+                  <article className="profile-manager-stat">
+                    <span className="profile-manager-label">Vai trò</span>
+                    <strong>{isAdmin ? "Quản trị hệ thống" : "Owner quản lý bãi xe"}</strong>
+                  </article>
+                  <article className="profile-manager-stat">
+                    <span className="profile-manager-label">{isAdmin ? "Phạm vi" : "Quận phụ trách"}</span>
+                    <strong>{managerInfo.managedDistrict || (isAdmin ? "Toàn hệ thống" : "Chưa được gán")}</strong>
+                  </article>
+                  <article className="profile-manager-stat">
+                    <span className="profile-manager-label">Số bãi đang quản lý</span>
+                    <strong>{managerInfo.managedLotsCount}</strong>
+                  </article>
+                  <article className="profile-manager-stat">
+                    <span className="profile-manager-label">Tổng số chỗ đỗ</span>
+                    <strong>{managerInfo.totalSlots}</strong>
+                  </article>
+                </div>
+
+                <label>Quận phụ trách</label>
+                <div className="profile-input-shell">
+                  <span className="profile-input-icon" aria-hidden="true">📍</span>
+                  <input
+                    className="booking-input profile-input"
+                    value={managerInfo.managedDistrict}
+                    readOnly
+                  />
+                </div>
+
+                <label>Tình trạng vận hành hiện tại</label>
+                <div className="profile-input-shell">
+                  <span className="profile-input-icon" aria-hidden="true">📊</span>
+                  <input
+                    className="booking-input profile-input"
+                    value={`Đang sử dụng ${managerInfo.occupiedSlots}/${managerInfo.totalSlots} chỗ đỗ`}
+                    readOnly
+                  />
+                </div>
+
+                <label>Email liên hệ</label>
+                <div className="profile-input-shell">
+                  <span className="profile-input-icon" aria-hidden="true">✉</span>
+                  <input
+                    className="booking-input profile-input"
+                    value={personalForm.email}
+                    readOnly
+                  />
+                </div>
+
+                <button className="profile-action-btn" type="submit" disabled={managerLoading}>
+                  {managerLoading ? "Đang đồng bộ..." : "→ Đồng bộ thông tin quản lý"}
+                </button>
+                {managerNotice ? <p className="profile-notice">{managerNotice}</p> : null}
+              </form>
+            )}
+
+            {activeSection === "vehicle" && isVehicleProfileAvailable && (
               <form className="profile-card" onSubmit={handleSaveVehicle}>
                 <label>Biển số xe</label>
                 <div className="profile-input-shell">

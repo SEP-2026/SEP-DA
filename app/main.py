@@ -1,13 +1,15 @@
 import os
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.database import engine
+from app.init_db import init_db
 from app.routes import admin, auth, booking, owner, payment, vehicle
 from app.security.gateway import SecurityGatewayMiddleware
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 app.add_middleware(SecurityGatewayMiddleware)
 
@@ -29,6 +31,14 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(owner.router)
 app.include_router(vehicle.router)
+
+
+@app.on_event("startup")
+def startup_init_db():
+    try:
+        init_db()
+    except Exception:
+        logger.exception("Database migration at startup failed; continuing with existing schema.")
 
 
 @app.get("/")

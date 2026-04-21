@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import API from "../../services/api";
 import { formatCurrency, formatDateTime, SectionCard, StatusBadge } from "../../owner/OwnerUI";
 
@@ -26,13 +27,30 @@ export default function OwnerCustomers() {
     };
 
     fetchCustomers();
+
+    const intervalId = window.setInterval(fetchCustomers, 10000);
+    const handleFocus = () => fetchCustomers();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchCustomers();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   // Tạo map khách hàng từ dữ liệu API
   const customersMap = useMemo(() => {
     const map = new Map();
     customers.forEach((customer) => {
-      map.set(customer.name, {
+      map.set(customer.id, {
         id: customer.id,
         name: customer.name,
         phone: customer.phone,
@@ -61,7 +79,7 @@ export default function OwnerCustomers() {
   }, [customersMap, searchKeyword]);
 
   const customerDetails = selectedCustomer
-    ? customersMap.get(selectedCustomer)
+    ? Array.from(customersMap.values()).find((item) => item.id === selectedCustomer)
     : null;
 
   return (
@@ -111,7 +129,7 @@ export default function OwnerCustomers() {
                         <button
                           type="button"
                           className="btn-primary owner-btn owner-btn--small"
-                          onClick={() => setSelectedCustomer(customer.name)}
+                          onClick={() => setSelectedCustomer(customer.id)}
                         >
                           Xem chi tiết
                         </button>
@@ -131,7 +149,7 @@ export default function OwnerCustomers() {
         )}
       </SectionCard>
 
-      {customerDetails ? (
+      {customerDetails ? createPortal(
         <div className="owner-modal-backdrop" onClick={() => setSelectedCustomer(null)}>
           <div
             className="owner-modal owner-modal--detail owner-modal--large"
@@ -265,10 +283,11 @@ export default function OwnerCustomers() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
 
-      <style jsx>{`
+      <style>{`
         .table-cell-green {
           color: #27ae60;
           font-weight: 600;

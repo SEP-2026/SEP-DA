@@ -88,6 +88,7 @@ export function StatCard({ title, value, note, trend, icon }) {
 }
 
 export function LineChart({ data, formatValue = formatCurrency }) {
+  const isEmptyState = data.length === 1 && data[0]?.label === "Không có dữ liệu" && Number(data[0]?.amount || 0) === 0;
   const width = 640;
   const height = 260;
   const padding = 30;
@@ -96,12 +97,16 @@ export function LineChart({ data, formatValue = formatCurrency }) {
   const range = Math.max(max - min, 1);
 
   const points = data.map((item, index) => {
-    const x = padding + (index * (width - padding * 2)) / Math.max(data.length - 1, 1);
+    const x = data.length === 1
+      ? width / 2
+      : padding + (index * (width - padding * 2)) / Math.max(data.length - 1, 1);
     const y = height - padding - ((item.amount - min) / range) * (height - padding * 2);
     return `${x},${y}`;
   });
 
-  const areaPoints = [`${padding},${height - padding}`, ...points, `${width - padding},${height - padding}`].join(" ");
+  const areaPoints = data.length > 1
+    ? [`${padding},${height - padding}`, ...points, `${width - padding},${height - padding}`].join(" ")
+    : "";
 
   return (
     <div className="owner-chart-shell">
@@ -110,9 +115,14 @@ export function LineChart({ data, formatValue = formatCurrency }) {
           const y = padding + (line * (height - padding * 2)) / 3;
           return <line key={line} x1={padding} y1={y} x2={width - padding} y2={y} className="owner-chart-grid" />;
         })}
-        <polygon points={areaPoints} className="owner-chart-area" />
-        <polyline points={points.join(" ")} className="owner-chart-line" />
-        {data.map((item, index) => {
+        {!isEmptyState && data.length > 1 ? <polygon points={areaPoints} className="owner-chart-area" /> : null}
+        {!isEmptyState && data.length > 1 ? <polyline points={points.join(" ")} className="owner-chart-line" /> : null}
+        {isEmptyState ? (
+          <text x={width / 2} y={height / 2} textAnchor="middle" className="owner-chart-empty">
+            Chưa có dữ liệu doanh thu trong kỳ này
+          </text>
+        ) : null}
+        {!isEmptyState && data.map((item, index) => {
           const [x, y] = points[index].split(",");
           return (
             <g key={item.label}>

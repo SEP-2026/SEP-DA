@@ -42,21 +42,53 @@ function formatWeekLabel(date) {
 }
 
 function buildRangeBounds(dateFrom, dateTo, range) {
-  const from = parseDateOnly(dateFrom);
-  const to = parseDateOnly(dateTo);
+  const anchor = parseDateOnly(dateTo);
 
   if (range === "quarter") {
-    const quarterStart = new Date(to.getFullYear(), to.getMonth() - 2, 1);
+    const quarterStart = new Date(anchor.getFullYear(), anchor.getMonth() - 2, 1);
     return {
       from: quarterStart,
-      to: endOfMonth(to),
+      to: new Date(endOfMonth(anchor).getFullYear(), endOfMonth(anchor).getMonth(), endOfMonth(anchor).getDate(), 23, 59, 59, 999),
+    };
+  }
+
+  if (range === "month") {
+    const monthStart = startOfMonth(anchor);
+    return {
+      from: monthStart,
+      to: new Date(endOfMonth(anchor).getFullYear(), endOfMonth(anchor).getMonth(), endOfMonth(anchor).getDate(), 23, 59, 59, 999),
+    };
+  }
+
+  if (range === "week") {
+    const weekStart = startOfWeek(anchor);
+    const weekEnd = addDays(weekStart, 6);
+    return {
+      from: weekStart,
+      to: new Date(weekEnd.getFullYear(), weekEnd.getMonth(), weekEnd.getDate(), 23, 59, 59, 999),
+    };
+  }
+
+  if (range === "day") {
+    return {
+      from: anchor,
+      to: new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 23, 59, 59, 999),
     };
   }
 
   return {
-    from,
-    to: new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999),
+    from: parseDateOnly(dateFrom),
+    to: new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 23, 59, 59, 999),
   };
+}
+
+export function filterTransactionsByRange(transactions, dateFrom, dateTo, range) {
+  const normalizedRange = range === "custom" ? "custom" : range;
+  const { from, to } = buildRangeBounds(dateFrom, dateTo, normalizedRange);
+  return transactions.filter((item) => {
+    const date = new Date(item.time);
+    return date >= from && date <= to;
+  });
 }
 
 function createBucketKey(date, range) {
@@ -102,16 +134,21 @@ export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
 }
 
 export function filterTransactionsByDate(transactions, dateFrom, dateTo) {
-  const { from, to } = buildRangeBounds(dateFrom, dateTo, "day");
-  return transactions.filter((item) => {
-    const date = new Date(item.time);
-    return date >= from && date <= to;
-  });
+  return filterTransactionsByRange(transactions, dateFrom, dateTo, "day");
 }
 
 export function getRangeSummaryLabel(range, dateFrom, dateTo) {
   if (range === "quarter") {
     return "3 tháng gần nhất";
+  }
+  if (range === "month") {
+    return `Tháng ${parseDateOnly(dateTo).getMonth() + 1}`;
+  }
+  if (range === "week") {
+    return `Tuần ${formatDateLabel(startOfWeek(parseDateOnly(dateTo)))}`;
+  }
+  if (range === "day") {
+    return formatDateLabel(parseDateOnly(dateTo));
   }
   const fromLabel = formatDateLabel(parseDateOnly(dateFrom));
   const toLabel = formatDateLabel(parseDateOnly(dateTo));
