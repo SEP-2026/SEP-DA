@@ -57,6 +57,22 @@ const statusClass = (status) => {
   return map[status] || "is-pending";
 };
 
+const buildGoogleMapsLinks = (parking) => {
+  const name = parking?.name?.trim() || "";
+  const address = parking?.address?.trim() || "";
+  const destinationText = address || name;
+  const searchText = [name, address].filter(Boolean).join(", ") || destinationText;
+
+  if (!destinationText) {
+    return { directionsUrl: "", mapUrl: "" };
+  }
+
+  return {
+    directionsUrl: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationText)}`,
+    mapUrl: `https://www.google.com/maps/search/${encodeURIComponent(searchText)}`,
+  };
+};
+
 const timelineSegments = (oldStartRaw, oldEndRaw, newStartRaw, newEndRaw) => {
   const oldStart = new Date(oldStartRaw);
   const oldEnd = new Date(oldEndRaw);
@@ -417,6 +433,10 @@ export default function BookingHistory() {
           <div className="history-list">
             {activeBookings.map((item) => (
               <article key={item.booking_id} className="history-item">
+                {(() => {
+                  const { directionsUrl, mapUrl } = buildGoogleMapsLinks(item.parking);
+                  return (
+                    <>
                 <header>
                   <h3>#{item.booking_id}</h3>
                   <span className={`status-chip ${statusClass(item.status)}`}>{statusText(item.status)}</span>
@@ -428,6 +448,31 @@ export default function BookingHistory() {
                 <p><strong>Check-in:</strong> {fmtDateTime(item.checkin_time)}</p>
                 <p><strong>Check-out:</strong> {fmtDateTime(item.checkout_time)}</p>
                 <p><strong>Tổng tiền:</strong> {Number(item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                {directionsUrl && mapUrl && (
+                  <div className="history-item-actions">
+                    <a
+                      href={directionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-directions"
+                      title="Mở Google Maps - Chỉ đường"
+                    >
+                      <span>Chỉ Đường</span>
+                    </a>
+                    <a
+                      href={mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-view-map"
+                      title="Xem bản đồ"
+                    >
+                      <span>Xem Bản Đồ</span>
+                    </a>
+                  </div>
+                )}
+                    </>
+                  );
+                })()}
               </article>
             ))}
           </div>

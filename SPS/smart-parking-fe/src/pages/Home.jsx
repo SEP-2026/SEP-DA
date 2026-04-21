@@ -134,6 +134,7 @@ export default function Home({ role = "" }) {
   const [parkingLots, setParkingLots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [expandedLots, setExpandedLots] = useState({});
   const popoverRef = useRef(null);
 
   const isOwner = role === "owner";
@@ -158,11 +159,19 @@ export default function Home({ role = "" }) {
         }));
 
         setParkingLots(normalizedLots);
+        setExpandedLots((prev) => {
+          const next = {};
+          for (const lot of normalizedLots) {
+            next[lot.parking_id] = prev[lot.parking_id] ?? false;
+          }
+          return next;
+        });
       } catch {
         if (!active) {
           return;
         }
         setParkingLots([]);
+        setExpandedLots({});
       } finally {
         if (active) {
           setLoading(false);
@@ -308,6 +317,13 @@ export default function Home({ role = "" }) {
   );
   const pageSpacerHeight = selectedSlot ? Math.max(0, (popoverPosition.overflowBelow || 0) + 24) : 0;
 
+  const toggleLot = (parkingId) => {
+    setExpandedLots((prev) => ({
+      ...prev,
+      [parkingId]: !prev[parkingId],
+    }));
+  };
+
   return (
     <section className="page-wrap parking-home">
       <div className="page-card parking-board">
@@ -340,8 +356,13 @@ export default function Home({ role = "" }) {
 
         <div className="parking-lot-list">
           {parkingLots.map((lot) => (
-            <section key={lot.parking_id} className="parking-lot-card">
-              <header className="parking-lot-head">
+            <section key={lot.parking_id} className={`parking-lot-card${expandedLots[lot.parking_id] ? " is-expanded" : ""}`}>
+              <button
+                type="button"
+                className="parking-lot-head"
+                onClick={() => toggleLot(lot.parking_id)}
+                aria-expanded={Boolean(expandedLots[lot.parking_id])}
+              >
                 <div>
                   <h2 className="parking-lot-name">{lot.parking_name}</h2>
                   <p className="parking-lot-address">{lot.parking_address}</p>
@@ -351,40 +372,45 @@ export default function Home({ role = "" }) {
                   <span className="stat-chip stat-available">Trống: {lot.available_slots}</span>
                   <span className="stat-chip stat-occupied">Giữ/Đã có xe: {lot.occupied_or_reserved_slots}</span>
                   <span className="stat-chip stat-total">Tổng: {lot.total_slots}</span>
+                  <span className="parking-lot-toggle" aria-hidden="true">
+                    {expandedLots[lot.parking_id] ? "−" : "+"}
+                  </span>
                 </div>
-              </header>
+              </button>
 
-              <div className="parking-grid">
-                {lot.slots.map((slot, slotIndex) => {
-                  const isAvailable = slot.status === "available";
+              <div className={`parking-lot-body${expandedLots[lot.parking_id] ? " is-open" : ""}`}>
+                <div className="parking-grid">
+                  {lot.slots.map((slot, slotIndex) => {
+                    const isAvailable = slot.status === "available";
 
-                  return (
-                    <article
-                      key={slot.id}
-                      className={`slot-card${isOwner ? " slot-card--interactive" : ""}`}
-                      data-slot-anchor={slot.id}
-                      onClick={(event) => handleSlotClick(lot, slot, slotIndex, event)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          handleSlotClick(lot, slot, slotIndex, event);
-                        }
-                      }}
-                      role={isOwner ? "button" : undefined}
-                      tabIndex={isOwner ? 0 : undefined}
-                    >
-                      <div className="slot-lane" />
-                      <div className={`slot-car ${isAvailable ? "slot-available" : "slot-occupied"}`}>
-                        <img
-                          src={isAvailable ? "/car-top-view2.png" : "/car-top-view.png"}
-                          alt={isAvailable ? "Xe nhìn từ trên xuống - vị trí trống" : "Xe nhìn từ trên xuống - vị trí đã có xe"}
-                          className="car-image"
-                        />
-                      </div>
-                      <div className="slot-badge">{slot.code} - {formatStatusLabel(slot.status)}</div>
-                    </article>
-                  );
-                })}
+                    return (
+                      <article
+                        key={slot.id}
+                        className={`slot-card${isOwner ? " slot-card--interactive" : ""}`}
+                        data-slot-anchor={slot.id}
+                        onClick={(event) => handleSlotClick(lot, slot, slotIndex, event)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            handleSlotClick(lot, slot, slotIndex, event);
+                          }
+                        }}
+                        role={isOwner ? "button" : undefined}
+                        tabIndex={isOwner ? 0 : undefined}
+                      >
+                        <div className="slot-lane" />
+                        <div className={`slot-car ${isAvailable ? "slot-available" : "slot-occupied"}`}>
+                          <img
+                            src={isAvailable ? "/car-top-view2.png" : "/car-top-view.png"}
+                            alt={isAvailable ? "Xe nhìn từ trên xuống - vị trí trống" : "Xe nhìn từ trên xuống - vị trí đã có xe"}
+                            className="car-image"
+                          />
+                        </div>
+                        <div className="slot-badge">{slot.code} - {formatStatusLabel(slot.status)}</div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             </section>
           ))}
