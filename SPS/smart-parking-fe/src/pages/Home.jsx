@@ -322,12 +322,6 @@ export default function Home({ role = "" }) {
             <span className="legend-car legend-occupied">🚗</span>
             <span>Vị trí đã có xe</span>
           </div>
-          {isOwner ? (
-            <div className="legend-item legend-item--owner">
-              <span className="legend-owner-dot" />
-              <span>Owner có thể bấm vào ô để xem chi tiết</span>
-            </div>
-          ) : null}
         </div>
 
         {loading ? (
