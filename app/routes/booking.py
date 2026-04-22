@@ -674,12 +674,12 @@ def get_gate_booking_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role != "owner":
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
-
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
 
     parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
@@ -1152,11 +1152,18 @@ def create_booking(
 
 
 @router.post("/check-in")
-def check_in(booking_id: int, db: Session = Depends(get_db)):
+def check_in(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Booking không tồn tại")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
 
     if booking.status == "pending":
         raise HTTPException(status_code=400, detail="Booking chưa được thanh toán")
@@ -1175,11 +1182,18 @@ def check_in(booking_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/check-out")
-def check_out(booking_id: int, db: Session = Depends(get_db)):
+def check_out(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
 
     if booking.status != "checked_in":
         raise HTTPException(status_code=400, detail="Chưa check-in")

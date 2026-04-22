@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.init_db import init_db
-from app.routes import admin, auth, booking, owner, payment, vehicle
+from app.routes import admin, auth, booking, gate, owner, payment, vehicle
 from app.security.gateway import SecurityGatewayMiddleware
 
 app = FastAPI()
@@ -26,6 +26,7 @@ os.makedirs("qrcodes", exist_ok=True)
 app.mount("/qrcodes", StaticFiles(directory="qrcodes"), name="qrcodes")
 
 app.include_router(booking.router)
+app.include_router(gate.router)
 app.include_router(payment.router)
 app.include_router(auth.router)
 app.include_router(admin.router)

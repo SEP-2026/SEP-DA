@@ -400,6 +400,14 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN qr_code_path VARCHAR(255) NULL")
     if "qr_generated_at" not in columns:
         alter_statements.append("ADD COLUMN qr_generated_at DATETIME NULL")
+    if "last_gate_action" not in columns:
+        alter_statements.append("ADD COLUMN last_gate_action VARCHAR(20) NULL")
+    if "last_gate_action_at" not in columns:
+        alter_statements.append("ADD COLUMN last_gate_action_at DATETIME NULL")
+    if "qr_token_expires_at" not in columns:
+        alter_statements.append("ADD COLUMN qr_token_expires_at DATETIME NULL")
+    if "cancel_reason" not in columns:
+        alter_statements.append("ADD COLUMN cancel_reason VARCHAR(255) NULL")
 
     if alter_statements:
         _run_ddl_with_retry(f"ALTER TABLE bookings {', '.join(alter_statements)}")
@@ -452,6 +460,10 @@ def migrate_payments_columns():
         alter_statements.append("ADD COLUMN qr_code VARCHAR(255) NULL")
     if "created_at" not in columns:
         alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if "deposit_amount" not in columns:
+        alter_statements.append("ADD COLUMN deposit_amount FLOAT NOT NULL DEFAULT 0")
+    if "remaining_amount" not in columns:
+        alter_statements.append("ADD COLUMN remaining_amount FLOAT NOT NULL DEFAULT 0")
 
     if alter_statements:
         with engine.begin() as conn:
@@ -481,6 +493,41 @@ def migrate_payments_columns():
             conn.execute(text("CREATE UNIQUE INDEX uq_payments_booking_id ON payments (booking_id)"))
 
 
+def migrate_transactions_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "transactions" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("transactions")}
+    alter_statements = []
+
+    if "user_id" not in columns:
+        alter_statements.append("ADD COLUMN user_id INT NULL")
+    if "parking_id" not in columns:
+        alter_statements.append("ADD COLUMN parking_id INT NULL")
+    if "vehicle_id" not in columns:
+        alter_statements.append("ADD COLUMN vehicle_id INT NULL")
+    if "gate_id" not in columns:
+        alter_statements.append("ADD COLUMN gate_id VARCHAR(100) NULL")
+    if "action_type" not in columns:
+        alter_statements.append("ADD COLUMN action_type VARCHAR(20) NULL")
+    if "source_type" not in columns:
+        alter_statements.append("ADD COLUMN source_type VARCHAR(20) NULL")
+    if "result" not in columns:
+        alter_statements.append("ADD COLUMN result VARCHAR(20) NULL")
+    if "note" not in columns:
+        alter_statements.append("ADD COLUMN note VARCHAR(255) NULL")
+    if "image_url" not in columns:
+        alter_statements.append("ADD COLUMN image_url VARCHAR(500) NULL")
+    if "license_plate" not in columns:
+        alter_statements.append("ADD COLUMN license_plate VARCHAR(30) NULL")
+
+    if alter_statements:
+        _run_ddl_with_retry(f"ALTER TABLE transactions {', '.join(alter_statements)}")
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     migrate_parking_lots_columns()
@@ -491,6 +538,7 @@ def init_db():
     migrate_reviews_columns()
     migrate_bookings_columns()
     migrate_payments_columns()
+    migrate_transactions_columns()
 
 
 if __name__ == "__main__":
