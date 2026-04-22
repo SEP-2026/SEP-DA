@@ -1,3 +1,5 @@
+import { parseVietnamDate } from "../utils/dateTime";
+
 function parseDateOnly(value) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day, 0, 0, 0, 0);
@@ -102,7 +104,10 @@ export function filterTransactionsByRange(transactions, dateFrom, dateTo, range)
   const normalizedRange = range === "custom" ? "custom" : range;
   const { from, to } = buildRangeBounds(dateFrom, dateTo, normalizedRange);
   return transactions.filter((item) => {
-    const date = new Date(item.time);
+    const date = parseVietnamDate(item.time);
+    if (!date) {
+      return false;
+    }
     return date >= from && date <= to;
   });
 }
@@ -171,7 +176,10 @@ export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
   transactions
     .filter((item) => item.status === "paid")
     .forEach((item) => {
-      const date = new Date(item.time);
+      const date = parseVietnamDate(item.time);
+      if (!date) {
+        return;
+      }
       if (date < from || date > to) {
         return;
       }

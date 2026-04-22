@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
 from app.routes.auth import get_current_user
 from app.security.password_policy import ensure_strong_password
+from app.utils.timezone import isoformat_vn, vn_today
 import unicodedata
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -227,7 +228,7 @@ def _slot_counts_by_lot(slots: list[ParkingSlot]) -> dict[int, dict[str, int]]:
 
 
 def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[dict], list[dict]]:
-    today = datetime.utcnow().date()
+    today = vn_today()
     revenue = []
     commission = []
     commission_rate = float(ADMIN_RUNTIME_SETTINGS["commissionRate"]) / 100
@@ -247,7 +248,7 @@ def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[
 
 
 def _build_booking_series(bookings: list[Booking], days: int = 7) -> list[dict]:
-    today = datetime.utcnow().date()
+    today = vn_today()
     result = []
     for offset in range(days - 1, -1, -1):
         current_day = today - timedelta(days=offset)
@@ -276,7 +277,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
             "id": f"booking-{booking.id}",
             "actor": booking.user.name if booking.user else "system",
             "action": f"Booking #{booking.id} được tạo",
-            "time": booking.created_at.isoformat() if booking.created_at else datetime.utcnow().isoformat(),
+            "time": isoformat_vn(booking.created_at, fallback_now=True),
             "type": "system",
         })
 
@@ -286,7 +287,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
                 "id": f"user-{user.id}",
                 "actor": "system",
                 "action": f"Tài khoản {user.email} đang bị khóa",
-                "time": datetime.utcnow().isoformat(),
+                "time": isoformat_vn(None, fallback_now=True),
                 "type": "security",
             })
 
@@ -296,7 +297,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
                 "id": f"lot-{lot.id}",
                 "actor": "system",
                 "action": f"Bãi {lot.name} đang bị khóa",
-                "time": datetime.utcnow().isoformat(),
+                "time": isoformat_vn(None, fallback_now=True),
                 "type": "warning",
             })
 
@@ -348,7 +349,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "email": user.email,
             "status": _to_status_label(user),
             "bookingCount": booking_counts_by_user.get(int(user.id), 0),
-            "lastActive": (last_booking_by_user.get(int(user.id)) or datetime.utcnow()).isoformat(),
+            "lastActive": isoformat_vn(last_booking_by_user.get(int(user.id)), fallback_now=True),
             "phone": user.phone,
         }
         for user in users if user.role == "user"
@@ -395,8 +396,8 @@ def _serialize_bootstrap(db: Session) -> dict:
             "user": user.name if user else "Unknown user",
             "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
             "parkingLot": lot.name if lot else "Chưa có bãi",
-            "checkIn": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
-            "checkOut": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
+            "checkIn": isoformat_vn(booking.start_time or booking.created_at, fallback_now=True),
+            "checkOut": isoformat_vn(booking.expire_time or booking.created_at, fallback_now=True),
             "status": booking.status,
             "amount": float(booking.total_amount or 0),
             "anomaly": booking.total_amount is None or float(booking.total_amount or 0) <= 0 or slot is None,
@@ -415,7 +416,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "bookingId": f"BK-{payment.booking_id}",
                 "user": user.name if user else "Unknown user",
                 "parkingLot": lot.name if lot else "Chưa có bãi",
-                "time": (payment.paid_at or payment.created_at or datetime.utcnow()).isoformat(),
+                "time": isoformat_vn(payment.paid_at or payment.created_at, fallback_now=True),
                 "gross": gross,
                 "commission": round(gross * commission_rate, 2),
                 "ownerPayout": round(gross * (1 - commission_rate), 2),
@@ -429,7 +430,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "bookingId": f"BK-{booking.id}",
                 "user": booking.user.name if booking.user else "Unknown user",
                 "parkingLot": booking.parking_lot.name if booking.parking_lot else "Chưa có bãi",
-                "time": (booking.created_at or datetime.utcnow()).isoformat(),
+                "time": isoformat_vn(booking.created_at, fallback_now=True),
                 "gross": gross,
                 "commission": round(gross * commission_rate, 2),
                 "ownerPayout": round(gross * (1 - commission_rate), 2),

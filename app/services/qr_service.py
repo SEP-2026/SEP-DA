@@ -10,6 +10,7 @@ import qrcode
 from sqlalchemy.orm import Session
 
 from app.models.models import Booking, ParkingLot, ParkingSlot, User
+from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 
 def _ensure_qr_directory() -> None:
@@ -28,7 +29,7 @@ def _format_datetime_iso(dt: datetime) -> str:
     """Format datetime to ISO format for metadata."""
     if dt is None:
         return None
-    return dt.isoformat()
+    return ensure_vn_local_naive(dt).isoformat()
 
 
 def generate_booking_qr_code(booking_id: int, db: Session) -> dict:
@@ -151,7 +152,7 @@ def generate_booking_qr_code(booking_id: int, db: Session) -> dict:
     
     # Update booking record
     booking.qr_code_path = qr_path
-    booking.qr_generated_at = datetime.utcnow()
+    booking.qr_generated_at = vn_now()
     booking.qr_code = qr_path  # Keep for backward compatibility
     
     db.commit()

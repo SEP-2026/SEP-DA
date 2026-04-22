@@ -1,4 +1,5 @@
 import { OwnerIcon } from "./OwnerIcons";
+import { formatDateTimeVN } from "../utils/dateTime";
 
 export function formatCurrency(value) {
   return new Intl.NumberFormat("vi-VN", {
@@ -9,13 +10,7 @@ export function formatCurrency(value) {
 }
 
 export function formatDateTime(value) {
-  return new Intl.DateTimeFormat("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(value));
+  return formatDateTimeVN(value, "--");
 }
 
 export function getStatusMeta(status) {

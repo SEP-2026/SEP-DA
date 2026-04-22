@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { SectionCard, StatusBadge } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
+import { parseVietnamDate } from "../../utils/dateTime";
 
 const EMPTY_FORM = { parkingId: null, code: "", zone: "", level: "", status: "available" };
 
@@ -198,7 +199,7 @@ export default function OwnerParking() {
                               <td>{slot.zone}</td>
                               <td>{slot.level}</td>
                               <td><StatusBadge status={slot.status} /></td>
-                              <td>{new Date(slot.updatedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</td>
+                              <td>{parseVietnamDate(slot.updatedAt)?.toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" }) || "--"}</td>
                               <td>
                                 <div className="owner-row-actions">
                                   <button type="button" className="btn-secondary owner-btn owner-btn--small" onClick={() => openEdit(slot)}>Sửa</button>

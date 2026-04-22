@@ -1,38 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import API from "../services/api";
+import { formatDateTimeVN, parseVietnamDate, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import "./BookingHistory.css";
 
 const ACTIVE_STATUSES = ["pending", "booked", "checked_in"];
 
 const fmtDateTime = (value) => {
-  if (!value) {
-    return "N/A";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "N/A";
-  }
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return formatDateTimeVN(value, "N/A");
 };
 
 const toDatetimeLocal = (value) => {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60000);
-  return local.toISOString().slice(0, 16);
+  return toDatetimeLocalValue(value);
 };
 
 const statusText = (status) => {
@@ -74,12 +53,16 @@ const buildGoogleMapsLinks = (parking) => {
 };
 
 const timelineSegments = (oldStartRaw, oldEndRaw, newStartRaw, newEndRaw) => {
-  const oldStart = new Date(oldStartRaw);
-  const oldEnd = new Date(oldEndRaw);
-  const newStart = new Date(newStartRaw);
-  const newEnd = new Date(newEndRaw);
+  const oldStart = parseVietnamDate(oldStartRaw);
+  const oldEnd = parseVietnamDate(oldEndRaw);
+  const newStart = parseVietnamDate(newStartRaw);
+  const newEnd = parseVietnamDate(newEndRaw);
 
   if (
+    !oldStart ||
+    !oldEnd ||
+    !newStart ||
+    !newEnd ||
     Number.isNaN(oldStart.getTime()) ||
     Number.isNaN(oldEnd.getTime()) ||
     Number.isNaN(newStart.getTime()) ||
@@ -278,8 +261,8 @@ export default function BookingHistory() {
 
       await API.patch(`/booking/my/${conflictingBooking.booking_id}`, {
         slot_id: Number(editForm.slot_id),
-        checkin_time: new Date(editForm.checkin_time).toISOString(),
-        checkout_time: new Date(editForm.checkout_time).toISOString(),
+        checkin_time: toVietnamIsoString(editForm.checkin_time),
+        checkout_time: toVietnamIsoString(editForm.checkout_time),
       });
 
       await refreshBookings();

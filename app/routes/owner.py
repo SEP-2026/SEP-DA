@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Review, User
 from app.routes.auth import get_current_user
 from app.security.password_policy import ensure_strong_password
+from app.utils.timezone import isoformat_vn, vn_now
 
 router = APIRouter(prefix="/owner", tags=["owner"])
 APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -166,7 +167,7 @@ def _slot_layout_meta(slot: ParkingSlot) -> dict:
         "zone": slot.zone or "Chưa phân khu",
         "level": slot.level or "Chưa gán tầng",
         "type": slot.slot_type or None,
-        "updatedAt": (slot.updated_at or slot.created_at or datetime.utcnow()).isoformat(),
+        "updatedAt": isoformat_vn(slot.updated_at or slot.created_at, fallback_now=True),
     }
 
 
@@ -334,8 +335,8 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
             "slotCode": _display_slot_code(slot) if slot else "Chưa có",
             "zone": zone,
-            "startTime": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
-            "endTime": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
+            "startTime": isoformat_vn(booking.start_time or booking.created_at, fallback_now=True),
+            "endTime": isoformat_vn(booking.expire_time or booking.created_at, fallback_now=True),
             "price": float(booking.total_amount or 0),
             "status": _owner_booking_status(booking.status),
             "phone": user.phone if user and user.phone else "Chưa có",
@@ -352,7 +353,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "parkingLotName": parking_by_id.get(int(booking.parking_id)).name if booking.parking_id and parking_by_id.get(int(booking.parking_id)) else "Chưa có bãi",
             "method": (payment.payment_method or "N/A").upper() if payment else "N/A",
             "payer": booking.user.name if booking.user else "Unknown user",
-            "time": (payment.paid_at or payment.created_at or booking.created_at or datetime.utcnow()).isoformat() if payment else (booking.created_at or datetime.utcnow()).isoformat(),
+            "time": isoformat_vn(payment.paid_at or payment.created_at or booking.created_at, fallback_now=True) if payment else isoformat_vn(booking.created_at, fallback_now=True),
             "amount": float((payment.amount if payment else booking.total_amount) or 0) + overtime_fee,
             "status": payment.payment_status if payment else "pending",
         })
@@ -363,7 +364,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "parkingLotName": parking_by_id.get(int(review.parking_id)).name if review.parking_id and parking_by_id.get(int(review.parking_id)) else "Chưa có bãi",
             "user": review.user.name if review.user else f"User #{review.user_id}",
             "rating": review.rating,
-            "createdAt": (review.created_at or datetime.utcnow()).isoformat(),
+            "createdAt": isoformat_vn(review.created_at, fallback_now=True),
             "content": review.comment or "",
             "reply": review.owner_reply or "",
             "replyUpdatedAt": review.owner_replied_at.isoformat() if review.owner_replied_at else None,
@@ -377,7 +378,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             {
                 "id": f"booking-{booking.id}",
                 "title": f"Booking BK-{booking.id} tại {parking_by_id.get(int(booking.parking_id)).name if booking.parking_id and parking_by_id.get(int(booking.parking_id)) else 'bãi đỗ'}",
-                "time": (booking.created_at or datetime.utcnow()).isoformat(),
+                "time": isoformat_vn(booking.created_at, fallback_now=True),
                 "type": "booking",
             }
         )
@@ -387,7 +388,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             {
                 "id": f"payment-{payment.id}",
                 "title": f"Thanh toán {int(float((payment.amount or 0) + (payment.overtime_fee or 0)))} VND cho BK-{payment.booking_id}",
-                "time": (payment.paid_at or payment.created_at or datetime.utcnow()).isoformat(),
+                "time": isoformat_vn(payment.paid_at or payment.created_at, fallback_now=True),
                 "type": "success" if payment.payment_status == "paid" else "warning",
             }
         )
@@ -396,7 +397,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             {
                 "id": f"review-{review.id}",
                 "title": f"Đánh giá {review.rating}/5 cho {parking_by_id.get(int(review.parking_id)).name if review.parking_id and parking_by_id.get(int(review.parking_id)) else 'bãi đỗ'}",
-                "time": (review.created_at or datetime.utcnow()).isoformat(),
+                "time": isoformat_vn(review.created_at, fallback_now=True),
                 "type": "warning",
             }
         )
@@ -529,8 +530,8 @@ def get_owner_customers(
                 "id": booking.id,
                 "code": f"BK-{booking.id}",
                 "plate": booking.user.vehicle_plate or (vehicle_profile.license_plate if vehicle_profile and vehicle_profile.license_plate else "Chưa có biển số"),
-                "start_time": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
-                "end_time": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
+                "start_time": isoformat_vn(booking.start_time or booking.created_at, fallback_now=True),
+                "end_time": isoformat_vn(booking.expire_time or booking.created_at, fallback_now=True),
                 "price": booking_amount,
                 "status": _owner_booking_status(booking.status),
                 "parking_lot_name": booking.parking_lot.name if booking.parking_lot else "Chưa có bãi",
@@ -546,7 +547,7 @@ def get_owner_customers(
                     "booking_code": f"BK-{booking.id}",
                     "method": (payment.payment_method or "N/A").upper(),
                     "amount": amount,
-                    "time": (payment.paid_at or payment.created_at or datetime.utcnow()).isoformat(),
+                    "time": isoformat_vn(payment.paid_at or payment.created_at, fallback_now=True),
                     "status": payment.payment_status,
                 }
             )
@@ -700,8 +701,8 @@ def get_owner_slot_detail(
                 "id": active_booking.id,
                 "code": f"BK-{active_booking.id}",
                 "status": _owner_booking_status(active_booking.status),
-                "startTime": (active_booking.start_time or active_booking.created_at or datetime.utcnow()).isoformat(),
-                "endTime": (active_booking.expire_time or active_booking.created_at or datetime.utcnow()).isoformat(),
+                "startTime": isoformat_vn(active_booking.start_time or active_booking.created_at, fallback_now=True),
+                "endTime": isoformat_vn(active_booking.expire_time or active_booking.created_at, fallback_now=True),
                 "price": float(active_booking.total_amount or 0),
                 "user": user.name if user else "Unknown user",
                 "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
@@ -1029,7 +1030,7 @@ def seed_test_data_public(db: Session = Depends(get_db)):
                 customer_users.append(existing)
         
         # 6. Tạo bookings
-        now = datetime.utcnow()
+        now = vn_now()
         for i, user in enumerate(customer_users):
             # Kiểm tra xem user này đã có booking chưa
             existing_booking = db.query(Booking).filter(

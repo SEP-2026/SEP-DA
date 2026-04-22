@@ -1,6 +1,6 @@
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import unicodedata
 from urllib.parse import quote_plus
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
+from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 router = APIRouter()
 
@@ -365,7 +366,7 @@ def _save_booking_qr(content: str, file_path: str) -> None:
 
 
 def _validate_booking_window(checkin_time: datetime, checkout_time: datetime) -> None:
-    now = datetime.utcnow()
+    now = vn_now()
     if checkin_time >= checkout_time:
         raise HTTPException(status_code=400, detail="Thời gian vào phải nhỏ hơn thời gian ra")
     if checkin_time < now:
@@ -373,9 +374,7 @@ def _validate_booking_window(checkin_time: datetime, checkout_time: datetime) ->
 
 
 def _to_utc_naive(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return ensure_vn_local_naive(value)
 
 
 def _normalize_booking_mode(value: str | None) -> str:
@@ -1172,7 +1171,7 @@ def check_in(
         raise HTTPException(status_code=400, detail="Booking không hợp lệ")
 
     booking.status = "checked_in"
-    booking.start_time = datetime.utcnow()
+    booking.start_time = vn_now()
     if booking.slot:
         booking.slot.status = "occupied"
 
@@ -1198,7 +1197,7 @@ def check_out(
     if booking.status != "checked_in":
         raise HTTPException(status_code=400, detail="Chưa check-in")
 
-    actual_checkout = datetime.utcnow()
+    actual_checkout = vn_now()
     overtime_fee = 0.0
 
     if booking.expire_time and actual_checkout > booking.expire_time:

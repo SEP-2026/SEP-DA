@@ -1,21 +1,7 @@
+import { formatDateTimeVN } from "../../utils/dateTime";
+
 export function formatDateTime(value) {
-  if (!value) {
-    return "Chưa có";
-  }
-
-  const normalizedValue =
-    typeof value === "string" && !/[zZ]|[+-]\d{2}:\d{2}$/.test(value)
-      ? `${value}+07:00`
-      : value;
-
-  const date = new Date(normalizedValue);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString("vi-VN", {
-    timeZone: "Asia/Ho_Chi_Minh",
-  });
+  return formatDateTimeVN(value, "Chưa có");
 }
 
 export function formatCurrency(value) {

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { buildRevenueSeries, filterTransactionsByRange, getRangeSummaryLabel } from "../../owner/ownerAnalytics";
 import { formatCurrency, formatDateTime, LineChart, SectionCard, StatCard, StatusBadge } from "../../owner/OwnerUI";
 import API from "../../services/api";
+import { toDateInputValue } from "../../utils/dateTime";
 
 const CHART_RANGE_OPTIONS = [
   { value: "day", label: "Theo ngày" },
@@ -11,10 +12,6 @@ const CHART_RANGE_OPTIONS = [
   { value: "quarter", label: "3 tháng gần nhất" },
   { value: "custom", label: "Khác" },
 ];
-
-function toDateInputValue(date) {
-  return date.toISOString().slice(0, 10);
-}
 
 export default function OwnerRevenue() {
   const [range, setRange] = useState("day");

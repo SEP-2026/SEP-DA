@@ -4,6 +4,7 @@ import { buildRevenueSeries, getRangeSummaryLabel } from "../../owner/ownerAnaly
 import { formatCurrency, formatDateTime, LineChart, SectionCard, StatCard, StatusBadge } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
 import API from "../../services/api";
+import { parseVietnamDate, toDateInputValue } from "../../utils/dateTime";
 
 const CHART_RANGE_OPTIONS = [
   { value: "day", label: "Theo ngày" },
@@ -17,18 +18,14 @@ function isTodayIso(value) {
   if (!value) {
     return false;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseVietnamDate(value);
+  if (!date) {
     return false;
   }
-  const now = new Date();
+  const now = parseVietnamDate(new Date());
   return date.getFullYear() === now.getFullYear()
     && date.getMonth() === now.getMonth()
     && date.getDate() === now.getDate();
-}
-
-function toDateInputValue(date) {
-  return date.toISOString().slice(0, 10);
 }
 
 export default function OwnerOverview() {
