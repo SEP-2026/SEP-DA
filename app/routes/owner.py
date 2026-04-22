@@ -275,7 +275,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
     bookings = (
         db.query(Booking)
         .filter(Booking.parking_id.in_(parking_ids))
-        .order_by(Booking.created_at.desc())
+        .order_by(Booking.id.desc())
         .all()
     )
     payments = (
@@ -492,7 +492,7 @@ def get_owner_customers(
     bookings = (
         db.query(Booking)
         .filter(Booking.parking_id.in_(parking_ids))
-        .order_by(Booking.created_at.desc())
+        .order_by(Booking.id.desc())
         .all()
     )
     booking_ids = [booking.id for booking in bookings]
@@ -667,7 +667,7 @@ def get_owner_slot_detail(
             Booking.slot_id == slot.id,
             Booking.status.in_(["pending", "booked", "checked_in"]),
         )
-        .order_by(Booking.created_at.desc())
+        .order_by(Booking.id.desc())
         .all()
     )
     booking_statuses = {(item.status or "").lower() for item in active_bookings}

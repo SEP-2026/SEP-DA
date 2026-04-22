@@ -1,28 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import API from "../services/api";
+import { formatDateTimeVN } from "../utils/dateTime";
 import "./PaymentSuccess.css";
 
 const formatMoney = (value) => Number(value || 0).toLocaleString("vi-VN");
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-
-const formatDateTimeVN = (value) => {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-};
 
 export default function PaymentSuccess() {
   const { bookingId } = useParams();

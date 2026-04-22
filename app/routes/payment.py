@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.models import Booking, Payment, User
 from app.routes.auth import get_current_user
 from app.services.qr_service import generate_booking_qr_code
+from app.utils.timezone import vn_now
 
 router = APIRouter(prefix="/payment", tags=["payment"])
 
@@ -121,7 +122,7 @@ def payment_callback(
 
     if status == "success":
         payment.payment_status = "paid"
-        payment.paid_at = datetime.utcnow()
+        payment.paid_at = vn_now()
         booking.status = "booked"
         
         # Generate QR code when payment succeeds
