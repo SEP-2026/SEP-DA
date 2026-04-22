@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { buildRevenueSeries, getRangeSummaryLabel } from "../../owner/ownerAnalytics";
 import { formatCurrency, formatDateTime, LineChart, SectionCard, StatCard, StatusBadge } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
+import API from "../../services/api";
 
 const CHART_RANGE_OPTIONS = [
   { value: "day", label: "Theo ngày" },
@@ -12,33 +13,99 @@ const CHART_RANGE_OPTIONS = [
   { value: "custom", label: "Khác" },
 ];
 
+function isTodayIso(value) {
+  if (!value) {
+    return false;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+}
+
+function toDateInputValue(date) {
+  return date.toISOString().slice(0, 10);
+}
+
 export default function OwnerOverview() {
-  const { ownerData, stats } = useOwnerContext();
+  const { ownerData, stats, isSyncing } = useOwnerContext();
   const [range, setRange] = useState("day");
-  const [dateFrom, setDateFrom] = useState("2026-04-09");
-  const [dateTo, setDateTo] = useState("2026-04-15");
+  const [overviewError, setOverviewError] = useState("");
+  const [overviewData, setOverviewData] = useState({
+    stats,
+    vehiclesInLot: ownerData.bookings.filter((booking) => booking.status === "in_progress" || booking.status === "confirmed"),
+    todayBookings: ownerData.bookings.filter((booking) => isTodayIso(booking.startTime)),
+    transactions: ownerData.transactions,
+  });
+  const [dateFrom, setDateFrom] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 6);
+    return toDateInputValue(date);
+  });
+  const [dateTo, setDateTo] = useState(() => toDateInputValue(new Date()));
+
+  useEffect(() => {
+    const fetchOverview = async () => {
+      try {
+        setOverviewError("");
+        const res = await API.get("/owner/overview");
+        setOverviewData({
+          stats: res.data?.stats || stats,
+          vehiclesInLot: res.data?.vehiclesInLot || [],
+          todayBookings: res.data?.todayBookings || [],
+          transactions: res.data?.transactions || [],
+        });
+      } catch (err) {
+        setOverviewError(err?.response?.data?.detail || "Không tải được dữ liệu tổng quan");
+        setOverviewData({
+          stats,
+          vehiclesInLot: ownerData.bookings.filter((booking) => booking.status === "in_progress" || booking.status === "confirmed"),
+          todayBookings: ownerData.bookings.filter((booking) => isTodayIso(booking.startTime)),
+          transactions: ownerData.transactions,
+        });
+      }
+    };
+    fetchOverview();
+
+    const intervalId = window.setInterval(fetchOverview, 10000);
+    const handleFocus = () => fetchOverview();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchOverview();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [ownerData.bookings, ownerData.transactions, stats]);
+
   const activeRange = range === "custom" ? "day" : range;
-  const vehiclesInLot = useMemo(
-    () => ownerData.bookings.filter((booking) => booking.status === "in_progress" || booking.status === "confirmed"),
-    [ownerData.bookings],
-  );
-  const todayBookings = useMemo(
-    () => ownerData.bookings.filter((booking) => booking.startTime.startsWith("2026-04-15")),
-    [ownerData.bookings],
-  );
+  const effectiveStats = overviewData.stats || stats;
+  const vehiclesInLot = overviewData.vehiclesInLot || [];
+  const todayBookings = overviewData.todayBookings || [];
   const chartData = useMemo(() => {
-    const series = buildRevenueSeries(ownerData.transactions, dateFrom, dateTo, activeRange);
+    const series = buildRevenueSeries(overviewData.transactions || [], dateFrom, dateTo, activeRange);
     return series.length > 0 ? series : [{ label: "Không có dữ liệu", amount: 0 }];
-  }, [ownerData.transactions, dateFrom, dateTo, activeRange]);
+  }, [overviewData.transactions, dateFrom, dateTo, activeRange]);
 
   return (
     <div className="owner-page-grid">
       <div className="owner-stats-grid owner-stats-grid--wide">
-        <StatCard title="Tổng số chỗ đỗ" value={stats.totalSlots} note="Sức chứa bãi hiện tại" trend="Bãi đang mở" icon="parking" />
-        <StatCard title="Đang sử dụng" value={stats.usedSlots} note="Xe trong bãi" trend="+8%" icon="booking" />
-        <StatCard title="Chỗ còn trống" value={stats.availableSlots} note="Sẵn sàng nhận xe" trend={`${Math.round((stats.availableSlots / Math.max(stats.totalSlots, 1)) * 100)}% trống`} icon="dashboard" />
-        <StatCard title="Doanh thu hôm nay" value={formatCurrency(stats.todayRevenue)} note="Đã thanh toán" trend="+12.4%" icon="revenue" />
-        <StatCard title="Lượt xe hôm nay" value={stats.todayBookings} note="Xe vào bãi trong ngày" trend={`${todayBookings.length} booking`} icon="booking" />
+        <StatCard title="Tổng số chỗ đỗ" value={effectiveStats.totalSlots} note="Sức chứa toàn bộ bãi owner quản lý" trend={`${effectiveStats.managedParkingCount} bãi đang quản lý`} icon="parking" />
+        <StatCard title="Đang sử dụng" value={effectiveStats.usedSlots} note="Vị trí đang có booking hoạt động" trend={`${vehiclesInLot.length} xe trong bãi`} icon="booking" />
+        <StatCard title="Chỗ còn trống" value={effectiveStats.availableSlots} note="Sẵn sàng nhận xe" trend={`${Math.round((effectiveStats.availableSlots / Math.max(effectiveStats.totalSlots, 1)) * 100)}% trống`} icon="dashboard" />
+        <StatCard title="Doanh thu hôm nay" value={formatCurrency(effectiveStats.todayRevenue)} note="Giao dịch đã thanh toán trong ngày" trend={`${(overviewData.transactions || []).filter((item) => item.status === "paid" && isTodayIso(item.time)).length} giao dịch`} icon="revenue" />
+        <StatCard title="Lượt xe hôm nay" value={effectiveStats.todayBookings} note="Xe vào bãi trong ngày" trend={`${todayBookings.length} booking`} icon="booking" />
       </div>
 
       <div className="owner-two-col">
@@ -67,6 +134,7 @@ export default function OwnerOverview() {
             </div>
           }
         >
+          {overviewError ? <p className="owner-empty-cell">{overviewError}</p> : null}
           <LineChart data={chartData} />
         </SectionCard>
 
@@ -102,6 +170,11 @@ export default function OwnerOverview() {
                 </tr>
               </thead>
               <tbody>
+                {!isSyncing && vehiclesInLot.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="owner-empty-cell">Hiện chưa có xe nào đang hoạt động trong bãi.</td>
+                  </tr>
+                ) : null}
                 {vehiclesInLot.map((booking) => (
                   <tr key={booking.id}>
                     <td>{booking.plate}</td>
@@ -119,7 +192,7 @@ export default function OwnerOverview() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Booking hôm nay" subtitle="Các booking phát sinh trong ngày tại bãi này.">
+        <SectionCard title="Booking hôm nay" subtitle="Các booking phát sinh trong ngày tại toàn bộ bãi owner quản lý.">
           <div className="owner-table-shell">
             <table className="owner-table">
               <thead>
@@ -132,6 +205,11 @@ export default function OwnerOverview() {
                 </tr>
               </thead>
               <tbody>
+                {!isSyncing && todayBookings.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="owner-empty-cell">Hôm nay chưa có booking nào phát sinh.</td>
+                  </tr>
+                ) : null}
                 {todayBookings.map((booking) => (
                   <tr key={booking.id}>
                     <td>{booking.code}</td>

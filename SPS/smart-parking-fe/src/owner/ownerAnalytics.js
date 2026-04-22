@@ -20,10 +20,22 @@ function endOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
 
+function endOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
 function addDays(date, days) {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
   return result;
+}
+
+function addMonths(date, months) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function startOfHour(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), 0, 0, 0);
 }
 
 function formatDateLabel(date) {
@@ -41,47 +53,120 @@ function formatWeekLabel(date) {
   return `Tuần ${formatDateLabel(date)}`;
 }
 
+function formatHourLabel(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:00`;
+}
+
 function buildRangeBounds(dateFrom, dateTo, range) {
-  const from = parseDateOnly(dateFrom);
-  const to = parseDateOnly(dateTo);
+  const anchor = parseDateOnly(dateTo);
 
   if (range === "quarter") {
-    const quarterStart = new Date(to.getFullYear(), to.getMonth() - 2, 1);
+    const quarterStart = new Date(anchor.getFullYear(), anchor.getMonth() - 2, 1);
     return {
       from: quarterStart,
-      to: endOfMonth(to),
+      to: new Date(endOfMonth(anchor).getFullYear(), endOfMonth(anchor).getMonth(), endOfMonth(anchor).getDate(), 23, 59, 59, 999),
+    };
+  }
+
+  if (range === "month") {
+    const monthStart = startOfMonth(anchor);
+    return {
+      from: monthStart,
+      to: new Date(endOfMonth(anchor).getFullYear(), endOfMonth(anchor).getMonth(), endOfMonth(anchor).getDate(), 23, 59, 59, 999),
+    };
+  }
+
+  if (range === "week") {
+    const weekStart = startOfWeek(anchor);
+    const weekEnd = addDays(weekStart, 6);
+    return {
+      from: weekStart,
+      to: new Date(weekEnd.getFullYear(), weekEnd.getMonth(), weekEnd.getDate(), 23, 59, 59, 999),
+    };
+  }
+
+  if (range === "day") {
+    return {
+      from: anchor,
+      to: new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 23, 59, 59, 999),
     };
   }
 
   return {
-    from,
-    to: new Date(to.getFullYear(), to.getMonth(), to.getDate(), 23, 59, 59, 999),
+    from: parseDateOnly(dateFrom),
+    to: new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 23, 59, 59, 999),
   };
 }
 
-function createBucketKey(date, range) {
-  if (range === "week") {
-    return startOfWeek(date).toISOString();
-  }
-  if (range === "month" || range === "quarter") {
-    return startOfMonth(date).toISOString();
-  }
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+export function filterTransactionsByRange(transactions, dateFrom, dateTo, range) {
+  const normalizedRange = range === "custom" ? "custom" : range;
+  const { from, to } = buildRangeBounds(dateFrom, dateTo, normalizedRange);
+  return transactions.filter((item) => {
+    const date = new Date(item.time);
+    return date >= from && date <= to;
+  });
 }
 
-function createBucketLabel(date, range) {
-  if (range === "week") {
-    return formatWeekLabel(startOfWeek(date));
+function getBucketMode(range) {
+  if (range === "day") {
+    return "hour";
   }
-  if (range === "month" || range === "quarter") {
-    return formatMonthLabel(startOfMonth(date));
+  if (range === "quarter") {
+    return "month";
+  }
+  return "day";
+}
+
+function createBucketDate(date, mode) {
+  if (mode === "hour") {
+    return startOfHour(date);
+  }
+  if (mode === "month") {
+    return startOfMonth(date);
+  }
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function createBucketLabel(date, mode) {
+  if (mode === "hour") {
+    return formatHourLabel(date);
+  }
+  if (mode === "month") {
+    return formatMonthLabel(date);
   }
   return formatDateLabel(date);
 }
 
+function createEmptyBuckets(from, to, mode) {
+  const buckets = [];
+  let cursor = createBucketDate(from, mode);
+  const end = createBucketDate(to, mode);
+
+  while (cursor <= end) {
+    buckets.push({
+      key: cursor.toISOString(),
+      label: createBucketLabel(cursor, mode),
+      amount: 0,
+      date: new Date(cursor),
+    });
+    if (mode === "hour") {
+      cursor = new Date(cursor.getTime() + (60 * 60 * 1000));
+    } else if (mode === "month") {
+      cursor = addMonths(cursor, 1);
+    } else {
+      cursor = addDays(cursor, 1);
+    }
+  }
+
+  return buckets;
+}
+
 export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
   const { from, to } = buildRangeBounds(dateFrom, dateTo, range);
-  const buckets = new Map();
+  const mode = getBucketMode(range);
+  const buckets = new Map(
+    createEmptyBuckets(from, to, mode).map((bucket) => [bucket.key, bucket]),
+  );
 
   transactions
     .filter((item) => item.status === "paid")
@@ -90,8 +175,9 @@ export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
       if (date < from || date > to) {
         return;
       }
-      const key = createBucketKey(date, range);
-      const current = buckets.get(key) || { label: createBucketLabel(date, range), amount: 0, date };
+      const bucketDate = createBucketDate(date, mode);
+      const key = bucketDate.toISOString();
+      const current = buckets.get(key) || { label: createBucketLabel(bucketDate, mode), amount: 0, date: bucketDate };
       current.amount += Number(item.amount || 0);
       buckets.set(key, current);
     });
@@ -102,16 +188,21 @@ export function buildRevenueSeries(transactions, dateFrom, dateTo, range) {
 }
 
 export function filterTransactionsByDate(transactions, dateFrom, dateTo) {
-  const { from, to } = buildRangeBounds(dateFrom, dateTo, "day");
-  return transactions.filter((item) => {
-    const date = new Date(item.time);
-    return date >= from && date <= to;
-  });
+  return filterTransactionsByRange(transactions, dateFrom, dateTo, "day");
 }
 
 export function getRangeSummaryLabel(range, dateFrom, dateTo) {
   if (range === "quarter") {
     return "3 tháng gần nhất";
+  }
+  if (range === "month") {
+    return `Tháng ${parseDateOnly(dateTo).getMonth() + 1}`;
+  }
+  if (range === "week") {
+    return `Tuần ${formatDateLabel(startOfWeek(parseDateOnly(dateTo)))}`;
+  }
+  if (range === "day") {
+    return formatDateLabel(parseDateOnly(dateTo));
   }
   const fromLabel = formatDateLabel(parseDateOnly(dateFrom));
   const toLabel = formatDateLabel(parseDateOnly(dateTo));

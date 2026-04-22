@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
-import { buildRevenueSeries, filterTransactionsByDate, getRangeSummaryLabel } from "../../owner/ownerAnalytics";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { buildRevenueSeries, filterTransactionsByRange, getRangeSummaryLabel } from "../../owner/ownerAnalytics";
 import { formatCurrency, formatDateTime, LineChart, SectionCard, StatCard, StatusBadge } from "../../owner/OwnerUI";
-import { useOwnerContext } from "../../owner/useOwnerContext";
+import API from "../../services/api";
 
 const CHART_RANGE_OPTIONS = [
   { value: "day", label: "Theo ngày" },
@@ -11,35 +12,262 @@ const CHART_RANGE_OPTIONS = [
   { value: "custom", label: "Khác" },
 ];
 
+function toDateInputValue(date) {
+  return date.toISOString().slice(0, 10);
+}
+
 export default function OwnerRevenue() {
-  const { ownerData } = useOwnerContext();
   const [range, setRange] = useState("day");
-  const [dateFrom, setDateFrom] = useState("2026-04-09");
-  const [dateTo, setDateTo] = useState("2026-04-15");
+  const [transactions, setTransactions] = useState([]);
+  const [parkingLots, setParkingLots] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedParkingLot, setSelectedParkingLot] = useState(null);
+  const [dateFrom, setDateFrom] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 6);
+    return toDateInputValue(date);
+  });
+  const [dateTo, setDateTo] = useState(() => toDateInputValue(new Date()));
   const activeRange = range === "custom" ? "day" : range;
 
+  useEffect(() => {
+    const fetchRevenue = async () => {
+      try {
+        setError("");
+        setLoading(true);
+        const res = await API.get("/owner/revenue");
+        setTransactions(res.data?.transactions || []);
+        setParkingLots(res.data?.parkingLots || []);
+      } catch (err) {
+        setError(err?.response?.data?.detail || "Không tải được dữ liệu doanh thu");
+        setTransactions([]);
+        setParkingLots([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRevenue();
+
+    const intervalId = window.setInterval(fetchRevenue, 10000);
+    const handleFocus = () => fetchRevenue();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchRevenue();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const filteredTransactions = useMemo(
-    () => filterTransactionsByDate(ownerData.transactions, dateFrom, dateTo),
-    [ownerData.transactions, dateFrom, dateTo],
+    () => filterTransactionsByRange(transactions, dateFrom, dateTo, range),
+    [transactions, dateFrom, dateTo, range],
   );
   const paidTransactions = filteredTransactions.filter((item) => item.status === "paid");
   const totalPaid = paidTransactions.reduce((sum, item) => sum + item.amount, 0);
   const currentSeries = useMemo(
-    () => buildRevenueSeries(ownerData.transactions, dateFrom, dateTo, activeRange),
-    [ownerData.transactions, dateFrom, dateTo, activeRange],
+    () => buildRevenueSeries(transactions, dateFrom, dateTo, activeRange),
+    [transactions, dateFrom, dateTo, activeRange],
   );
-  const currentRevenue = currentSeries[currentSeries.length - 1]?.amount || 0;
+  const currentRevenue = currentSeries.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const pendingAmount = filteredTransactions
     .filter((item) => item.status === "pending")
     .reduce((sum, item) => sum + item.amount, 0);
+  const paidCount = paidTransactions.length;
+  const pendingCount = filteredTransactions.filter((item) => item.status === "pending").length;
+  const districtLabel = useMemo(() => {
+    const districts = Array.from(new Set(parkingLots.map((item) => item.district).filter(Boolean)));
+    return districts.length === 1 ? districts[0] : "khu vực owner quản lý";
+  }, [parkingLots]);
+  const revenueByParkingLot = useMemo(() => {
+    const summaryMap = new Map();
+
+    parkingLots.forEach((lot) => {
+      summaryMap.set(lot.name, {
+        parkingLotName: lot.name,
+        district: lot.district || "",
+        totalRevenue: 0,
+        paidRevenue: 0,
+        pendingRevenue: 0,
+        paidCount: 0,
+        pendingCount: 0,
+      });
+    });
+
+    filteredTransactions.forEach((transaction) => {
+      const key = transaction.parkingLotName || "Chưa xác định";
+      const current = summaryMap.get(key) || {
+        parkingLotName: key,
+        district: "",
+        totalRevenue: 0,
+        paidRevenue: 0,
+        pendingRevenue: 0,
+        paidCount: 0,
+        pendingCount: 0,
+      };
+      current.totalRevenue += Number(transaction.amount || 0);
+      if (transaction.status === "paid") {
+        current.paidRevenue += Number(transaction.amount || 0);
+        current.paidCount += 1;
+      }
+      if (transaction.status === "pending") {
+        current.pendingRevenue += Number(transaction.amount || 0);
+        current.pendingCount += 1;
+      }
+      summaryMap.set(key, current);
+    });
+
+    return Array.from(summaryMap.values()).sort((left, right) => right.paidRevenue - left.paidRevenue);
+  }, [filteredTransactions, parkingLots]);
+  const selectedParkingLotSummary = selectedParkingLot
+    ? revenueByParkingLot.find((item) => item.parkingLotName === selectedParkingLot)
+    : null;
+  const selectedParkingLotTransactions = useMemo(() => {
+    if (!selectedParkingLot) {
+      return [];
+    }
+    return filteredTransactions.filter((item) => item.parkingLotName === selectedParkingLot);
+  }, [filteredTransactions, selectedParkingLot]);
+  const revenueTitle = activeRange === "day"
+    ? "Doanh thu hôm nay"
+    : activeRange === "week"
+      ? "Doanh thu tuần này"
+      : activeRange === "month"
+        ? "Doanh thu tháng này"
+        : activeRange === "quarter"
+          ? "Doanh thu 3 tháng gần nhất"
+          : "Doanh thu kỳ chọn";
 
   return (
     <div className="owner-page-grid">
       <div className="owner-stats-grid">
-        <StatCard title={activeRange === "day" ? "Doanh thu hôm nay" : activeRange === "week" ? "Doanh thu tuần này" : "Doanh thu kỳ chọn"} value={formatCurrency(currentRevenue)} note="Doanh thu kỳ đang xem" trend={CHART_RANGE_OPTIONS.find((item) => item.value === range)?.label || "Theo ngày"} icon="revenue" />
-        <StatCard title="Đã thu" value={formatCurrency(totalPaid)} note="Giao dịch hoàn tất" trend={`${paidTransactions.length} giao dịch`} icon="dashboard" />
-        <StatCard title="Chờ thanh toán" value={formatCurrency(pendingAmount)} note="Cần kiểm tra thêm" trend={`${filteredTransactions.filter((item) => item.status === "pending").length} giao dịch`} icon="booking" />
+        <StatCard title={revenueTitle} value={formatCurrency(currentRevenue)} note={`Tổng doanh thu ${districtLabel}`} trend={CHART_RANGE_OPTIONS.find((item) => item.value === range)?.label || "Theo ngày"} icon="revenue" />
+        <StatCard title="Đã thu" value={formatCurrency(totalPaid)} note="Giao dịch hoàn tất trong kỳ" trend={`${paidCount} giao dịch`} icon="dashboard" />
+        <StatCard title="Chờ thanh toán" value={formatCurrency(pendingAmount)} note="Giao dịch pending trong kỳ" trend={`${pendingCount} giao dịch`} icon="booking" />
       </div>
+
+      <SectionCard
+        title="Báo cáo doanh thu theo bãi"
+        subtitle={`Tổng doanh thu ${districtLabel}: ${formatCurrency(totalPaid)} đã thu và ${formatCurrency(pendingAmount)} đang chờ thanh toán trong kỳ ${getRangeSummaryLabel(activeRange, dateFrom, dateTo)}.`}
+      >
+        {error ? <p className="owner-empty-cell">{error}</p> : null}
+        <div className="owner-table-shell">
+          <table className="owner-table">
+            <thead>
+              <tr>
+                <th>Bãi đỗ</th>
+                <th>Khu vực</th>
+                <th>Đã thu</th>
+                <th>Chờ thanh toán</th>
+                <th>Số giao dịch đã thu</th>
+                <th>Số giao dịch chờ</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="owner-empty-cell">Đang tổng hợp doanh thu theo bãi...</td>
+                </tr>
+              ) : revenueByParkingLot.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="owner-empty-cell">Chưa có doanh thu nào trong kỳ đang chọn.</td>
+                </tr>
+              ) : (
+                revenueByParkingLot.map((row) => (
+                  <tr key={row.parkingLotName}>
+                    <td>{row.parkingLotName}</td>
+                    <td>{row.district || "Chưa có khu vực"}</td>
+                    <td className="table-cell-green">{formatCurrency(row.paidRevenue)}</td>
+                    <td className="table-cell-orange">{formatCurrency(row.pendingRevenue)}</td>
+                    <td>{row.paidCount}</td>
+                    <td>{row.pendingCount}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-secondary owner-btn owner-btn--small"
+                        onClick={() => setSelectedParkingLot(row.parkingLotName)}
+                      >
+                        Xem chi tiết
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
+
+      {selectedParkingLotSummary ? createPortal(
+        <div className="owner-modal-backdrop" onClick={() => setSelectedParkingLot(null)}>
+          <div className="owner-modal owner-modal--detail owner-modal--large" onClick={(event) => event.stopPropagation()}>
+            <div className="owner-modal-head">
+              <div>
+                <h2>{selectedParkingLotSummary.parkingLotName}</h2>
+                <p>Chi tiết doanh thu và giao dịch trong kỳ {getRangeSummaryLabel(activeRange, dateFrom, dateTo)}.</p>
+              </div>
+              <button type="button" className="owner-modal-close" onClick={() => setSelectedParkingLot(null)}>×</button>
+            </div>
+
+            <div className="owner-detail-grid">
+              <div><span>Khu vực</span><strong>{selectedParkingLotSummary.district || "Chưa có khu vực"}</strong></div>
+              <div><span>Đã thu</span><strong className="text-green">{formatCurrency(selectedParkingLotSummary.paidRevenue)}</strong></div>
+              <div><span>Chờ thanh toán</span><strong className="text-orange">{formatCurrency(selectedParkingLotSummary.pendingRevenue)}</strong></div>
+              <div><span>Tổng giao dịch đã thu</span><strong>{selectedParkingLotSummary.paidCount}</strong></div>
+              <div><span>Tổng giao dịch chờ</span><strong>{selectedParkingLotSummary.pendingCount}</strong></div>
+              <div><span>Tổng doanh thu trong kỳ</span><strong>{formatCurrency(selectedParkingLotSummary.totalRevenue)}</strong></div>
+            </div>
+
+            <div className="owner-section">
+              <h3>Danh sách giao dịch của bãi</h3>
+              <div className="owner-table-shell">
+                <table className="owner-table">
+                  <thead>
+                    <tr>
+                      <th>Mã giao dịch</th>
+                      <th>Mã đơn</th>
+                      <th>Khách hàng</th>
+                      <th>Thời gian</th>
+                      <th>Phương thức</th>
+                      <th>Số tiền</th>
+                      <th>Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedParkingLotTransactions.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="owner-empty-cell">Không có giao dịch nào của bãi này trong kỳ đang chọn.</td>
+                      </tr>
+                    ) : (
+                      selectedParkingLotTransactions.map((transaction) => (
+                        <tr key={transaction.id}>
+                          <td>{transaction.id}</td>
+                          <td>{transaction.bookingCode}</td>
+                          <td>{transaction.payer}</td>
+                          <td>{formatDateTime(transaction.time)}</td>
+                          <td>{transaction.method}</td>
+                          <td>{formatCurrency(transaction.amount)}</td>
+                          <td><StatusBadge status={transaction.status} /></td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
 
       <div className="owner-page-grid">
         <SectionCard
@@ -67,11 +295,13 @@ export default function OwnerRevenue() {
             </div>
           }
         >
+          {error ? <p className="owner-empty-cell">{error}</p> : null}
           <LineChart data={currentSeries.length > 0 ? currentSeries : [{ label: "Không có dữ liệu", amount: 0 }]} />
         </SectionCard>
       </div>
 
-      <SectionCard title="Giao dịch gần đây" subtitle="Các giao dịch cần theo dõi tại bãi đỗ này.">
+      <SectionCard title="Giao dịch gần đây" subtitle="Các giao dịch phát sinh tại toàn bộ bãi owner đang phụ trách.">
+        {error ? <p className="owner-empty-cell">{error}</p> : null}
         <div className="owner-table-shell">
           <table className="owner-table">
             <thead>
@@ -86,17 +316,27 @@ export default function OwnerRevenue() {
               </tr>
             </thead>
             <tbody>
-              {filteredTransactions.map((transaction) => (
-                <tr key={transaction.id}>
-                  <td>{transaction.id}</td>
-                  <td>{transaction.bookingCode}</td>
-                  <td>{transaction.payer}</td>
-                  <td>{formatDateTime(transaction.time)}</td>
-                  <td>{transaction.method}</td>
-                  <td>{formatCurrency(transaction.amount)}</td>
-                  <td><StatusBadge status={transaction.status} /></td>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="owner-empty-cell">Đang tải giao dịch...</td>
                 </tr>
-              ))}
+              ) : filteredTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="owner-empty-cell">Không có giao dịch nào trong kỳ đang chọn.</td>
+                </tr>
+              ) : (
+                filteredTransactions.map((transaction) => (
+                  <tr key={transaction.id}>
+                    <td>{transaction.id}</td>
+                    <td>{transaction.bookingCode}</td>
+                    <td>{transaction.payer}</td>
+                    <td>{formatDateTime(transaction.time)}</td>
+                    <td>{transaction.method}</td>
+                    <td>{formatCurrency(transaction.amount)}</td>
+                    <td><StatusBadge status={transaction.status} /></td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
