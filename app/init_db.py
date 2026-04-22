@@ -1,7 +1,25 @@
-from sqlalchemy import inspect, text
+import time
 
-from app.database import engine, Base
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
+
+from app.database import Base, SessionLocal, engine
 from app.models import models
+
+
+def _run_ddl_with_retry(statement: str, retries: int = 3, delay_seconds: float = 0.5) -> bool:
+    for attempt in range(retries):
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(statement))
+            return True
+        except OperationalError as exc:
+            error_code = getattr(exc.orig, "args", [None])[0] if getattr(exc, "orig", None) else None
+            if error_code in {1213, 1205} and attempt < retries - 1:
+                time.sleep(delay_seconds)
+                continue
+            print(f"Skipped migration statement after failure: {statement}")
+            return False
 
 
 def migrate_parking_lots_columns():
@@ -18,13 +36,8 @@ def migrate_parking_lots_columns():
         alter_statements.append("ADD COLUMN latitude DECIMAL(10,6)")
     if "longitude" not in columns:
         alter_statements.append("ADD COLUMN longitude DECIMAL(10,6)")
-<<<<<<< HEAD
-    if "owner_id" not in columns:
-        alter_statements.append("ADD COLUMN owner_id INT NULL")
-=======
     if "district_id" not in columns:
         alter_statements.append("ADD COLUMN district_id BIGINT NULL")
->>>>>>> 5ea5159 ( cập nhật trang bãi xe)
     if "has_roof" not in columns:
         alter_statements.append("ADD COLUMN has_roof TINYINT(1) NOT NULL DEFAULT 0")
     if "is_active" not in columns:
@@ -33,58 +46,6 @@ def migrate_parking_lots_columns():
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE parking_lots {', '.join(alter_statements)}"))
-
-<<<<<<< HEAD
-    indexes = {index["name"] for index in inspector.get_indexes("parking_lots")}
-    if "idx_parking_lots_owner_id" not in indexes:
-        with engine.begin() as conn:
-            conn.execute(text("CREATE INDEX idx_parking_lots_owner_id ON parking_lots (owner_id)"))
-
-    foreign_keys = inspector.get_foreign_keys("parking_lots")
-    has_owner_fk = any("owner_id" in (fk.get("constrained_columns") or []) for fk in foreign_keys)
-    if not has_owner_fk:
-        with engine.begin() as conn:
-            conn.execute(
-                text(
-                    """
-                    ALTER TABLE parking_lots
-                    ADD CONSTRAINT fk_parking_lots_owner_id
-                    FOREIGN KEY (owner_id) REFERENCES users(id)
-                    ON DELETE SET NULL
-                    """
-                )
-            )
-
-    with engine.begin() as conn:
-        owner_ids = [
-            row[0]
-            for row in conn.execute(
-                text(
-                    """
-                    SELECT users.id
-                    FROM users
-                    LEFT JOIN parking_lots ON parking_lots.owner_id = users.id
-                    WHERE users.role = 'owner' AND parking_lots.id IS NULL
-                    ORDER BY users.id
-                    """
-                )
-            ).fetchall()
-        ]
-        unassigned_lot_ids = [
-            row[0]
-            for row in conn.execute(
-                text("SELECT id FROM parking_lots WHERE owner_id IS NULL ORDER BY id")
-            ).fetchall()
-        ]
-        for owner_id, lot_id in zip(owner_ids, unassigned_lot_ids):
-            conn.execute(
-                text("UPDATE parking_lots SET owner_id = :owner_id WHERE id = :lot_id"),
-                {"owner_id": owner_id, "lot_id": lot_id},
-            )
-
-
-=======
->>>>>>> 5ea5159 ( cập nhật trang bãi xe)
 def migrate_users_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
@@ -110,7 +71,7 @@ def migrate_users_columns():
     if "vehicle_color" not in columns:
         alter_statements.append("ADD COLUMN vehicle_color VARCHAR(50) NULL")
     if "managed_district_id" not in columns:
-        alter_statements.append("ADD COLUMN managed_district_id BIGINT NULL")
+        alter_statements.append("ADD COLUMN managed_district_id INT NULL")
     if "is_active" not in columns:
         alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
     if "status" not in columns:
@@ -119,6 +80,9 @@ def migrate_users_columns():
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE users {', '.join(alter_statements)}"))
+    if "managed_district_id" in columns or any("managed_district_id" in statement for statement in alter_statements):
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users MODIFY COLUMN managed_district_id INT NULL"))
 
     with engine.begin() as conn:
         conn.execute(text("UPDATE users SET full_name = COALESCE(full_name, 'Unknown User')"))
@@ -338,6 +302,14 @@ def migrate_parking_slots_columns():
         alter_statements.append("ADD COLUMN parking_id BIGINT NULL")
     if "status" not in columns:
         alter_statements.append("ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'available'")
+    if "zone" not in columns:
+        alter_statements.append("ADD COLUMN zone VARCHAR(50) NULL")
+    if "level" not in columns:
+        alter_statements.append("ADD COLUMN level VARCHAR(50) NULL")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if "updated_at" not in columns:
+        alter_statements.append("ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
 
     if alter_statements:
         with engine.begin() as conn:
@@ -345,11 +317,65 @@ def migrate_parking_slots_columns():
 
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE parking_slots MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'available'"))
+        conn.execute(
+            text(
+                """
+                ALTER TABLE parking_slots
+                MODIFY COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                """
+            )
+        )
 
     indexes = {index["name"] for index in inspector.get_indexes("parking_slots")}
     if "uq_parking_slots_code" not in indexes:
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX uq_parking_slots_code ON parking_slots (code)"))
+
+    session = SessionLocal()
+    try:
+        slots = (
+            session.query(models.ParkingSlot)
+            .order_by(models.ParkingSlot.parking_id.asc(), models.ParkingSlot.id.asc())
+            .all()
+        )
+        current_parking_id = None
+        lot_index = -1
+        for slot in slots:
+            if slot.parking_id != current_parking_id:
+                current_parking_id = slot.parking_id
+                lot_index = 0
+            else:
+                lot_index += 1
+
+            if not slot.zone:
+                slot.zone = f"Khu {chr(65 + (lot_index % 4))}"
+            if not slot.level:
+                slot.level = f"Tầng {(lot_index // 20) + 1}"
+            if not slot.created_at:
+                slot.created_at = slot.updated_at
+        session.commit()
+    finally:
+        session.close()
+
+
+def migrate_reviews_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "reviews" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("reviews")}
+    alter_statements = []
+
+    if "owner_reply" not in columns:
+        alter_statements.append("ADD COLUMN owner_reply TEXT NULL")
+    if "owner_replied_at" not in columns:
+        alter_statements.append("ADD COLUMN owner_replied_at DATETIME NULL")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE reviews {', '.join(alter_statements)}"))
 
 
 def migrate_bookings_columns():
@@ -359,7 +385,7 @@ def migrate_bookings_columns():
     if "bookings" not in table_names:
         return
 
-    columns = {column["name"] for column in inspector.get_columns("bookings")}
+    columns = {column["name"]: column for column in inspector.get_columns("bookings")}
     alter_statements = []
 
     if "booking_mode" not in columns:
@@ -372,22 +398,27 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
 
     if alter_statements:
-        with engine.begin() as conn:
-            conn.execute(text(f"ALTER TABLE bookings {', '.join(alter_statements)}"))
+        _run_ddl_with_retry(f"ALTER TABLE bookings {', '.join(alter_statements)}")
 
     # Ho tro day du trang thai booking cho luong payment moi.
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE bookings MODIFY COLUMN vehicle_id INT NULL"))
-        conn.execute(text("ALTER TABLE bookings MODIFY COLUMN parking_id INT NULL"))
-        conn.execute(
-            text(
-                """
-                ALTER TABLE bookings
-                MODIFY COLUMN status ENUM(
-                    'pending','booked','checked_in','checked_out','completed','cancelled'
-                ) DEFAULT 'pending'
-                """
-            )
+    booking_vehicle_column = columns.get("vehicle_id")
+    if booking_vehicle_column is not None and not booking_vehicle_column["nullable"]:
+        _run_ddl_with_retry("ALTER TABLE bookings MODIFY COLUMN vehicle_id INT NULL")
+
+    booking_parking_column = columns.get("parking_id")
+    if booking_parking_column is not None and not booking_parking_column["nullable"]:
+        _run_ddl_with_retry("ALTER TABLE bookings MODIFY COLUMN parking_id INT NULL")
+
+    booking_status_column = columns.get("status")
+    current_status_type = str(booking_status_column["type"]).lower() if booking_status_column is not None else ""
+    if "enum" not in current_status_type:
+        _run_ddl_with_retry(
+            """
+            ALTER TABLE bookings
+            MODIFY COLUMN status ENUM(
+                'pending','booked','checked_in','checked_out','completed','cancelled'
+            ) DEFAULT 'pending'
+            """.strip()
         )
 
 
@@ -453,6 +484,7 @@ def init_db():
     migrate_districts_normalization()
     migrate_user_vehicles_table()
     migrate_parking_slots_columns()
+    migrate_reviews_columns()
     migrate_bookings_columns()
     migrate_payments_columns()
 

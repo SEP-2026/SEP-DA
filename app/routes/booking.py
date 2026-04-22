@@ -113,6 +113,17 @@ def geocode_address(address: str):
     raise HTTPException(status_code=404, detail="Không tìm thấy tọa độ cho địa chỉ đã nhập")
 
 
+def _overview_slot_status(raw_status: str | None, booking_statuses: set[str]) -> str:
+    normalized = (raw_status or "").lower()
+    if normalized == "maintenance":
+        return "maintenance"
+    if booking_statuses.intersection({"pending", "booked", "checked_in"}):
+        return "occupied"
+    if normalized in {"reserved", "occupied", "in_use"}:
+        return "occupied"
+    return "available"
+
+
 @router.get("/slots")
 def get_slots(parking_id: int | None = None, db: Session = Depends(get_db)):
     query = db.query(ParkingSlot)
@@ -139,10 +150,29 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
             continue
         slots_by_parking.setdefault(slot.parking_id, []).append(slot)
 
+    active_bookings = (
+        db.query(Booking)
+        .filter(Booking.status.in_(["pending", "booked", "checked_in"]))
+        .all()
+    )
+    booking_statuses_by_slot: dict[int, set[str]] = {}
+    for booking in active_bookings:
+        if not booking.slot_id:
+            continue
+        booking_statuses_by_slot.setdefault(int(booking.slot_id), set()).add((booking.status or "").lower())
+
     result = []
     for lot in lots:
         lot_slots = slots_by_parking.get(lot.id, [])
-        available_count = sum(1 for slot in lot_slots if slot.status == "available")
+        effective_slots = [
+            {
+                "id": slot.id,
+                "code": slot.slot_number or slot.code,
+                "status": _overview_slot_status(slot.status, booking_statuses_by_slot.get(int(slot.id), set())),
+            }
+            for slot in lot_slots
+        ]
+        available_count = sum(1 for slot in effective_slots if slot["status"] == "available")
         occupied_count = len(lot_slots) - available_count
 
         result.append(
@@ -154,14 +184,7 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
                 "available_slots": available_count,
                 "occupied_or_reserved_slots": occupied_count,
                 "total_slots": len(lot_slots),
-                "slots": [
-                    {
-                        "id": slot.id,
-                        "code": slot.slot_number or slot.code,
-                        "status": slot.status,
-                    }
-                    for slot in lot_slots
-                ],
+                "slots": effective_slots,
             }
         )
 

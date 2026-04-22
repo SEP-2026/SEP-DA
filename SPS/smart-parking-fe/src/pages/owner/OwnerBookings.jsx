@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatCurrency, formatDateTime, SectionCard, StatusBadge } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
 
 export default function OwnerBookings() {
-  const { ownerData, actions } = useOwnerContext();
+  const { ownerData, actions, isSyncing } = useOwnerContext();
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState(null);
 
@@ -27,11 +28,13 @@ export default function OwnerBookings() {
           </select>
         }
       >
+        {isSyncing ? <p className="owner-empty">Đang đồng bộ booking từ CSDL...</p> : null}
         <div className="owner-table-shell">
           <table className="owner-table">
             <thead>
               <tr>
                 <th>Mã đơn</th>
+                <th>Bãi đỗ</th>
                 <th>Người dùng</th>
                 <th>Biển số</th>
                 <th>Thời gian vào</th>
@@ -42,9 +45,15 @@ export default function OwnerBookings() {
               </tr>
             </thead>
             <tbody>
+              {!isSyncing && filteredBookings.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="owner-empty-cell">Chưa có booking nào khớp bộ lọc hiện tại.</td>
+                </tr>
+              ) : null}
               {filteredBookings.map((booking) => (
                 <tr key={booking.id}>
                   <td>{booking.code}</td>
+                  <td>{booking.parkingLotName || "Chưa có bãi"}</td>
                   <td>{booking.user}</td>
                   <td>{booking.plate}</td>
                   <td>{formatDateTime(booking.startTime)}</td>
@@ -53,8 +62,12 @@ export default function OwnerBookings() {
                   <td><StatusBadge status={booking.status} /></td>
                   <td>
                     <div className="owner-row-actions">
-                      <button type="button" className="btn-primary owner-btn owner-btn--small" onClick={() => actions.updateBookingStatus(booking.id, "confirmed")}>Xác nhận</button>
-                      <button type="button" className="btn-secondary owner-btn owner-btn--small owner-btn--danger" onClick={() => actions.updateBookingStatus(booking.id, "cancelled")}>Hủy</button>
+                      {booking.status === "pending" ? (
+                        <button type="button" className="btn-primary owner-btn owner-btn--small" onClick={() => actions.updateBookingStatus(booking.id, "confirmed")}>Xác nhận</button>
+                      ) : null}
+                      {booking.status !== "cancelled" && booking.status !== "completed" ? (
+                        <button type="button" className="btn-secondary owner-btn owner-btn--small owner-btn--danger" onClick={() => actions.updateBookingStatus(booking.id, "cancelled")}>Hủy</button>
+                      ) : null}
                       <button type="button" className="btn-secondary owner-btn owner-btn--small" onClick={() => setSelectedBooking({ ...booking, supportMode: true })}>Hỗ trợ khách</button>
                       <button type="button" className="btn-secondary owner-btn owner-btn--small" onClick={() => setSelectedBooking(booking)}>Chi tiết</button>
                     </div>
@@ -66,7 +79,7 @@ export default function OwnerBookings() {
         </div>
       </SectionCard>
 
-      {selectedBooking ? (
+      {selectedBooking ? createPortal(
         <div className="owner-modal-backdrop" onClick={() => setSelectedBooking(null)}>
           <div className="owner-modal owner-modal--detail" onClick={(event) => event.stopPropagation()}>
             <div className="owner-modal-head">
@@ -77,6 +90,7 @@ export default function OwnerBookings() {
               <button type="button" className="owner-modal-close" onClick={() => setSelectedBooking(null)}>×</button>
             </div>
             <div className="owner-detail-grid">
+              <div><span>Bãi đỗ</span><strong>{selectedBooking.parkingLotName || "Chưa có bãi"}</strong></div>
               <div><span>Khách hàng</span><strong>{selectedBooking.user}</strong></div>
               <div><span>Số điện thoại</span><strong>{selectedBooking.phone}</strong></div>
               <div><span>Biển số</span><strong>{selectedBooking.plate}</strong></div>
@@ -94,7 +108,7 @@ export default function OwnerBookings() {
             ) : null}
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
     </div>
   );
 }

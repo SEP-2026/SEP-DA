@@ -62,9 +62,12 @@ class ParkingSlot(Base):
     parking_id = Column(Integer, nullable=True)
     slot_number = Column(String(20), nullable=True)
     slot_type = Column(String(20), nullable=True)
-    floor = Column(String(20), nullable=True)
+    zone = Column(String(50), nullable=True)
+    level = Column(String(50), nullable=True)
     code = Column(String(50), unique=True)
     status = Column(String(50), default="available")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Booking(Base):
@@ -169,6 +172,8 @@ class Review(Base):
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False)
     rating = Column(Integer, nullable=False)
     comment = Column(String, nullable=True)
+    owner_reply = Column(String, nullable=True)
+    owner_replied_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
