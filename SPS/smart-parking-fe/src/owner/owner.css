@@ -287,6 +287,7 @@
 
 .owner-section-card {
   padding: 18px;
+  margin-bottom: 20px;
 }
 
 .owner-section-head {
@@ -294,6 +295,17 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+/* Sticky headers for admin pages only */
+.admin-content .owner-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin-bottom: 0;
+  background: #ffffff;
+  padding: 14px 0 16px 0;
+  border-bottom: none;
 }
 
 .owner-section-head h2 {
@@ -397,6 +409,15 @@
 
 .owner-table-shell {
   overflow: auto;
+  margin-top: 0;
+}
+
+/* For admin pages, allow table to grow and rely on page scrolling when needed */
+.admin-main .owner-table-shell,
+.admin-content .owner-table-shell {
+  /* don't artificially cap the table height inside admin shell */
+  max-height: none;
+  overflow: visible;
 }
 
 .owner-table {
@@ -414,11 +435,24 @@
   vertical-align: middle;
 }
 
-.owner-table th {
+/* Make table header row sticky so column headings remain visible while scrolling */
+.owner-table thead th {
   color: #54738e;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+/* Sticky table header for admin pages only */
+.admin-content .owner-table thead th {
+  position: sticky;
+  top: 60px; /* positioned after section head */
+  z-index: 99;
+  background: #ffffff;
+  border-top: 1px solid rgba(20, 57, 93, 0.1);
+  border-bottom: 1px solid rgba(20, 57, 93, 0.1);
+  padding-top: 14px;
+  padding-bottom: 14px;
 }
 
 .owner-table td span {
@@ -842,12 +876,14 @@
 .owner-modal-backdrop {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
+  /* use flex centering to reliably center modal */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   padding: 20px;
   background: rgba(8, 31, 50, 0.34);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  z-index: 9999;
 }
 
 .owner-modal {
@@ -856,6 +892,11 @@
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(252, 255, 255, 0.98), rgba(237, 247, 252, 0.96));
   box-shadow: 0 30px 50px rgba(11, 36, 61, 0.2);
+  /* position relative inside the flex-centered backdrop */
+  position: relative !important;
+  z-index: 10000;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
 }
 
 .owner-modal--detail {

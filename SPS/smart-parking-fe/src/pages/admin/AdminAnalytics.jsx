@@ -6,15 +6,15 @@ export default function AdminAnalytics() {
   return (
     <div className="owner-page-grid">
       <div className="owner-stats-grid">
-        <StatCard title="Tăng trưởng user" value="32%" note="So với quý trước" trend="Tích cực" icon="users" />
+        <StatCard title="Tăng trưởng người dùng" value="32%" note="So với quý trước" trend="Tích cực" icon="users" />
         <StatCard title="Tỷ lệ lấp đầy TB" value="77%" note="Toàn hệ thống" trend="4 bãi hoạt động" icon="analytics" />
-        <StatCard title="Bãi tốt nhất" value="Tân Phú" note="Hiệu suất cao nhất" trend="86% fill rate" icon="parking" />
+        <StatCard title="Bãi tốt nhất" value="Tân Phú" note="Hiệu suất cao nhất" trend="86% lấp đầy" icon="parking" />
       </div>
       <div className="owner-two-col">
-        <SectionCard title="User Growth" subtitle="Tăng trưởng user theo tháng.">
+        <SectionCard title="Tăng trưởng người dùng" subtitle="Tăng trưởng người dùng theo tháng.">
           <LineChart data={adminData.systemRevenue.userGrowth} formatValue={(value) => `${value}`} />
         </SectionCard>
-        <SectionCard title="Occupancy by Lot" subtitle="Tỷ lệ lấp đầy từng bãi.">
+        <SectionCard title="Tỷ lệ lấp đầy theo bãi" subtitle="Tỷ lệ lấp đầy từng bãi.">
           <BarChart data={adminData.systemRevenue.occupancy} />
         </SectionCard>
       </div>

@@ -37,7 +37,7 @@ def migrate_parking_lots_columns():
     if "longitude" not in columns:
         alter_statements.append("ADD COLUMN longitude DECIMAL(10,6)")
     if "district_id" not in columns:
-        alter_statements.append("ADD COLUMN district_id INT NULL")
+        alter_statements.append("ADD COLUMN district_id BIGINT NULL")
     if "has_roof" not in columns:
         alter_statements.append("ADD COLUMN has_roof TINYINT(1) NOT NULL DEFAULT 0")
     if "is_active" not in columns:
@@ -46,9 +46,6 @@ def migrate_parking_lots_columns():
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE parking_lots {', '.join(alter_statements)}"))
-    if "district_id" in columns or any("district_id" in statement for statement in alter_statements):
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE parking_lots MODIFY COLUMN district_id INT NULL"))
 def migrate_users_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()

@@ -932,24 +932,157 @@ def update_owner_managed_parking_settings(
         price.price_per_month = float(payload.pricePerMonth or 0)
 
     db.commit()
-    return {"message": "Đã cập nhật bãi đỗ"}
+    return {"message": "Đã cập nhật cấu hình bãi"}
 
 
-@router.patch("/reviews/{review_id}/reply")
-def update_owner_review_reply(
-    review_id: int,
-    payload: OwnerReviewReplyRequest,
-    current_user: User = Depends(require_owner),
-    db: Session = Depends(get_db),
-):
-    review = db.query(Review).filter(Review.id == review_id).first()
-    if not review:
-        raise HTTPException(status_code=404, detail="Không tìm thấy đánh giá")
-    if _get_owner_parking_assignment(current_user.id, review.parking_id, db) is None:
-        raise HTTPException(status_code=404, detail="Owner không có quyền phản hồi đánh giá này")
-
-    normalized_reply = (payload.reply or "").strip()
-    review.owner_reply = normalized_reply or None
-    review.owner_replied_at = datetime.utcnow() if normalized_reply else None
-    db.commit()
-    return {"message": "Đã lưu phản hồi đánh giá"}
+@router.post("/seed-test-data-public")
+def seed_test_data_public(db: Session = Depends(get_db)):
+    """Tạo dữ liệu test (public endpoint - không cần xác thực)"""
+    from datetime import timedelta
+    
+    try:
+        # 1. Lấy owner first (hoặc tạo nếu chưa có)
+        owner = db.query(User).filter(User.email == "owner1@gmail.com").first()
+        if not owner:
+            owner = User(
+                name="Owner One",
+                email="owner1@gmail.com",
+                phone="0901111111",
+                role="owner",
+                status="active",
+                is_active=1,
+                password_hash=""
+            )
+            db.add(owner)
+            db.commit()
+        
+        # 2. Tạo parking lot nếu chưa tồn tại
+        parking_lot = db.query(ParkingLot).filter(
+            ParkingLot.name == "Smart Parking - Tân Phú"
+        ).first()
+        
+        if not parking_lot:
+            parking_lot = ParkingLot(
+                name="Smart Parking - Tân Phú",
+                address="123 Đường Tân Phú, Quận 5, TP.HCM",
+                latitude=10.7910,
+                longitude=106.6255,
+                has_roof=1,
+                is_active=1
+            )
+            db.add(parking_lot)
+            db.commit()
+        
+        # 3. Gán bãi cho owner nếu chưa tồn tại
+        owner_parking = db.query(OwnerParking).filter(
+            OwnerParking.owner_id == owner.id,
+            OwnerParking.parking_id == parking_lot.id
+        ).first()
+        
+        if not owner_parking:
+            owner_parking = OwnerParking(
+                owner_id=owner.id,
+                parking_id=parking_lot.id
+            )
+            db.add(owner_parking)
+            db.commit()
+        
+        # 4. Tạo parking slots
+        slot_codes = ["A-01", "A-02", "B-01", "B-02", "C-01"]
+        for code in slot_codes:
+            existing = db.query(ParkingSlot).filter(
+                ParkingSlot.code == code
+            ).first()
+            if not existing:
+                slot = ParkingSlot(
+                    parking_id=parking_lot.id,
+                    code=code,
+                    status="available"
+                )
+                db.add(slot)
+        db.commit()
+        
+        # 5. Tạo test users (khách hàng) nếu chưa tồn tại
+        test_customers = [
+            {"name": "Nguyễn Văn A", "email": "customer1@gmail.com", "phone": "0901234567"},
+            {"name": "Trần Thị B", "email": "customer2@gmail.com", "phone": "0909876543"},
+            {"name": "Phạm Văn C", "email": "customer3@gmail.com", "phone": "0912345678"},
+        ]
+        
+        customer_users = []
+        for cust in test_customers:
+            existing = db.query(User).filter(User.email == cust["email"]).first()
+            if not existing:
+                user = User(
+                    name=cust["name"],
+                    email=cust["email"],
+                    phone=cust["phone"],
+                    role="user",
+                    status="active",
+                    is_active=1,
+                    password_hash=""
+                )
+                db.add(user)
+                db.commit()
+                customer_users.append(user)
+            else:
+                customer_users.append(existing)
+        
+        # 6. Tạo bookings
+        now = datetime.utcnow()
+        for i, user in enumerate(customer_users):
+            # Kiểm tra xem user này đã có booking chưa
+            existing_booking = db.query(Booking).filter(
+                Booking.user_id == user.id,
+                Booking.parking_id == parking_lot.id
+            ).first()
+            
+            if not existing_booking:
+                slot = db.query(ParkingSlot).filter(
+                    ParkingSlot.code == slot_codes[i % len(slot_codes)]
+                ).first()
+                
+                booking = Booking(
+                    user_id=user.id,
+                    parking_id=parking_lot.id,
+                    slot_id=slot.id if slot else None,
+                    start_time=now - timedelta(hours=2),
+                    end_time=now + timedelta(hours=1),
+                    total_amount=50000 * (i + 1),
+                    status="completed" if i % 2 == 0 else "checked_in",
+                    booking_mode="hourly",
+                    created_at=now
+                )
+                db.add(booking)
+                db.commit()
+                
+                # 7. Tạo payment
+                payment = Payment(
+                    booking_id=booking.id,
+                    amount=50000 * (i + 1),
+                    status="paid" if i % 2 == 0 else "pending",
+                    created_at=now - timedelta(hours=1)
+                )
+                db.add(payment)
+                db.commit()
+        
+        return {
+            "status": "success",
+            "message": "Dữ liệu test đã được tạo",
+            "parking_lot": {
+                "id": parking_lot.id,
+                "name": parking_lot.name
+            },
+            "owner": {
+                "id": owner.id,
+                "email": owner.email
+            },
+            "customers_created": len(customer_users)
+        }
+    
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "message": f"Lỗi khi tạo dữ liệu test: {str(e)}"
+        }

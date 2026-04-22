@@ -16,15 +16,15 @@ export default function UserManagement() {
   return (
     <div className="owner-page-grid">
       <SectionCard
-        title="Danh sách user"
-        subtitle="Tìm kiếm, lọc, phân trang logic nhẹ và khóa hoặc mở khóa tài khoản."
+        title="Danh sách người dùng"
+        subtitle="Tìm kiếm, lọc, phân trang và khóa hoặc mở khóa tài khoản."
         actions={
           <div className="owner-toolbar">
             <input className="owner-input" placeholder="Tìm tên hoặc email" value={query} onChange={(e) => setQuery(e.target.value)} />
             <select className="owner-input owner-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">Tất cả trạng thái</option>
-              <option value="active">Active</option>
-              <option value="banned">Banned</option>
+              <option value="active">Hoạt động</option>
+              <option value="banned">Bị khóa</option>
             </select>
           </div>
         }
