@@ -396,6 +396,10 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN total_amount FLOAT NOT NULL DEFAULT 0")
     if "created_at" not in columns:
         alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if "qr_code_path" not in columns:
+        alter_statements.append("ADD COLUMN qr_code_path VARCHAR(255) NULL")
+    if "qr_generated_at" not in columns:
+        alter_statements.append("ADD COLUMN qr_generated_at DATETIME NULL")
 
     if alter_statements:
         _run_ddl_with_retry(f"ALTER TABLE bookings {', '.join(alter_statements)}")

@@ -107,6 +107,7 @@ export function LineChart({ data, formatValue = formatCurrency }) {
   const areaPoints = data.length > 1
     ? [`${padding},${height - padding}`, ...points, `${width - padding},${height - padding}`].join(" ")
     : "";
+  const labelStep = Math.max(1, Math.ceil(data.length / 8));
 
   return (
     <div className="owner-chart-shell">
@@ -124,12 +125,16 @@ export function LineChart({ data, formatValue = formatCurrency }) {
         ) : null}
         {!isEmptyState && data.map((item, index) => {
           const [x, y] = points[index].split(",");
+          const shouldRenderLabel = data.length <= 8 || index % labelStep === 0 || index === data.length - 1;
           return (
             <g key={item.label}>
               <circle cx={x} cy={y} r="5" className="owner-chart-dot" />
-              <text x={x} y={height - 8} textAnchor="middle" className="owner-chart-label">
-                {item.label}
-              </text>
+              <title>{`${item.label}: ${formatValue(item.amount)}`}</title>
+              {shouldRenderLabel ? (
+                <text x={x} y={height - 8} textAnchor="middle" className="owner-chart-label">
+                  {item.label}
+                </text>
+              ) : null}
             </g>
           );
         })}
