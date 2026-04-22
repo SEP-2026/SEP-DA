@@ -92,6 +92,8 @@ class Booking(Base):
 
     status = Column(String(50), default="pending")
     qr_code = Column(String(255))
+    qr_code_path = Column(String(255), nullable=True)
+    qr_generated_at = Column(DateTime, nullable=True)
 
     user = relationship("User")
     slot = relationship("ParkingSlot")
