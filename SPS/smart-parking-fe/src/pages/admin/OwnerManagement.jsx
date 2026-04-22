@@ -8,6 +8,21 @@ export default function OwnerManagement() {
   const { adminData, actions } = useAdminContext();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_OWNER);
+  const [search, setSearch] = useState("");
+
+  const flattenedOwners = (adminData.owners || []).flatMap((owner) => {
+    if (owner.parkingLots && owner.parkingLots.length > 0) {
+      return owner.parkingLots.map((p) => ({ ...owner, parkingLot: p.name, parkingId: p.id }));
+    }
+    return [{ ...owner, parkingLot: owner.parkingLot || "Chưa gán trong CSDL", parkingId: null }];
+  });
+
+  const filteredOwners = flattenedOwners.filter((o) => {
+    if (!search || !search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    const hay = `${o.name || ''} ${o.email || ''} ${o.parkingLot || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
 
   return (
     <div className="owner-page-grid">
@@ -16,6 +31,16 @@ export default function OwnerManagement() {
         subtitle="Quản lý tài khoản chủ bãi, đặt lại mật khẩu và theo dõi hiệu suất bãi."
         actions={<button type="button" className="btn-primary owner-btn" onClick={() => setIsModalOpen(true)}>Tạo tài khoản chủ bãi</button>}
       >
+        <div className="owner-table-actions" style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+          <input
+            className="owner-search-input"
+            placeholder="Tìm kiếm tên, email hoặc bãi..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ padding: '8px', width: '520px', borderRadius: '6px', border: '1px solid #dcdcdc' }}
+          />
+        </div>
+
         <div className="owner-table-shell">
           <table className="owner-table">
             <thead>
@@ -29,8 +54,8 @@ export default function OwnerManagement() {
               </tr>
             </thead>
             <tbody>
-              {adminData.owners.map((owner) => (
-                <tr key={owner.id}>
+              {filteredOwners.map((owner) => (
+                <tr key={`${owner.id}-${owner.parkingId ?? 'none'}`}>
                   <td>{owner.name}</td>
                   <td>{owner.email}</td>
                   <td>{owner.parkingLot}</td>
@@ -71,7 +96,7 @@ export default function OwnerManagement() {
                 const payload = {
                   name: form.name,
                   email: form.email,
-                  parking_lots: form.parkingLot ? [form.parkingLot] : [],
+                  parkingLot: form.parkingLot || undefined,
                   status: form.status || "active",
                 };
                 await actions.addOwner(payload);
