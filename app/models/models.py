@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -101,6 +101,7 @@ class Booking(Base):
     last_gate_action_at = Column(DateTime, nullable=True)
     qr_token_expires_at = Column(DateTime, nullable=True)
     cancel_reason = Column(String(255), nullable=True)
+    is_reviewed = Column(Integer, default=0, nullable=False)
 
     user = relationship("User")
     slot = relationship("ParkingSlot")
@@ -167,6 +168,8 @@ class ParkingLot(Base):
     longitude = Column(Float, nullable=False)
     has_roof = Column(Integer, default=0)
     is_active = Column(Integer, default=1)
+    avg_rating = Column(Float, default=0)
+    review_count = Column(Integer, default=0)
 
     district = relationship("District", foreign_keys=[district_id])
 
@@ -187,13 +190,15 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False)
-    rating = Column(Integer, nullable=False)
-    comment = Column(String, nullable=True)
-    owner_reply = Column(String, nullable=True)
+    rating = Column(SmallInteger, nullable=False)
+    comment = Column(Text, nullable=True)
+    owner_reply = Column(Text, nullable=True)
     owner_replied_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User")
     parking = relationship("ParkingLot")

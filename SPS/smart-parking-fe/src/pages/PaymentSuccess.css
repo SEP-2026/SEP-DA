@@ -74,6 +74,17 @@
   font-weight: 700;
 }
 
+.payment-review-section {
+  margin-top: 14px;
+}
+
+.booking-review-result {
+  border: 1px solid rgba(20, 57, 93, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
 .countdown-widget {
   margin: 12px 0;
   padding: 10px 12px;

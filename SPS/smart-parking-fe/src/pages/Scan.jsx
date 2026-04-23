@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import ActionButtons from "../features/gate/ActionButtons";
 import BookingInfoPanel from "../features/gate/BookingInfoPanel";
@@ -19,6 +20,7 @@ function buildBannerFromError(error, fallbackTitle) {
 }
 
 export default function Scan() {
+  const navigate = useNavigate();
   const scanInputRef = useRef(null);
   const successTimeoutRef = useRef(null);
   const [gateId, setGateId] = useState("GATE-A1");
@@ -271,6 +273,14 @@ export default function Scan() {
             <strong>Trạng thái cổng</strong>
             <span>{uiState === "idle" ? "Sẵn sàng" : uiState}</span>
             <span>{booking?.cooldown?.active ? "Đang chờ cooldown" : "Có thể quét tiếp"}</span>
+            <button
+              type="button"
+              className="scan-secondary-btn"
+              style={{ marginTop: 8 }}
+              onClick={() => navigate("/owner-review-replies")}
+            >
+              Phản hồi đánh giá
+            </button>
           </div>
         </div>
 

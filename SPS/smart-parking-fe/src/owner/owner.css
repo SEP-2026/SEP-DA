@@ -1098,6 +1098,29 @@
   font-weight: 700;
 }
 
+.owner-review-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.owner-filter-btn {
+  border: 1px solid rgba(20, 57, 93, 0.2);
+  background: #f2f8fc;
+  color: #234d6b;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.owner-filter-btn.active {
+  background: linear-gradient(135deg, #1f6de0, #0f8fd3);
+  color: #fff;
+  border-color: transparent;
+}
+
 @media (max-width: 1180px) {
   .owner-stats-grid--wide,
   .owner-stats-grid,

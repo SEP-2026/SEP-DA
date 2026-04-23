@@ -1,39 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatDateTime, SectionCard } from "../../owner/OwnerUI";
-import { useOwnerContext } from "../../owner/useOwnerContext";
+import { useNavigate } from "react-router-dom";
 import API from "../../services/api";
+import { formatDateTime } from "../../owner/OwnerUI";
+import "../../owner/owner.css";
 
-export default function OwnerReviews() {
-  const { ownerData, actions } = useOwnerContext();
-  const [reviews, setReviews] = useState(ownerData.reviews);
-  const [summary, setSummary] = useState({ avg_rating: 0, total_reviews: 0, rating_distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, unreplied_count: 0 });
-  const [sortMode, setSortMode] = useState("newest");
-  const [filterMode, setFilterMode] = useState("all");
+export default function OwnerReviewReplyPage() {
+  const navigate = useNavigate();
+  const [reviews, setReviews] = useState([]);
+  const [summary, setSummary] = useState({
+    avg_rating: 0,
+    total_reviews: 0,
+    rating_distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    unreplied_count: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [replyingId, setReplyingId] = useState("");
-  const [replies, setReplies] = useState(() => Object.fromEntries(ownerData.reviews.map((item) => [item.id, item.ownerReply || ""])));
-  const [savedId, setSavedId] = useState("");
+  const [replies, setReplies] = useState({});
   const [savingId, setSavingId] = useState("");
+  const [sortMode, setSortMode] = useState("newest");
+  const [filterMode, setFilterMode] = useState("unreplied");
+
+  const loadReviews = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await API.get("/owner/reviews");
+      const nextReviews = res.data?.reviews || [];
+      setReviews(nextReviews);
+      setSummary({
+        avg_rating: res.data?.avg_rating || 0,
+        total_reviews: res.data?.total_reviews || 0,
+        rating_distribution: res.data?.rating_distribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        unreplied_count: res.data?.unreplied_count || 0,
+      });
+      setReplies(Object.fromEntries(nextReviews.map((item) => [item.id, item.ownerReply || ""])));
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Không tải được danh sách đánh giá");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchReviews = async () => {
-      try {
-        const res = await API.get("/owner/reviews");
-        const nextReviews = res.data?.reviews || [];
-        setReviews(nextReviews);
-        setSummary({
-          avg_rating: res.data?.avg_rating || 0,
-          total_reviews: res.data?.total_reviews || 0,
-          rating_distribution: res.data?.rating_distribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-          unreplied_count: res.data?.unreplied_count || 0,
-        });
-        setReplies(Object.fromEntries(nextReviews.map((item) => [item.id, item.ownerReply || ""])));
-      } catch {
-        setReviews(ownerData.reviews);
-        setReplies(Object.fromEntries(ownerData.reviews.map((item) => [item.id, item.ownerReply || ""])));
-      }
-    };
-    fetchReviews();
-  }, [ownerData.reviews]);
+    loadReviews();
+  }, []);
 
   const filteredReviews = useMemo(() => {
     let list = [...reviews];
@@ -51,8 +62,23 @@ export default function OwnerReviews() {
   }, [reviews, sortMode, filterMode]);
 
   return (
-    <div className="owner-page-grid">
-      <SectionCard title="Đánh giá bãi đỗ xe" subtitle="Theo dõi điểm số và phản hồi đánh giá của khách hàng.">
+    <section className="page-wrap">
+      <div className="page-card">
+        <header className="booking-history-head">
+          <h1 className="page-title">Phản hồi đánh giá khách hàng</h1>
+          <p className="page-subtitle">Trang nhanh cho owner: xem review và phản hồi ngay.</p>
+        </header>
+        <div className="payment-success-actions" style={{ marginBottom: 12 }}>
+          <button type="button" className="payment-success-btn secondary" onClick={() => navigate("/scan")}>
+            ← Quét QR vào/ra
+          </button>
+          <button type="button" className="payment-success-btn secondary" onClick={() => navigate("/owner/reviews")}>
+            Mở trang Đánh giá đầy đủ
+          </button>
+        </div>
+        {loading ? <p>Đang tải đánh giá...</p> : null}
+        {error ? <p className="booking-history-error">{error}</p> : null}
+
         <div className="owner-two-col">
           <article className="owner-review-card">
             <h3>⭐ {Number(summary.avg_rating || 0).toFixed(1)}/5</h3>
@@ -61,12 +87,11 @@ export default function OwnerReviews() {
           </article>
           <article className="owner-review-card">
             {[5, 4, 3, 2, 1].map((star) => (
-              <p key={star}>
-                {star}★: {summary.rating_distribution?.[String(star)] || 0}
-              </p>
+              <p key={star}>{star}★: {summary.rating_distribution?.[String(star)] || 0}</p>
             ))}
           </article>
         </div>
+
         <div className="owner-review-filters">
           <button type="button" className={`owner-filter-btn ${sortMode === "newest" ? "active" : ""}`} onClick={() => setSortMode("newest")}>Mới nhất</button>
           <button type="button" className={`owner-filter-btn ${sortMode === "highest" ? "active" : ""}`} onClick={() => setSortMode("highest")}>Điểm cao</button>
@@ -74,6 +99,7 @@ export default function OwnerReviews() {
           <button type="button" className={`owner-filter-btn ${filterMode === "all" ? "active" : ""}`} onClick={() => setFilterMode("all")}>Tất cả</button>
           <button type="button" className={`owner-filter-btn ${filterMode === "unreplied" ? "active" : ""}`} onClick={() => setFilterMode("unreplied")}>Chưa phản hồi</button>
         </div>
+
         <div className="owner-reviews">
           {filteredReviews.map((review) => (
             <article key={review.id} className="owner-review-card">
@@ -98,16 +124,12 @@ export default function OwnerReviews() {
                         rows="3"
                         maxLength={300}
                         value={replies[review.id] || ""}
-                        onChange={(event) => {
-                          setSavedId("");
-                          setReplies((prev) => ({ ...prev, [review.id]: event.target.value }));
-                        }}
+                        onChange={(event) => setReplies((prev) => ({ ...prev, [review.id]: event.target.value }))}
                         placeholder="Nhập phản hồi cho khách hàng"
                       />
                     </label>
                   ) : null}
                   <div className="owner-review-actions">
-                    {savedId === review.id ? <p className="owner-save-note">Đã lưu phản hồi.</p> : <span />}
                     {replyingId !== review.id ? (
                       <button type="button" className="btn-primary owner-btn owner-btn--small" onClick={() => setReplyingId(review.id)}>
                         Phản hồi đánh giá này
@@ -119,14 +141,14 @@ export default function OwnerReviews() {
                           className="btn-primary owner-btn owner-btn--small"
                           disabled={savingId === review.id || !(replies[review.id] || "").trim()}
                           onClick={async () => {
-                            setSavingId(review.id);
-                            const ok = await actions.updateReviewReply(review.id, replies[review.id] || "");
-                            if (ok) {
-                              setSavedId(review.id);
+                            try {
+                              setSavingId(review.id);
+                              await API.patch(`/owner/reviews/${review.id}/reply`, { reply: replies[review.id] || "" });
                               setReplyingId("");
-                              setReviews((prev) => prev.map((item) => (item.id === review.id ? { ...item, ownerReply: replies[review.id] || "" } : item)));
+                              await loadReviews();
+                            } finally {
+                              setSavingId("");
                             }
-                            setSavingId("");
                           }}
                         >
                           Gửi phản hồi
@@ -140,7 +162,7 @@ export default function OwnerReviews() {
             </article>
           ))}
         </div>
-      </SectionCard>
-    </div>
+      </div>
+    </section>
   );
 }

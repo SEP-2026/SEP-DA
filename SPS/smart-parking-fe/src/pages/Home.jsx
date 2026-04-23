@@ -351,6 +351,7 @@ export default function Home({ role = "" }) {
               >
                 <div>
                   <h2 className="parking-lot-name">{lot.parking_name}</h2>
+                  <p className="parking-lot-rating">⭐ {Number(lot.avg_rating || 0).toFixed(1)} ({lot.review_count || 0} đánh giá)</p>
                   <p className="parking-lot-address">{lot.parking_address}</p>
                   {lot.district && <p className="parking-lot-district">{lot.district}</p>}
                 </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import ReviewForm from "../components/ReviewForm";
 import API from "../services/api";
 import { formatDateTimeVN, parseVietnamDate, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import "./BookingHistory.css";
@@ -129,6 +130,7 @@ export default function BookingHistory() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [qrModal, setQrModal] = useState({ isOpen: false, bookingId: null, qrUrl: null, loading: false });
+  const [reviewModal, setReviewModal] = useState({ isOpen: false, booking: null, review: null, loading: false, error: "" });
 
   const initialConflict = location.state?.conflictContext || null;
   const [conflictContext, setConflictContext] = useState(initialConflict);
@@ -315,6 +317,29 @@ export default function BookingHistory() {
 
   const closeQrModal = () => {
     setQrModal({ isOpen: false, bookingId: null, qrUrl: null, loading: false });
+  };
+
+  const openReviewModal = async (booking, mode = "view") => {
+    setReviewModal({ isOpen: true, booking, review: null, loading: mode === "view", error: "" });
+    if (mode !== "view") {
+      return;
+    }
+    try {
+      const res = await API.get(`/reviews/booking/${booking.booking_id}`);
+      setReviewModal({ isOpen: true, booking, review: res.data, loading: false, error: "" });
+    } catch (err) {
+      setReviewModal({
+        isOpen: true,
+        booking,
+        review: null,
+        loading: false,
+        error: err?.response?.data?.detail || "Không tải được đánh giá",
+      });
+    }
+  };
+
+  const closeReviewModal = () => {
+    setReviewModal({ isOpen: false, booking: null, review: null, loading: false, error: "" });
   };
 
   const handleKeepOldBooking = () => {
@@ -602,13 +627,13 @@ export default function BookingHistory() {
                       <span>Xem Bản Đồ</span>
                     </a>
                     {((item.checkin_status || item.status) === "checked_out" || item.status === "completed") ? (
-                      item.has_review ? (
-                        <button type="button" className="btn-qr" onClick={() => navigate("/owner/reviews")}>
-                          <span>Đã đánh giá ⭐</span>
+                      item.is_reviewed ? (
+                        <button type="button" className="btn-qr" onClick={() => openReviewModal(item, "view")}>
+                          <span>Xem đánh giá</span>
                         </button>
                       ) : (
-                        <button type="button" className="btn-qr" onClick={() => navigate("/owner/reviews")}>
-                          <span>Đánh giá bãi đỗ xe ⭐</span>
+                        <button type="button" className="btn-qr" onClick={() => openReviewModal(item, "create")}>
+                          <span>⭐ Đánh giá</span>
                         </button>
                       )
                     ) : null}
@@ -641,6 +666,57 @@ export default function BookingHistory() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {reviewModal.isOpen && (
+        <div className="qr-modal-overlay" onClick={closeReviewModal}>
+          <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="qr-modal-close" onClick={closeReviewModal}>×</button>
+            {reviewModal.loading ? <p>Đang tải đánh giá...</p> : null}
+            {reviewModal.error ? <p className="qr-modal-error">{reviewModal.error}</p> : null}
+
+            {!reviewModal.loading && !reviewModal.review && reviewModal.booking && !reviewModal.booking.is_reviewed ? (
+              <ReviewForm
+                bookingId={reviewModal.booking.booking_id}
+                parkingName={reviewModal.booking.parking?.name}
+                onSkip={closeReviewModal}
+                onSubmit={(result) => {
+                  setReviewModal((prev) => ({
+                    ...prev,
+                    review: {
+                      review_id: result.review_id,
+                      booking_id: result.booking_id,
+                      rating: result.rating,
+                      comment: result.comment,
+                      owner_reply: null,
+                      owner_replied_at: null,
+                      created_at: result.created_at,
+                    },
+                  }));
+                  setBookings((prev) =>
+                    prev.map((item) =>
+                      item.booking_id === result.booking_id ? { ...item, is_reviewed: true, has_review: true } : item,
+                    ),
+                  );
+                }}
+              />
+            ) : null}
+
+            {reviewModal.review ? (
+              <div className="booking-review-result">
+                <h3>✅ Đánh giá của bạn</h3>
+                <p className="owner-review-rating">{"★".repeat(reviewModal.review.rating)}{"☆".repeat(5 - reviewModal.review.rating)} ({reviewModal.review.rating}/5)</p>
+                <p>"{reviewModal.review.comment || "Không có nhận xét."}"</p>
+                <p>Gửi lúc: {fmtDateTime(reviewModal.review.created_at)}</p>
+                <p><strong>Phản hồi từ chủ bãi:</strong></p>
+                {reviewModal.review.owner_reply ? (
+                  <p>💬 "{reviewModal.review.owner_reply}"</p>
+                ) : (
+                  <p>⏳ Chưa có phản hồi từ chủ bãi</p>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import ReviewForm from "../components/ReviewForm";
 import API from "../services/api";
 import CountdownTimer from "../components/CountdownTimer";
 import { formatDateTimeVN } from "../utils/dateTime";
@@ -17,8 +18,10 @@ export default function PaymentSuccess() {
   const [booking, setBooking] = useState(null);
   const [shareNotice, setShareNotice] = useState("");
   const [statusData, setStatusData] = useState(null);
+  const [reviewData, setReviewData] = useState(null);
 
   const numericBookingId = useMemo(() => Number(bookingId), [bookingId]);
+  const currentCheckinStatus = (statusData?.checkin_status || booking?.checkin_status || booking?.booking_status || "").toLowerCase();
 
   useEffect(() => {
     const fetchBooking = async () => {
@@ -60,6 +63,22 @@ export default function PaymentSuccess() {
 
     return () => window.clearInterval(timer);
   }, [numericBookingId, booking, statusData?.checkin_status, booking?.booking_status]);
+
+  useEffect(() => {
+    const canLoadReview = booking?.is_reviewed || statusData?.is_reviewed;
+    if (!canLoadReview || !numericBookingId) {
+      return;
+    }
+    const loadReview = async () => {
+      try {
+        const res = await API.get(`/reviews/booking/${numericBookingId}`);
+        setReviewData(res.data);
+      } catch {
+        setReviewData(null);
+      }
+    };
+    loadReview();
+  }, [booking?.is_reviewed, statusData?.is_reviewed, numericBookingId]);
 
   const qrImageUrl = useMemo(() => {
     if (!booking?.qr_code && !booking?.qr_code_path) {
@@ -158,13 +177,13 @@ export default function PaymentSuccess() {
 
         {booking && !loading && (
           <div className="payment-success-card">
-            {((statusData?.checkin_status || booking.booking_status || "").toLowerCase() === "checked_in") ? (
+            {(currentCheckinStatus === "checked_in") ? (
               <CountdownTimer
                 expectedCheckout={statusData?.checkout_time || booking.checkout_time}
                 pricePerHour={statusData?.price_per_hour || 0}
               />
             ) : null}
-            {((statusData?.checkin_status || booking.booking_status || "").toLowerCase() === "checked_out") ? (
+            {(currentCheckinStatus === "checked_out" || currentCheckinStatus === "completed") ? (
               <p className="payment-success-note">✅ Đã check-out thành công</p>
             ) : null}
             <p><strong>Booking ID:</strong> {booking.booking_id}</p>
@@ -178,7 +197,7 @@ export default function PaymentSuccess() {
             <p><strong>Check-in:</strong> {formatDateTimeVN(booking.checkin_time)}</p>
             <p><strong>Check-out:</strong> {formatDateTimeVN(booking.checkout_time)}</p>
             <p><strong>Số tiền:</strong> {formatMoney(booking.total_amount)}đ</p>
-            {(statusData?.checkin_status || "").toLowerCase() === "checked_out" ? (
+            {(currentCheckinStatus === "checked_out" || currentCheckinStatus === "completed") ? (
               <p><strong>Tổng chi phí thực tế:</strong> {formatMoney(statusData?.total_actual_fee || booking.total_amount)}đ</p>
             ) : null}
 
@@ -208,13 +227,42 @@ export default function PaymentSuccess() {
               <button type="button" className="btn-primary" onClick={() => navigate("/booking", { replace: true })}>
                 Xem chi tiết booking
               </button>
-              {(statusData?.checkin_status || "").toLowerCase() === "checked_out" ? (
-                <button type="button" className="btn-primary" onClick={() => navigate("/owner/reviews")}>
-                  Đánh giá bãi đỗ xe
-                </button>
-              ) : null}
             </div>
             {shareNotice && <p className="payment-success-share-notice">{shareNotice}</p>}
+
+            {(currentCheckinStatus === "checked_out" || currentCheckinStatus === "completed") ? (
+              <div className="payment-review-section">
+                {!reviewData && !(booking?.is_reviewed || statusData?.is_reviewed) ? (
+                  <ReviewForm
+                    bookingId={numericBookingId}
+                    parkingName={booking.parking?.name}
+                    onSkip={() => {}}
+                    onSubmit={(result) => {
+                      setReviewData({
+                        review_id: result.review_id,
+                        booking_id: result.booking_id,
+                        rating: result.rating,
+                        comment: result.comment,
+                        owner_reply: null,
+                        owner_replied_at: null,
+                        created_at: result.created_at,
+                      });
+                      setBooking((prev) => (prev ? { ...prev, is_reviewed: true } : prev));
+                    }}
+                  />
+                ) : null}
+                {reviewData ? (
+                  <div className="booking-review-result">
+                    <h3>✅ Đánh giá của bạn</h3>
+                    <p className="owner-review-rating">{"★".repeat(reviewData.rating)}{"☆".repeat(5 - reviewData.rating)} ({reviewData.rating}/5)</p>
+                    <p>"{reviewData.comment || "Không có nhận xét."}"</p>
+                    <p>Gửi lúc: {formatDateTimeVN(reviewData.created_at)}</p>
+                    <p><strong>Phản hồi từ chủ bãi:</strong></p>
+                    {reviewData.owner_reply ? <p>💬 "{reviewData.owner_reply}"</p> : <p>⏳ Chưa có phản hồi từ chủ bãi</p>}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         )}
       </div>

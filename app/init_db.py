@@ -49,6 +49,10 @@ def migrate_parking_lots_columns():
         alter_statements.append("ADD COLUMN has_roof TINYINT(1) NOT NULL DEFAULT 0")
     if "is_active" not in columns:
         alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
+    if "avg_rating" not in columns:
+        alter_statements.append("ADD COLUMN avg_rating DECIMAL(3,1) NOT NULL DEFAULT 0.0")
+    if "review_count" not in columns:
+        alter_statements.append("ADD COLUMN review_count INT NOT NULL DEFAULT 0")
 
     if alter_statements:
         with engine.begin() as conn:
@@ -377,10 +381,39 @@ def migrate_reviews_columns():
         alter_statements.append("ADD COLUMN owner_reply TEXT NULL")
     if "owner_replied_at" not in columns:
         alter_statements.append("ADD COLUMN owner_replied_at DATETIME NULL")
+    if "booking_id" not in columns:
+        alter_statements.append("ADD COLUMN booking_id INT NULL")
+    if "updated_at" not in columns:
+        alter_statements.append(
+            "ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+        )
 
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE reviews {', '.join(alter_statements)}"))
+
+    if "comment" in columns:
+        _run_ddl_with_retry("ALTER TABLE reviews MODIFY COLUMN comment TEXT NULL")
+    _run_ddl_with_retry("ALTER TABLE reviews MODIFY COLUMN owner_reply TEXT NULL")
+    _run_ddl_with_retry("ALTER TABLE reviews MODIFY COLUMN rating TINYINT NOT NULL")
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE reviews SET booking_id = id WHERE booking_id IS NULL"))
+
+    _run_ddl_with_retry("CREATE UNIQUE INDEX uq_reviews_booking_id ON reviews (booking_id)")
+    _run_ddl_with_retry(
+        """
+        ALTER TABLE reviews
+        ADD CONSTRAINT fk_review_booking FOREIGN KEY (booking_id) REFERENCES bookings(id)
+        """.strip()
+    )
+    _run_ddl_with_retry(
+        """
+        ALTER TABLE reviews
+        ADD CONSTRAINT chk_reviews_rating CHECK (rating BETWEEN 1 AND 5)
+        """.strip()
+    )
+    _run_ddl_with_retry("ALTER TABLE reviews MODIFY COLUMN booking_id INT NOT NULL")
 
 
 def migrate_bookings_columns():
@@ -419,6 +452,8 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN overstay_fee DECIMAL(10,2) NULL DEFAULT 0")
     if "total_actual_fee" not in columns:
         alter_statements.append("ADD COLUMN total_actual_fee DECIMAL(10,2) NULL")
+    if "is_reviewed" not in columns:
+        alter_statements.append("ADD COLUMN is_reviewed TINYINT(1) NOT NULL DEFAULT 0")
 
     if alter_statements:
         _run_ddl_with_retry(f"ALTER TABLE bookings {', '.join(alter_statements)}")
