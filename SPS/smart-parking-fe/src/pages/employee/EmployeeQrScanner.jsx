@@ -36,24 +36,40 @@ export default function EmployeeQrScanner() {
   };
 
   return (
-    <section className="employee-card">
-      <h2>Quét mã QR tại cổng</h2>
-      <p>Dùng chung logic cổng với owner/admin. Bạn có thể dán JSON QR hoặc chỉ nhập mã booking để thao tác nhanh.</p>
+    <section className="employee-card employee-section-shell">
+      <div className="employee-section-headline">
+        <h2>Quét mã QR tại cổng</h2>
+        <span className="employee-chip">Đồng bộ với luồng cổng owner/admin</span>
+      </div>
 
       <div className="employee-action-row">
-        <button type="button" className={`employee-btn${mode === "check-in" ? "" : " employee-btn--ghost"}`} onClick={() => setMode("check-in")}>
+        <button
+          type="button"
+          className={`employee-btn${mode === "check-in" ? "" : " employee-btn--ghost"}`}
+          onClick={() => setMode("check-in")}
+        >
           Chế độ check-in
         </button>
-        <button type="button" className={`employee-btn${mode === "check-out" ? "" : " employee-btn--ghost"}`} onClick={() => setMode("check-out")}>
+        <button
+          type="button"
+          className={`employee-btn${mode === "check-out" ? "" : " employee-btn--ghost"}`}
+          onClick={() => setMode("check-out")}
+        >
           Chế độ check-out
         </button>
       </div>
 
       <div className="employee-form-grid">
-        <div className="employee-action-box">
+        <div className="employee-action-box employee-action-box--strong">
           <p>Dữ liệu QR / mã booking</p>
-          <textarea rows={8} value={qrData} onChange={(event) => setQrData(event.target.value)} placeholder='Ví dụ: {"booking_id": 12} hoặc chỉ nhập 12' />
+          <textarea
+            rows={8}
+            value={qrData}
+            onChange={(event) => setQrData(event.target.value)}
+            placeholder='Ví dụ: {"booking_id": 12} hoặc chỉ nhập 12'
+          />
         </div>
+
         <div className="employee-action-box">
           <p>Phương thức thanh toán khi check-out</p>
           <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={mode !== "check-out"}>
@@ -62,7 +78,11 @@ export default function EmployeeQrScanner() {
             <option value="vnpay">VNPay</option>
             <option value="bank_transfer">Chuyển khoản ngân hàng</option>
           </select>
-          <p className="employee-note">Khi check-in, hệ thống sẽ bỏ qua phương thức thanh toán và dùng luồng cổng mặc định.</p>
+
+          <div className="employee-tip-list">
+            <p className="employee-note">Khi check-in, hệ thống bỏ qua phương thức thanh toán.</p>
+            <p className="employee-note">Khi check-out, nên xác nhận đúng biển số trước khi thao tác.</p>
+          </div>
         </div>
       </div>
 
@@ -73,10 +93,11 @@ export default function EmployeeQrScanner() {
       </div>
 
       {error ? <p className="employee-login-error">{error}</p> : null}
+
       {result ? (
-        <div className="employee-card">
+        <div className="employee-card employee-result-card">
           <h3>{result.message}</h3>
-          <div className="employee-status-row">
+          <div className="employee-status-row employee-status-row--chips">
             <span className="employee-chip">Booking: BK-{result.booking?.booking_id}</span>
             <span className="employee-chip">Trạng thái: {result.booking?.booking_status_label || result.booking?.booking_status}</span>
             <span className="employee-chip">Biển số: {result.booking?.vehicle?.license_plate || "--"}</span>

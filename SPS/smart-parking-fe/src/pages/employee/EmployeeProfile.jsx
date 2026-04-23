@@ -30,22 +30,35 @@ export default function EmployeeProfile() {
 
   return (
     <section className="employee-grid employee-grid--profile">
-      <article className="employee-card">
-        <h2>Hồ sơ tài khoản nhân viên</h2>
-        <p>Tên đăng nhập: {profile?.employee?.username || "--"}</p>
-        <p>Mã owner quản lý: {profile?.employee?.owner_id || "--"}</p>
-        <p>Mã bãi được gán: {profile?.employee?.parking_id || "--"}</p>
-        <p>Trạng thái tài khoản: {profile?.employee?.status || "--"}</p>
+      <article className="employee-card employee-section-shell">
+        <div className="employee-section-headline">
+          <h2>Hồ sơ tài khoản nhân viên</h2>
+          <span className="employee-chip">Quyền hạn: vận hành bãi</span>
+        </div>
+
+        <div className="employee-profile-grid">
+          <p><strong>Tên đăng nhập:</strong> {profile?.employee?.username || "--"}</p>
+          <p><strong>Mã owner quản lý:</strong> {profile?.employee?.owner_id || "--"}</p>
+          <p><strong>Mã bãi được gán:</strong> {profile?.employee?.parking_id || "--"}</p>
+          <p><strong>Trạng thái tài khoản:</strong> {profile?.employee?.status || "--"}</p>
+        </div>
+
         <p className="employee-note">Tài khoản nhân viên chỉ có quyền vận hành tại bãi được phân công, không tự chỉnh sửa thông tin cá nhân.</p>
       </article>
 
-      <article className="employee-card">
-        <h2>Thông tin bãi phụ trách</h2>
-        <p>Tên bãi: {profile?.parking_lot?.parking_name || "--"}</p>
-        <p>Địa chỉ: {profile?.parking_lot?.address || "--"}</p>
-        <p>Tổng chỗ: {profile?.parking_lot?.totalSlots || 0}</p>
-        <p>Đang sử dụng: {profile?.parking_lot?.occupiedSlots || 0}</p>
-        <p>Chỗ trống: {profile?.parking_lot?.emptySlots || 0}</p>
+      <article className="employee-card employee-section-shell">
+        <div className="employee-section-headline">
+          <h2>Thông tin bãi phụ trách</h2>
+          <span className="employee-chip">{STATUS_LABEL[profile?.parking_lot?.status] || "Mở bãi"}</span>
+        </div>
+
+        <div className="employee-profile-grid">
+          <p><strong>Tên bãi:</strong> {profile?.parking_lot?.parking_name || "--"}</p>
+          <p><strong>Địa chỉ:</strong> {profile?.parking_lot?.address || "--"}</p>
+          <p><strong>Tổng chỗ:</strong> {profile?.parking_lot?.totalSlots || 0}</p>
+          <p><strong>Đang sử dụng:</strong> {profile?.parking_lot?.occupiedSlots || 0}</p>
+          <p><strong>Chỗ trống:</strong> {profile?.parking_lot?.emptySlots || 0}</p>
+        </div>
 
         <div className="employee-action-row">
           <select value={statusValue} onChange={(event) => setStatusValue(event.target.value)}>
