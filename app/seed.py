@@ -2,6 +2,7 @@ from datetime import datetime
 
 from app.database import SessionLocal
 from app.models.models import Booking, District, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
+from app.utils.timezone import vn_now
 from werkzeug.security import generate_password_hash
 
 db = SessionLocal()
@@ -71,7 +72,7 @@ def seed_slots():
                 exists.parking_id = lot.id
                 exists.zone = zone
                 exists.level = level
-                exists.updated_at = datetime.utcnow()
+                exists.updated_at = vn_now()
 
     db.commit()
     print("Seeded slots!")

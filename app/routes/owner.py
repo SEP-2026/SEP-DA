@@ -275,7 +275,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
     bookings = (
         db.query(Booking)
         .filter(Booking.parking_id.in_(parking_ids))
-        .order_by(Booking.created_at.desc())
+        .order_by(Booking.id.desc())
         .all()
     )
     payments = (
@@ -334,8 +334,10 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
             "slotCode": _display_slot_code(slot) if slot else "Chưa có",
             "zone": zone,
-            "startTime": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
-            "endTime": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
+            "startTime": isoformat_vn(booking.actual_checkin),
+            "endTime": isoformat_vn(booking.actual_checkout),
+            "bookingStartTime": isoformat_vn(booking.start_time or booking.created_at, fallback_now=True),
+            "bookingEndTime": isoformat_vn(booking.expire_time or booking.created_at, fallback_now=True),
             "price": float(booking.total_amount or 0),
             "status": _owner_booking_status(booking.status),
             "phone": user.phone if user and user.phone else "Chưa có",
@@ -492,7 +494,7 @@ def get_owner_customers(
     bookings = (
         db.query(Booking)
         .filter(Booking.parking_id.in_(parking_ids))
-        .order_by(Booking.created_at.desc())
+        .order_by(Booking.id.desc())
         .all()
     )
     booking_ids = [booking.id for booking in bookings]
@@ -667,7 +669,7 @@ def get_owner_slot_detail(
             Booking.slot_id == slot.id,
             Booking.status.in_(["pending", "booked", "checked_in"]),
         )
-        .order_by(Booking.created_at.desc())
+        .order_by(Booking.id.desc())
         .all()
     )
     booking_statuses = {(item.status or "").lower() for item in active_bookings}

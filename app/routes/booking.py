@@ -1,7 +1,6 @@
 import math
 import re
-import logging
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import unicodedata
 from urllib.parse import quote_plus
@@ -20,6 +19,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
+from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 router = APIRouter()
 
@@ -368,7 +368,7 @@ def _save_booking_qr(content: str, file_path: str) -> None:
 
 
 def _validate_booking_window(checkin_time: datetime, checkout_time: datetime) -> None:
-    now = datetime.utcnow()
+    now = vn_now()
     if checkin_time >= checkout_time:
         raise HTTPException(status_code=400, detail="Thời gian vào phải nhỏ hơn thời gian ra")
     if checkin_time < now:
@@ -376,9 +376,7 @@ def _validate_booking_window(checkin_time: datetime, checkout_time: datetime) ->
 
 
 def _to_utc_naive(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return ensure_vn_local_naive(value)
 
 
 def _normalize_booking_mode(value: str | None) -> str:
@@ -677,12 +675,12 @@ def get_gate_booking_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role != "owner":
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
-
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
 
     parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
@@ -1166,11 +1164,18 @@ def create_booking(
 
 
 @router.post("/check-in")
-def check_in(booking_id: int, db: Session = Depends(get_db)):
+def check_in(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Booking không tồn tại")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
 
     if booking.status == "pending":
         raise HTTPException(status_code=400, detail="Booking chưa được thanh toán")
@@ -1179,7 +1184,7 @@ def check_in(booking_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Booking không hợp lệ")
 
     booking.status = "checked_in"
-    booking.start_time = datetime.utcnow()
+    booking.start_time = vn_now()
     if booking.slot:
         booking.slot.status = "occupied"
 
@@ -1189,16 +1194,23 @@ def check_in(booking_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/check-out")
-def check_out(booking_id: int, db: Session = Depends(get_db)):
+def check_out(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
 
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
+
     if booking.status != "checked_in":
         raise HTTPException(status_code=400, detail="Chưa check-in")
 
-    actual_checkout = datetime.utcnow()
+    actual_checkout = vn_now()
     overtime_fee = 0.0
 
     if booking.expire_time and actual_checkout > booking.expire_time:

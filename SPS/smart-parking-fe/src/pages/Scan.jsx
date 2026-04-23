@@ -1,148 +1,199 @@
-import { useEffect, useMemo, useState } from "react";
-import API from "../services/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import ActionButtons from "../features/gate/ActionButtons";
+import BookingInfoPanel from "../features/gate/BookingInfoPanel";
+import PaymentPanel from "../features/gate/PaymentPanel";
+import ScanZone from "../features/gate/ScanZone";
+import StatusBanner from "../features/gate/StatusBanner";
+import { checkInGate, checkOutGate, getGateBooking, resolveGateScan } from "../features/gate/gateService";
+import { formatCurrency } from "../features/gate/gateFormatters";
+import { inferQrPreview, parseManualBookingId } from "../features/gate/scanParser";
+import { getBannerTone } from "../features/gate/statusLabel";
 import "./Scan.css";
 
-function formatDateTime(value) {
-  if (!value) {
-    return "Chưa có";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString("vi-VN");
-}
-
-function parseScanValue(rawValue) {
-  const trimmed = rawValue.trim();
-
-  if (!trimmed) {
-    return { bookingId: null, payload: null, error: "" };
-  }
-
-  if (/^\d+$/.test(trimmed)) {
-    return {
-      bookingId: Number(trimmed),
-      payload: null,
-      error: "",
-    };
-  }
-
-  try {
-    const payload = JSON.parse(trimmed);
-    const bookingId = Number(payload?.booking_id);
-
-    if (!Number.isInteger(bookingId) || bookingId <= 0) {
-      return {
-        bookingId: null,
-        payload: null,
-        error: "QR hợp lệ nhưng không có booking_id khả dụng.",
-      };
-    }
-
-    return {
-      bookingId,
-      payload,
-      error: "",
-    };
-  } catch {
-    return {
-      bookingId: null,
-      payload: null,
-      error: "Không đọc được dữ liệu. Hãy quét QR để lấy nội dung JSON hoặc nhập Booking ID.",
-    };
-  }
+function buildBannerFromError(error, fallbackTitle) {
+  return {
+    title: fallbackTitle,
+    message: error?.response?.data?.detail || "Không thể kết nối tới hệ thống cổng.",
+  };
 }
 
 export default function Scan() {
+  const scanInputRef = useRef(null);
+  const [gateId, setGateId] = useState("GATE-A1");
   const [scanValue, setScanValue] = useState("");
-  const [submitting, setSubmitting] = useState("");
-  const [feedback, setFeedback] = useState(null);
-  const [bookingDetail, setBookingDetail] = useState(null);
-  const [detailError, setDetailError] = useState("");
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [manualBookingId, setManualBookingId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [uiState, setUiState] = useState("idle");
+  const [banner, setBanner] = useState({
+    title: "Sẵn sàng xử lý",
+    message: "Quét QR để tự động xử lý hoặc nhập mã booking để xem thông tin rồi thao tác thủ công.",
+  });
+  const [booking, setBooking] = useState(null);
 
-  const parsedScan = useMemo(() => parseScanValue(scanValue), [scanValue]);
+  const qrPreview = useMemo(() => inferQrPreview(scanValue), [scanValue]);
+  const manualPreview = useMemo(() => parseManualBookingId(manualBookingId), [manualBookingId]);
 
   useEffect(() => {
-    const bookingId = parsedScan.bookingId;
+    scanInputRef.current?.focus();
+  }, []);
 
-    if (!bookingId) {
-      setBookingDetail(null);
-      setDetailError("");
-      setLoadingDetail(false);
+  const applyBookingPayload = (payload, nextBanner, nextUiState = "booking_loaded") => {
+    setBooking(payload?.booking || payload || null);
+    setBanner(nextBanner);
+    setUiState(nextUiState);
+  };
+
+  const handleResolveManual = async () => {
+    if (!gateId.trim()) {
+      setUiState("error");
+      setBanner({ title: "Thiếu mã cổng", message: "Vui lòng nhập mã cổng trước khi xem thông tin booking." });
+      return;
+    }
+    if (!manualPreview.bookingId) {
+      setUiState("error");
+      setBanner({ title: "Mã booking không hợp lệ", message: manualPreview.error || "Vui lòng nhập mã booking hợp lệ." });
       return;
     }
 
-    let active = true;
-    setLoadingDetail(true);
-    setDetailError("");
-
-    API.get(`/booking/gate/${bookingId}`)
-      .then((response) => {
-        if (!active) {
-          return;
-        }
-        setBookingDetail(response.data);
-      })
-      .catch((err) => {
-        if (!active) {
-          return;
-        }
-        setBookingDetail(null);
-        setDetailError(err?.response?.data?.detail || "Không tải được thông tin booking.");
-      })
-      .finally(() => {
-        if (active) {
-          setLoadingDetail(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [parsedScan.bookingId]);
-
-  const runGateAction = async (action) => {
-    if (!parsedScan.bookingId) {
-      setFeedback({
-        type: "error",
-        title: "Thiếu mã booking",
-        message: parsedScan.error || "Vui lòng quét QR hoặc nhập Booking ID trước khi thao tác.",
-      });
-      return;
-    }
-
-    setSubmitting(action);
-    setFeedback(null);
+    setBanner({ title: "Đang tải dữ liệu...", message: "Hệ thống đang lấy thông tin booking từ máy chủ." });
+    setUiState("processing");
 
     try {
-      const endpoint = action === "checkin" ? "/check-in" : "/check-out";
-      const response = await API.post(endpoint, null, {
-        params: { booking_id: parsedScan.bookingId },
+      const response = await getGateBooking(manualPreview.bookingId);
+      applyBookingPayload(
+        response,
+        {
+          title: "Đã tải thông tin booking",
+          message: "Bạn có thể kiểm tra thông tin và chọn thao tác cho xe vào hoặc ra bãi.",
+        },
+      );
+    } catch (error) {
+      setBooking(null);
+      setUiState("error");
+      setBanner(buildBannerFromError(error, "Không tìm thấy booking"));
+    }
+  };
+
+  const handleSubmitQr = async () => {
+    if (!gateId.trim()) {
+      setUiState("error");
+      setBanner({ title: "Thiếu mã cổng", message: "Vui lòng nhập mã cổng trước khi quét." });
+      return;
+    }
+    if (!scanValue.trim()) {
+      setUiState("error");
+      setBanner({ title: "Chưa có dữ liệu quét", message: "Hãy quét QR hoặc nhập payload QR trước khi xử lý." });
+      return;
+    }
+
+    setBanner({ title: "Đang quét...", message: "Đã nhận dữ liệu từ scanner, đang resolve booking." });
+    setUiState("scanning");
+
+    try {
+      setUiState("processing");
+      const response = await resolveGateScan({
+        raw_scan_text: scanValue,
+        source_type: "qr_scan",
+        gate_id: gateId.trim(),
       });
 
-      setFeedback({
-        type: "success",
-        title: action === "checkin" ? "Xe đã vào bãi" : "Xe đã ra bãi",
-        message:
-          action === "checkin"
-            ? response.data.message || "Check-in thành công."
-            : `${response.data.message || "Check-out thành công."}${
-                response.data.total_paid ? ` Tổng thu: ${Number(response.data.total_paid).toLocaleString("vi-VN")}đ.` : ""
-              }`,
-        meta: response.data,
+      const resolvedBooking = response?.booking || response?.auto_action_result;
+      const autoAction = response?.auto_action;
+
+      if (autoAction === "check_in") {
+        applyBookingPayload(
+          { booking: resolvedBooking },
+          { title: "Đã check-in", message: "QR hợp lệ và xe đã được ghi nhận vào bãi." },
+          "success",
+        );
+      } else if (autoAction === "check_out") {
+        applyBookingPayload(
+          { booking: resolvedBooking },
+          {
+            title: "Đã check-out",
+            message: `QR hợp lệ và xe đã ra bãi. Tổng thu ${formatCurrency(resolvedBooking?.pricing_preview?.total_charge)}.`,
+          },
+          "success",
+        );
+      } else {
+        applyBookingPayload(
+          { booking: resolvedBooking },
+          {
+            title: response?.cooldown?.active ? "Đang trong cooldown" : "Đã resolve QR",
+            message: response?.cooldown?.message || response?.message || "QR hợp lệ nhưng không có auto action hợp lệ.",
+          },
+          response?.cooldown?.active ? "booking_loaded" : "booking_loaded",
+        );
+      }
+    } catch (error) {
+      setBooking(null);
+      setUiState("error");
+      setBanner(buildBannerFromError(error, "Không đọc được QR"));
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!booking?.booking_id) {
+      setUiState("error");
+      setBanner({ title: "Chưa có booking", message: "Hãy xem thông tin booking trước khi thao tác cho xe vào bãi." });
+      return;
+    }
+
+    setUiState("action_submitting");
+    setBanner({ title: "Đang xử lý...", message: "Đang thực hiện check-in tại cổng." });
+
+    try {
+      const response = await checkInGate({
+        booking_id: booking.booking_id,
+        gate_id: gateId.trim(),
+        source_type: "manual_id",
       });
-    } catch (err) {
-      setFeedback({
-        type: "error",
-        title: action === "checkin" ? "Không thể cho xe vào" : "Không thể cho xe ra",
-        message: err?.response?.data?.detail || "Thao tác thất bại.",
+      applyBookingPayload(
+        response,
+        {
+          title: "Đã check-in",
+          message: "Xe đã được cho vào bãi và trạng thái booking đã được cập nhật ngay.",
+        },
+        "success",
+      );
+    } catch (error) {
+      setUiState("error");
+      setBanner(buildBannerFromError(error, "Không thể cho xe vào bãi"));
+    }
+  };
+
+  const handleCheckOut = async () => {
+    if (!booking?.booking_id) {
+      setUiState("error");
+      setBanner({ title: "Chưa có booking", message: "Hãy xem thông tin booking trước khi thao tác cho xe ra bãi." });
+      return;
+    }
+
+    setUiState("action_submitting");
+    setBanner({ title: "Đang xử lý...", message: "Đang thực hiện check-out và tính phí thực tế." });
+
+    try {
+      const response = await checkOutGate({
+        booking_id: booking.booking_id,
+        gate_id: gateId.trim(),
+        source_type: "manual_id",
+        payment_method: paymentMethod,
       });
-    } finally {
-      setSubmitting("");
+      applyBookingPayload(
+        response,
+        {
+          title: "Đã check-out",
+          message:
+            paymentMethod === "vnpay"
+              ? `Xe đã ra bãi. QR VNPay đã được tạo cho số tiền ${formatCurrency(response?.booking?.pricing_preview?.remaining_due)}.`
+              : `Xe đã ra bãi. Đã thu ${formatCurrency(response?.booking?.pricing_preview?.total_charge)} bằng tiền mặt.`,
+        },
+        "success",
+      );
+    } catch (error) {
+      setUiState("error");
+      setBanner(buildBannerFromError(error, "Không thể cho xe ra bãi"));
     }
   };
 
@@ -154,144 +205,42 @@ export default function Scan() {
             <p className="scan-eyebrow">SCAN GATE</p>
             <h1 className="page-title scan-title">Cổng quét QR vào / ra bãi</h1>
             <p className="scan-subtitle">
-              Dùng cho nhân viên cổng hoặc chủ bãi. Hệ thống nhận nội dung QR booking hoặc Booking ID để xử lý check-in, check-out.
+              Quét QR sẽ tự động nhận diện và xử lý nếu hợp lệ. Nhập mã booking thủ công chỉ để xem thông tin rồi nhân viên tự chọn thao tác phù hợp.
             </p>
           </div>
 
           <div className="scan-hero-badge">
-            <strong>Nhận diện</strong>
-            <span>QR booking</span>
-            <span>Booking ID</span>
+            <strong>Trạng thái cổng</strong>
+            <span>{uiState === "idle" ? "Sẵn sàng" : uiState}</span>
+            <span>{booking?.cooldown?.active ? "Đang chờ cooldown" : "Có thể quét tiếp"}</span>
           </div>
         </div>
 
         <div className="scan-grid">
-          <section className="scan-panel scan-panel--primary">
-            <div className="scan-frame">
-              <div className="scan-frame-corners" />
-              <div className="scan-frame-content">
-                <strong>Vùng quét QR</strong>
-                <span>
-                  Dùng máy quét hoặc camera để đổ nội dung vào ô bên dưới. Nếu thiết bị chỉ trả về `booking_id`, hệ thống vẫn xử lý được.
-                </span>
-              </div>
-            </div>
-
-            <label className="scan-field">
-              <span>Nội dung quét</span>
-              <textarea
-                className="scan-input scan-textarea"
-                rows={5}
-                value={scanValue}
-                onChange={(event) => setScanValue(event.target.value)}
-                placeholder='Ví dụ: {"qr_type":"parking_access","booking_id":12,...} hoặc chỉ nhập 12'
-              />
-            </label>
-
-            <div className="scan-actions">
-              <button
-                type="button"
-                className="btn-checkin"
-                onClick={() => runGateAction("checkin")}
-                disabled={!parsedScan.bookingId || submitting !== ""}
-              >
-                {submitting === "checkin" ? "Đang xử lý..." : "Cho xe vào bãi"}
-              </button>
-              <button
-                type="button"
-                className="btn-checkout"
-                onClick={() => runGateAction("checkout")}
-                disabled={!parsedScan.bookingId || submitting !== ""}
-              >
-                {submitting === "checkout" ? "Đang xử lý..." : "Cho xe ra bãi"}
-              </button>
-            </div>
-
-            <p className="scan-hint">
-              Khi QR hợp lệ, hệ thống sẽ lấy `booking_id` từ payload. Nếu quét không ra JSON, bạn có thể nhập trực tiếp Booking ID để xử lý thủ công.
-            </p>
-          </section>
+          <ScanZone
+            scanValue={scanValue}
+            setScanValue={setScanValue}
+            onSubmitQr={handleSubmitQr}
+            manualBookingId={manualBookingId}
+            setManualBookingId={setManualBookingId}
+            onResolveManual={handleResolveManual}
+            gateId={gateId}
+            setGateId={setGateId}
+            uiState={uiState}
+            qrPreviewError={qrPreview.error}
+            inputRef={scanInputRef}
+          />
 
           <section className="scan-panel">
-            <div className="scan-summary">
-              <h2>Thông tin quét</h2>
-              <div className="scan-summary-list">
-                <div>
-                  <span>Booking ID</span>
-                  <strong>{bookingDetail?.booking_id || parsedScan.bookingId || "--"}</strong>
-                </div>
-                <div>
-                  <span>Loại QR</span>
-                  <strong>{parsedScan.payload?.qr_type || "--"}</strong>
-                </div>
-                <div>
-                  <span>Bãi đỗ</span>
-                  <strong>{bookingDetail?.parking?.name || parsedScan.payload?.parking_id || "--"}</strong>
-                </div>
-                <div>
-                  <span>Vị trí</span>
-                  <strong>{bookingDetail?.slot?.code || parsedScan.payload?.slot_id || "--"}</strong>
-                </div>
-                <div>
-                  <span>Biển số</span>
-                  <strong>{bookingDetail?.vehicle?.license_plate || parsedScan.payload?.license_plate || "--"}</strong>
-                </div>
-                <div>
-                  <span>Khung giờ</span>
-                  <strong>
-                    {bookingDetail
-                      ? `${formatDateTime(bookingDetail.checkin_time)} - ${formatDateTime(bookingDetail.checkout_time)}`
-                      : parsedScan.payload
-                        ? `${formatDateTime(parsedScan.payload.checkin_time)} - ${formatDateTime(parsedScan.payload.checkout_time)}`
-                        : "--"}
-                  </strong>
-                </div>
-                <div>
-                  <span>Trạng thái</span>
-                  <strong>{bookingDetail?.booking_status || "--"}</strong>
-                </div>
-                <div>
-                  <span>Chủ xe</span>
-                  <strong>{bookingDetail?.vehicle?.owner_name || "--"}</strong>
-                </div>
-              </div>
-            </div>
-
-            {loadingDetail ? (
-              <div className="scan-feedback scan-feedback--neutral">
-                <strong>Đang tải dữ liệu booking</strong>
-                <p>Hệ thống đang lấy thông tin thật từ backend để đối chiếu tại cổng.</p>
-              </div>
-            ) : null}
-
-            {detailError ? (
-              <div className="scan-feedback scan-feedback--error">
-                <strong>Không lấy được thông tin booking</strong>
-                <p>{detailError}</p>
-              </div>
-            ) : null}
-
-            {parsedScan.error ? (
-              <div className="scan-feedback scan-feedback--error">
-                <strong>Dữ liệu chưa hợp lệ</strong>
-                <p>{parsedScan.error}</p>
-              </div>
-            ) : null}
-
-            {feedback ? (
-              <div className={`scan-feedback scan-feedback--${feedback.type}`}>
-                <strong>{feedback.title}</strong>
-                <p>{feedback.message}</p>
-                {feedback.meta?.overtime_fee ? (
-                  <p>Phụ thu quá giờ: {Number(feedback.meta.overtime_fee).toLocaleString("vi-VN")}đ</p>
-                ) : null}
-              </div>
-            ) : (
-              <div className="scan-feedback scan-feedback--neutral">
-                <strong>Sẵn sàng xử lý</strong>
-                <p>Quét mã của khách tại cổng để kiểm tra và thao tác nhanh. Màn này dùng cho vận hành cổng, không phải form nhập booking thủ công đơn giản.</p>
-              </div>
-            )}
+            <BookingInfoPanel booking={booking || { input_type: qrPreview.payload ? "qr_json" : null }} />
+            <ActionButtons booking={booking} uiState={uiState} onCheckIn={handleCheckIn} onCheckOut={handleCheckOut} />
+            <PaymentPanel booking={booking} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} />
+            <StatusBanner
+              tone={getBannerTone(uiState, booking)}
+              title={banner.title}
+              message={banner.message}
+              extra={booking?.cooldown?.active ? booking.cooldown.message : booking?.cancel_reason}
+            />
           </section>
         </div>
       </div>

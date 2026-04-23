@@ -1,34 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import API, { getAuth, saveAuth } from "../services/api";
+import { formatDateOnlyVN, toDateInputValue, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import "./Booking.css";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 const GOOGLE_MAP_SCRIPT_ID = "google-maps-script";
 
-const formatDatetimeLocal = (date) => {
-  const offsetMinutes = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offsetMinutes * 60000);
-  return localDate.toISOString().slice(0, 16);
-};
-
-const formatDateLocal = (date) => {
-  const offsetMinutes = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offsetMinutes * 60000);
-  return localDate.toISOString().slice(0, 10);
-};
-
 const formatDisplayDate = (date) => {
-  if (!date || Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    weekday: "long",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
+  return formatDateOnlyVN(date, "");
 };
 
 const parseDateValue = (value) => {
@@ -204,10 +184,10 @@ const buildDefaultBookingForm = (profile = {}) => {
     seats: "4 chỗ",
     brand: "",
     bookingMode: "hourly",
-    checkinTime: formatDatetimeLocal(new Date(now + 60 * 60 * 1000)),
-    checkoutTime: formatDatetimeLocal(new Date(now + 2 * 60 * 60 * 1000)),
-    startDate: formatDateLocal(startDate),
-    endDate: formatDateLocal(endDate),
+    checkinTime: toDatetimeLocalValue(new Date(now + 60 * 60 * 1000)),
+    checkoutTime: toDatetimeLocalValue(new Date(now + 2 * 60 * 60 * 1000)),
+    startDate: toDateInputValue(startDate),
+    endDate: toDateInputValue(endDate),
     monthCount: 1,
   };
 };
@@ -529,14 +509,14 @@ export default function Booking() {
       const checkinDate = new Date(prev.checkinTime);
       const checkoutDate = new Date(prev.checkoutTime);
       const safeCheckinTime = Number.isNaN(checkinDate.getTime())
-        ? formatDatetimeLocal(new Date(now.getTime() + 60 * 60 * 1000))
+        ? toDatetimeLocalValue(new Date(now.getTime() + 60 * 60 * 1000))
         : prev.checkinTime;
       const safeCheckoutTime = Number.isNaN(checkoutDate.getTime()) || checkoutDate <= checkinDate
-        ? formatDatetimeLocal(afterTwoHours)
+        ? toDatetimeLocalValue(afterTwoHours)
         : prev.checkoutTime;
 
-      const startDate = prev.startDate || formatDateLocal(nextDay);
-      const endDate = prev.endDate || formatDateLocal(new Date(nextDay.getTime() + 24 * 60 * 60 * 1000));
+      const startDate = prev.startDate || toDateInputValue(nextDay);
+      const endDate = prev.endDate || toDateInputValue(new Date(nextDay.getTime() + 24 * 60 * 60 * 1000));
 
       return {
         ...prev,
@@ -605,8 +585,8 @@ export default function Booking() {
         vehicle_color: bookingForm.vehicleColor.trim() || null,
         booking_mode: bookingWindow.bookingMode,
         month_count: bookingWindow.bookingMode === "monthly" ? bookingWindow.monthCount : null,
-        checkin_time: bookingWindow.checkinDate.toISOString(),
-        checkout_time: bookingWindow.checkoutDate.toISOString(),
+        checkin_time: toVietnamIsoString(bookingWindow.checkinDate),
+        checkout_time: toVietnamIsoString(bookingWindow.checkoutDate),
       };
       const res = await API.post("/booking/create", pendingCreatePayload);
       navigate(`/payment/${res.data.booking_id}`, {
@@ -634,14 +614,14 @@ export default function Booking() {
                 vehicle_color: bookingForm.vehicleColor.trim() || null,
                 booking_mode: bookingWindow.bookingMode,
                 month_count: bookingWindow.bookingMode === "monthly" ? bookingWindow.monthCount : null,
-                checkin_time: bookingWindow.checkinDate.toISOString(),
-                checkout_time: bookingWindow.checkoutDate.toISOString(),
+                checkin_time: toVietnamIsoString(bookingWindow.checkinDate),
+                checkout_time: toVietnamIsoString(bookingWindow.checkoutDate),
               },
               requested_booking_view: {
                 parking_name: selectedLot?.name,
                 slot_code: availableSlots.find((slot) => String(slot.id) === String(selectedSlotId))?.code || null,
-                checkin_time: bookingWindow.checkinDate.toISOString(),
-                checkout_time: bookingWindow.checkoutDate.toISOString(),
+                checkin_time: toVietnamIsoString(bookingWindow.checkinDate),
+                checkout_time: toVietnamIsoString(bookingWindow.checkoutDate),
                 estimated_total_amount: estimatedCharge.amount,
               },
             },

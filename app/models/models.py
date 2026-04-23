@@ -94,6 +94,10 @@ class Booking(Base):
     qr_code = Column(String(255))
     qr_code_path = Column(String(255), nullable=True)
     qr_generated_at = Column(DateTime, nullable=True)
+    last_gate_action = Column(String(20), nullable=True)
+    last_gate_action_at = Column(DateTime, nullable=True)
+    qr_token_expires_at = Column(DateTime, nullable=True)
+    cancel_reason = Column(String(255), nullable=True)
 
     user = relationship("User")
     slot = relationship("ParkingSlot")
@@ -109,6 +113,16 @@ class Transaction(Base):
 
     amount = Column(Float)
     payment_status = Column(String(50), default="pending")
+    user_id = Column(Integer, nullable=True)
+    parking_id = Column(Integer, nullable=True)
+    vehicle_id = Column(Integer, nullable=True)
+    gate_id = Column(String(100), nullable=True)
+    action_type = Column(String(20), nullable=True)
+    source_type = Column(String(20), nullable=True)
+    result = Column(String(20), nullable=True)
+    note = Column(String(255), nullable=True)
+    image_url = Column(String(500), nullable=True)
+    license_plate = Column(String(30), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -127,6 +141,8 @@ class Payment(Base):
     vnpay_url = Column(String(500), nullable=True)
     qr_code = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deposit_amount = Column(Float, default=0)
+    remaining_amount = Column(Float, default=0)
 
 
 class OwnerParking(Base):

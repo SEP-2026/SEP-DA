@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import API from "../services/api";
 import { OwnerIcon } from "./OwnerIcons";
 import { OWNER_NAV_ITEMS, OWNER_ROUTE_META } from "./ownerData";
+import { parseVietnamDate } from "../utils/dateTime";
 import "./owner.css";
 
 const EMPTY_OWNER_DATA = {
@@ -33,11 +34,11 @@ function isTodayIso(value) {
   if (!value) {
     return false;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseVietnamDate(value);
+  if (!date) {
     return false;
   }
-  const now = new Date();
+  const now = parseVietnamDate(new Date());
   return date.getFullYear() === now.getFullYear()
     && date.getMonth() === now.getMonth()
     && date.getDate() === now.getDate();

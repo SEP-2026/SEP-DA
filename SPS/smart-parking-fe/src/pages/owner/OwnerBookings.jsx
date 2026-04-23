@@ -39,6 +39,7 @@ export default function OwnerBookings() {
                 <th>Biển số</th>
                 <th>Thời gian vào</th>
                 <th>Thời gian ra</th>
+                <th>Giờ booking</th>
                 <th>Giá tiền</th>
                 <th>Trạng thái</th>
                 <th>Hành động</th>
@@ -47,7 +48,7 @@ export default function OwnerBookings() {
             <tbody>
               {!isSyncing && filteredBookings.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="owner-empty-cell">Chưa có booking nào khớp bộ lọc hiện tại.</td>
+                  <td colSpan={10} className="owner-empty-cell">Chưa có booking nào khớp bộ lọc hiện tại.</td>
                 </tr>
               ) : null}
               {filteredBookings.map((booking) => (
@@ -58,6 +59,11 @@ export default function OwnerBookings() {
                   <td>{booking.plate}</td>
                   <td>{formatDateTime(booking.startTime)}</td>
                   <td>{formatDateTime(booking.endTime)}</td>
+                  <td>
+                    {formatDateTime(booking.bookingStartTime)}
+                    <br />
+                    {formatDateTime(booking.bookingEndTime)}
+                  </td>
                   <td>{formatCurrency(booking.price)}</td>
                   <td><StatusBadge status={booking.status} /></td>
                   <td>
@@ -95,8 +101,10 @@ export default function OwnerBookings() {
               <div><span>Số điện thoại</span><strong>{selectedBooking.phone}</strong></div>
               <div><span>Biển số</span><strong>{selectedBooking.plate}</strong></div>
               <div><span>Chỗ đỗ</span><strong>{selectedBooking.slotCode} • {selectedBooking.zone}</strong></div>
-              <div><span>Giờ vào</span><strong>{formatDateTime(selectedBooking.startTime)}</strong></div>
-              <div><span>Giờ ra</span><strong>{formatDateTime(selectedBooking.endTime)}</strong></div>
+              <div><span>Giờ vào thực tế</span><strong>{formatDateTime(selectedBooking.startTime)}</strong></div>
+              <div><span>Giờ ra thực tế</span><strong>{formatDateTime(selectedBooking.endTime)}</strong></div>
+              <div><span>Giờ booking</span><strong>{formatDateTime(selectedBooking.bookingStartTime)}</strong></div>
+              <div><span>Giờ kết thúc booking</span><strong>{formatDateTime(selectedBooking.bookingEndTime)}</strong></div>
               <div><span>Giá tiền</span><strong>{formatCurrency(selectedBooking.price)}</strong></div>
               <div><span>Trạng thái</span><strong><StatusBadge status={selectedBooking.status} /></strong></div>
             </div>
