@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -6,7 +6,16 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.models.models import Booking, EmployeeAccount, EmployeeActivity, OwnerParking, ParkingLot, ParkingOperationalState, ParkingSlot, User
+from app.models.models import (
+    Booking,
+    EmployeeAccount,
+    EmployeeActivity,
+    OwnerParking,
+    ParkingLot,
+    ParkingOperationalState,
+    ParkingSlot,
+    User,
+)
 from app.routes.auth import create_access_token_for_subject
 from app.routes.gate import _execute_check_in, _execute_check_out, _get_payment, _parse_scan_payload
 from app.security.password_policy import ensure_strong_password
@@ -25,7 +34,7 @@ def _get_owner_assignment(owner_id: int, parking_id: int, db: Session) -> OwnerP
 def _get_employee_parking(employee: EmployeeAccount, db: Session) -> ParkingLot:
     parking_lot = db.query(ParkingLot).filter(ParkingLot.id == employee.parking_id, ParkingLot.is_active == 1).first()
     if not parking_lot:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y bÃ£i Ä‘Æ°á»£c phÃ¢n cÃ´ng")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bãi được phân công")
     return parking_lot
 
 
@@ -115,15 +124,15 @@ def _log_activity(
 
 def create_employee_for_owner(owner: User, username: str, password: str, parking_id: int, db: Session) -> dict:
     if owner.role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chá»‰ owner má»›i táº¡o Ä‘Æ°á»£c employee")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner mới tạo được employee")
     if _get_owner_assignment(owner.id, parking_id, db) is None:
-        raise HTTPException(status_code=403, detail="Owner khÃ´ng quáº£n lÃ½ bÃ£i nÃ y")
+        raise HTTPException(status_code=403, detail="Owner không quản lý bãi này")
 
     ensure_strong_password(password)
     normalized_username = username.strip().lower()
     existing = db.query(EmployeeAccount).filter(EmployeeAccount.username == normalized_username).first()
     if existing:
-        raise HTTPException(status_code=409, detail="Username employee Ä‘Ã£ tá»“n táº¡i")
+        raise HTTPException(status_code=409, detail="Username employee đã tồn tại")
 
     employee = EmployeeAccount(
         username=normalized_username,
@@ -138,7 +147,7 @@ def create_employee_for_owner(owner: User, username: str, password: str, parking
     db.flush()
 
     _get_operational_state(parking_id, db)
-    _log_activity(employee, parking_id, "employee_created", f"Owner #{owner.id} táº¡o employee {normalized_username}", db)
+    _log_activity(employee, parking_id, "employee_created", f"Owner #{owner.id} tạo employee {normalized_username}", db)
     db.commit()
     db.refresh(employee)
     return _serialize_employee(employee)
@@ -152,9 +161,9 @@ def employee_login(username: str, password: str, db: Session) -> dict:
         .first()
     )
     if not employee or employee.status != "active":
-        raise HTTPException(status_code=401, detail="Sai username hoáº·c máº­t kháº©u")
-    if not check_password_hash(employee.password_hash, password):
-        raise HTTPException(status_code=401, detail="Sai username hoáº·c máº­t kháº©u")
+        raise HTTPException(status_code=401, detail="Sai username hoặc mật khẩu")
+    if not employee.password_hash or not check_password_hash(employee.password_hash, password):
+        raise HTTPException(status_code=401, detail="Sai username hoặc mật khẩu")
 
     token, expires_at, _ = create_access_token_for_subject(
         subject=f"employee:{employee.id}",
@@ -162,7 +171,7 @@ def employee_login(username: str, password: str, db: Session) -> dict:
         identity=employee.username,
     )
     return {
-        "message": "ÄÄƒng nháº­p employee thÃ nh cÃ´ng",
+        "message": "Đăng nhập employee thành công",
         "token": token,
         "expires_in": int((expires_at - datetime.now(expires_at.tzinfo)).total_seconds()),
         "user": _serialize_employee(employee),
@@ -218,8 +227,19 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
 def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
     today = datetime.now(APP_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     month_start = today.replace(day=1)
+    week_start = today - timedelta(days=6)
     revenue_today = 0.0
     revenue_month = 0.0
+    total_paid_bookings = 0
+
+    revenue_by_day = {}
+    for day_offset in range(7):
+        current_day = week_start + timedelta(days=day_offset)
+        revenue_by_day[current_day.date()] = {
+            "label": current_day.strftime("%d/%m"),
+            "amount": 0.0,
+        }
+
     rows = db.execute(
         text(
             """
@@ -234,16 +254,77 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
         ),
         {"parking_id": employee.parking_id},
     ).mappings().all()
+
     for row in rows:
         paid_at = row["paid_time"]
         amount = float(row["total_amount"] or 0)
-        if paid_at and paid_at >= month_start:
-            revenue_month += amount
-            if paid_at >= today:
-                revenue_today += amount
+
+        if paid_at:
+            paid_date = paid_at.date()
+            if paid_date in revenue_by_day:
+                revenue_by_day[paid_date]["amount"] += amount
+
+            if paid_at >= month_start:
+                revenue_month += amount
+                if paid_at >= today:
+                    revenue_today += amount
+
+        total_paid_bookings += 1
+
+    activity_rows = db.execute(
+        text(
+            """
+            SELECT action, created_at
+            FROM employee_activities
+            WHERE parking_id = :parking_id
+              AND action IN ('check_in', 'check_out')
+              AND created_at >= :today_start
+              AND created_at < :tomorrow_start
+            ORDER BY created_at ASC
+            """
+        ),
+        {
+            "parking_id": employee.parking_id,
+            "today_start": today,
+            "tomorrow_start": today + timedelta(days=1),
+        },
+    ).mappings().all()
+
+    traffic_by_hour = {}
+    for hour in range(6, 23, 2):
+        traffic_by_hour[hour] = {
+            "label": f"{hour:02d}:00",
+            "check_ins": 0,
+            "check_outs": 0,
+        }
+
+    for row in activity_rows:
+        created_at = row["created_at"]
+        if not created_at:
+            continue
+        base_hour = int(created_at.hour // 2) * 2
+        base_hour = min(22, max(6, base_hour))
+        bucket = traffic_by_hour.get(base_hour)
+        if not bucket:
+            continue
+        if row["action"] == "check_in":
+            bucket["check_ins"] += 1
+        elif row["action"] == "check_out":
+            bucket["check_outs"] += 1
+
+    total_slots, occupied_slots, _ = _compute_slot_metrics(employee.parking_id, db)
+    occupancy_ratio = round((occupied_slots / total_slots) * 100, 2) if total_slots > 0 else 0
+
     return {
         "revenueToday": round(revenue_today, 2),
         "revenueMonth": round(revenue_month, 2),
+        "revenueByDay": [
+            {"label": item["label"], "amount": round(item["amount"], 2)}
+            for item in revenue_by_day.values()
+        ],
+        "trafficByHour": list(traffic_by_hour.values()),
+        "occupancyRatio": occupancy_ratio,
+        "totalPaidBookings": int(total_paid_bookings),
     }
 
 
@@ -252,7 +333,7 @@ def update_employee_parking_status(employee: EmployeeAccount, status_value: str,
     state = _get_operational_state(employee.parking_id, db)
     state.status = status_value
     state.updated_at = datetime.utcnow()
-    _log_activity(employee, employee.parking_id, "parking_status_updated", f"Cáº­p nháº­t tráº¡ng thÃ¡i bÃ£i sang {status_value}", db)
+    _log_activity(employee, employee.parking_id, "parking_status_updated", f"Cập nhật trạng thái bãi sang {status_value}", db)
     db.commit()
     return get_employee_dashboard(employee, db)
 
@@ -261,7 +342,7 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_in(
         booking=booking,
@@ -281,7 +362,7 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
     )
     db.commit()
     return {
-        "message": "Employee check-in thÃ nh cÃ´ng",
+        "message": "Employee check-in thành công",
         "booking": detail,
         "payment_preview": detail.get("pricing_preview"),
     }
@@ -291,7 +372,7 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_out(
         booking=booking,
@@ -314,7 +395,7 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
     )
     db.commit()
     return {
-        "message": "Employee check-out thÃ nh cÃ´ng",
+        "message": "Employee check-out thành công",
         "booking": detail,
         "payment_preview": detail.get("pricing_preview"),
     }

@@ -60,9 +60,24 @@ class EmployeeVehicleResponse(BaseModel):
     total_count: int
 
 
+class EmployeeRevenuePoint(BaseModel):
+    label: str
+    amount: float
+
+
+class EmployeeTrafficPoint(BaseModel):
+    label: str
+    check_ins: int
+    check_outs: int
+
+
 class EmployeeRevenueResponse(BaseModel):
     revenueToday: float
     revenueMonth: float
+    revenueByDay: list[EmployeeRevenuePoint] = Field(default_factory=list)
+    trafficByHour: list[EmployeeTrafficPoint] = Field(default_factory=list)
+    occupancyRatio: float = 0
+    totalPaidBookings: int = 0
 
 
 class EmployeeParkingStatusRequest(BaseModel):

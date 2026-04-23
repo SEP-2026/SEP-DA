@@ -126,16 +126,16 @@ export default function Login({ onLogin }) {
 
         {mode === "login" ? (
           <form className="login-form" onSubmit={handleLogin}>
-            <label className="login-label" htmlFor="email">Email</label>
+            <label className="login-label" htmlFor="email">Email hoac username employee</label>
             <div className="input-shell">
               <span className="input-icon" aria-hidden="true">✉</span>
               <input
                 id="email"
                 className="login-input"
-                type="email"
+                type="text"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="email@domain.com"
+                placeholder="email@domain.com hoac employee_demo"
                 required
               />
             </div>

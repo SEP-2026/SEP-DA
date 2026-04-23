@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 
 import { getEmployeeVehicles } from "../../employee/employeeService";
 
@@ -12,7 +12,7 @@ export default function EmployeeVehicles() {
   return (
     <section className="employee-card">
       <h2>Xe trong bãi</h2>
-      <p>Tổng xe đang đỗ: {data.total_count}</p>
+      <p>Tổng số xe hiện tại: {data.total_count}</p>
       <div className="employee-list">
         {data.vehicles.map((vehicle) => (
           <article key={vehicle.booking_id} className="employee-list-item">
@@ -22,7 +22,7 @@ export default function EmployeeVehicles() {
             </div>
             <div>
               <p>Vào bãi: {vehicle.check_in_time ? new Date(vehicle.check_in_time).toLocaleString("vi-VN") : "--"}</p>
-              <p>Slot: {vehicle.slot_code || "--"}</p>
+              <p>Vị trí: {vehicle.slot_code || "--"}</p>
               <p>Trạng thái: {vehicle.status}</p>
             </div>
           </article>

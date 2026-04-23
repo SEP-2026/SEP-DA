@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 
 import { employeeCheckIn, employeeCheckOut } from "../../employee/employeeService";
 import { useEmployeeContext } from "../../employee/useEmployeeContext";
@@ -14,7 +14,7 @@ export default function EmployeeQrScanner() {
 
   const handleSubmit = async () => {
     if (!qrData.trim()) {
-      setError("Vui lòng quét QR hoặc nhập booking id / payload QR.");
+      setError("Vui lòng quét mã QR hoặc nhập mã booking/payload QR.");
       return;
     }
     setLoading(true);
@@ -37,32 +37,32 @@ export default function EmployeeQrScanner() {
 
   return (
     <section className="employee-card">
-      <h2>QR Scanner</h2>
-      <p>Reuse logic QR từ cổng owner/admin. Bạn có thể nhập QR JSON hoặc booking id trực tiếp để test nhanh.</p>
+      <h2>Quét mã QR tại cổng</h2>
+      <p>Dùng chung logic cổng với owner/admin. Bạn có thể dán JSON QR hoặc chỉ nhập mã booking để thao tác nhanh.</p>
 
       <div className="employee-action-row">
         <button type="button" className={`employee-btn${mode === "check-in" ? "" : " employee-btn--ghost"}`} onClick={() => setMode("check-in")}>
-          Mode check-in
+          Chế độ check-in
         </button>
         <button type="button" className={`employee-btn${mode === "check-out" ? "" : " employee-btn--ghost"}`} onClick={() => setMode("check-out")}>
-          Mode check-out
+          Chế độ check-out
         </button>
       </div>
 
       <div className="employee-form-grid">
         <div className="employee-action-box">
-          <p>QR data / booking id</p>
+          <p>Dữ liệu QR / mã booking</p>
           <textarea rows={8} value={qrData} onChange={(event) => setQrData(event.target.value)} placeholder='Ví dụ: {"booking_id": 12} hoặc chỉ nhập 12' />
         </div>
         <div className="employee-action-box">
-          <p>Thiết lập thanh toán khi check-out</p>
+          <p>Phương thức thanh toán khi check-out</p>
           <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={mode !== "check-out"}>
-            <option value="cash">Cash</option>
-            <option value="qr">QR</option>
+            <option value="cash">Tiền mặt</option>
+            <option value="qr">Chuyển khoản QR</option>
             <option value="vnpay">VNPay</option>
-            <option value="bank_transfer">Bank transfer</option>
+            <option value="bank_transfer">Chuyển khoản ngân hàng</option>
           </select>
-          <p className="employee-note">Khi check-in, hệ thống bỏ qua phương thức thanh toán và dùng flow cổng sẵn có.</p>
+          <p className="employee-note">Khi check-in, hệ thống sẽ bỏ qua phương thức thanh toán và dùng luồng cổng mặc định.</p>
         </div>
       </div>
 

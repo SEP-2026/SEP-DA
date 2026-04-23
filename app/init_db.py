@@ -22,6 +22,13 @@ def _run_ddl_with_retry(statement: str, retries: int = 3, delay_seconds: float =
             return False
 
 
+def _run_migration_step(name: str, fn) -> None:
+    try:
+        fn()
+    except Exception as exc:
+        print(f"Migration step failed [{name}]: {exc}")
+
+
 def migrate_parking_lots_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
@@ -37,7 +44,7 @@ def migrate_parking_lots_columns():
     if "longitude" not in columns:
         alter_statements.append("ADD COLUMN longitude DECIMAL(10,6)")
     if "district_id" not in columns:
-        alter_statements.append("ADD COLUMN district_id BIGINT NULL")
+        alter_statements.append("ADD COLUMN district_id INT NULL")
     if "has_roof" not in columns:
         alter_statements.append("ADD COLUMN has_roof TINYINT(1) NOT NULL DEFAULT 0")
     if "is_active" not in columns:
@@ -46,6 +53,8 @@ def migrate_parking_lots_columns():
     if alter_statements:
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE parking_lots {', '.join(alter_statements)}"))
+    if "district_id" in columns or any("district_id" in statement for statement in alter_statements):
+        _run_ddl_with_retry("ALTER TABLE parking_lots MODIFY COLUMN district_id INT NULL")
 def migrate_users_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
@@ -217,25 +226,21 @@ def migrate_districts_normalization():
         has_user_fk = any(r["TABLE_NAME"] == "users" and r["COLUMN_NAME"] == "managed_district_id" for r in fk_checks)
 
         if "district_id" in parking_columns and not has_parking_fk:
-            conn.execute(
-                text(
-                    """
-                    ALTER TABLE parking_lots
-                    ADD CONSTRAINT fk_parking_lots_district_id
-                    FOREIGN KEY (district_id) REFERENCES districts(id)
-                    """
-                )
+            _run_ddl_with_retry(
+                """
+                ALTER TABLE parking_lots
+                ADD CONSTRAINT fk_parking_lots_district_id
+                FOREIGN KEY (district_id) REFERENCES districts(id)
+                """.strip()
             )
 
         if "managed_district_id" in user_columns and not has_user_fk:
-            conn.execute(
-                text(
-                    """
-                    ALTER TABLE users
-                    ADD CONSTRAINT fk_users_managed_district_id
-                    FOREIGN KEY (managed_district_id) REFERENCES districts(id)
-                    """
-                )
+            _run_ddl_with_retry(
+                """
+                ALTER TABLE users
+                ADD CONSTRAINT fk_users_managed_district_id
+                FOREIGN KEY (managed_district_id) REFERENCES districts(id)
+                """.strip()
             )
 
     # Legacy text columns are removed after data has been migrated to FK columns.
@@ -528,17 +533,123 @@ def migrate_transactions_columns():
         _run_ddl_with_retry(f"ALTER TABLE transactions {', '.join(alter_statements)}")
 
 
+def migrate_employee_accounts_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "employee_accounts" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("employee_accounts")}
+    alter_statements = []
+
+    if "username" not in columns:
+        alter_statements.append("ADD COLUMN username VARCHAR(100) NOT NULL")
+    if "password_hash" not in columns:
+        alter_statements.append("ADD COLUMN password_hash VARCHAR(255) NULL")
+    if "owner_id" not in columns:
+        alter_statements.append("ADD COLUMN owner_id INT NULL")
+    if "parking_id" not in columns:
+        alter_statements.append("ADD COLUMN parking_id INT NULL")
+    if "role" not in columns:
+        alter_statements.append("ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'employee'")
+    if "status" not in columns:
+        alter_statements.append("ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'")
+    if "is_active" not in columns:
+        alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        _run_ddl_with_retry(f"ALTER TABLE employee_accounts {', '.join(alter_statements)}")
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE employee_accounts SET username = LOWER(TRIM(username))"))
+        conn.execute(text("UPDATE employee_accounts SET role = COALESCE(NULLIF(role, ''), 'employee')"))
+        conn.execute(text("UPDATE employee_accounts SET status = COALESCE(NULLIF(status, ''), 'active')"))
+        conn.execute(text("UPDATE employee_accounts SET is_active = COALESCE(is_active, 1)"))
+
+    indexes = {index["name"] for index in inspector.get_indexes("employee_accounts")}
+    if "uq_employee_accounts_username" not in indexes:
+        _run_ddl_with_retry("CREATE UNIQUE INDEX uq_employee_accounts_username ON employee_accounts (username)")
+
+
+def migrate_parking_operational_states_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "parking_operational_states" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("parking_operational_states")}
+    alter_statements = []
+
+    if "parking_id" not in columns:
+        alter_statements.append("ADD COLUMN parking_id INT NULL")
+    if "status" not in columns:
+        alter_statements.append("ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open'")
+    if "updated_at" not in columns:
+        alter_statements.append("ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        _run_ddl_with_retry(f"ALTER TABLE parking_operational_states {', '.join(alter_statements)}")
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE parking_operational_states SET status = COALESCE(NULLIF(status, ''), 'open')"))
+
+    indexes = {index["name"] for index in inspector.get_indexes("parking_operational_states")}
+    if "uq_parking_operational_states_parking_id" not in indexes:
+        _run_ddl_with_retry(
+            "CREATE UNIQUE INDEX uq_parking_operational_states_parking_id ON parking_operational_states (parking_id)"
+        )
+
+
+def migrate_employee_activities_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "employee_activities" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("employee_activities")}
+    alter_statements = []
+
+    if "employee_id" not in columns:
+        alter_statements.append("ADD COLUMN employee_id INT NULL")
+    if "parking_id" not in columns:
+        alter_statements.append("ADD COLUMN parking_id INT NULL")
+    if "booking_id" not in columns:
+        alter_statements.append("ADD COLUMN booking_id INT NULL")
+    if "action" not in columns:
+        alter_statements.append("ADD COLUMN action VARCHAR(50) NULL")
+    if "detail" not in columns:
+        alter_statements.append("ADD COLUMN detail VARCHAR(500) NULL")
+    if "amount" not in columns:
+        alter_statements.append("ADD COLUMN amount FLOAT NOT NULL DEFAULT 0")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        _run_ddl_with_retry(f"ALTER TABLE employee_activities {', '.join(alter_statements)}")
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE employee_activities SET amount = COALESCE(amount, 0)"))
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
-    migrate_parking_lots_columns()
-    migrate_users_columns()
-    migrate_districts_normalization()
-    migrate_user_vehicles_table()
-    migrate_parking_slots_columns()
-    migrate_reviews_columns()
-    migrate_bookings_columns()
-    migrate_payments_columns()
-    migrate_transactions_columns()
+    _run_migration_step("parking_lots", migrate_parking_lots_columns)
+    _run_migration_step("users", migrate_users_columns)
+    _run_migration_step("districts_normalization", migrate_districts_normalization)
+    _run_migration_step("user_vehicles", migrate_user_vehicles_table)
+    _run_migration_step("parking_slots", migrate_parking_slots_columns)
+    _run_migration_step("reviews", migrate_reviews_columns)
+    _run_migration_step("bookings", migrate_bookings_columns)
+    _run_migration_step("payments", migrate_payments_columns)
+    _run_migration_step("transactions", migrate_transactions_columns)
+    _run_migration_step("employee_accounts", migrate_employee_accounts_columns)
+    _run_migration_step("parking_operational_states", migrate_parking_operational_states_columns)
+    _run_migration_step("employee_activities", migrate_employee_activities_columns)
 
 
 if __name__ == "__main__":

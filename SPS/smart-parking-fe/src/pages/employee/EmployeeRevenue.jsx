@@ -1,10 +1,10 @@
-import { useEmployeeContext } from "../../employee/useEmployeeContext";
+﻿import { useEmployeeContext } from "../../employee/useEmployeeContext";
 
 export default function EmployeeRevenue() {
   const { revenue } = useEmployeeContext();
 
   return (
-    <section className="employee-grid">
+    <section className="employee-grid employee-grid--summary">
       <article className="employee-card">
         <h2>Doanh thu ngày</h2>
         <p className="employee-stat-value">{Number(revenue?.revenueToday || 0).toLocaleString("vi-VN")}đ</p>

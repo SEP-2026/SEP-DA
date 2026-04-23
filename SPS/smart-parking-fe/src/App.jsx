@@ -29,7 +29,6 @@ import EmployeeLayout from "./employee/EmployeeLayout";
 import OwnerLayout from "./owner/OwnerLayout";
 import EmployeeDashboard from "./pages/employee/EmployeeDashboard";
 import EmployeeHistory from "./pages/employee/EmployeeHistory";
-import EmployeeLogin from "./pages/employee/EmployeeLogin";
 import EmployeeProfile from "./pages/employee/EmployeeProfile";
 import EmployeeQrScanner from "./pages/employee/EmployeeQrScanner";
 import EmployeeRevenue from "./pages/employee/EmployeeRevenue";
@@ -161,7 +160,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
     .join(" • ");
 
   return (
-    <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}`}>
+    <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}${isEmployeeWorkspace ? " app-shell--employee" : ""}`}>
       {auth && !isOwnerWorkspace && !isAdminWorkspace && !isEmployeeWorkspace && !isOwnerScanPage ? (
         <nav className="app-nav">
           <div className="app-nav-links">
@@ -197,10 +196,6 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           element={auth ? <Navigate to="/" replace /> : <Login onLogin={onLogin} />}
         />
         <Route
-          path="/employee/login"
-          element={auth ? <Navigate to="/" replace /> : <EmployeeLogin onLogin={onLogin} />}
-        />
-        <Route
           path="/"
           element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : role === "employee" ? <Navigate to="/employee" replace /> : <Home role={role} />) : <Navigate to="/login" replace />}
         />
@@ -230,7 +225,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         />
         <Route
           path="/employee"
-          element={auth && role === "employee" ? <EmployeeLayout auth={auth} onLogout={onLogout} /> : <Navigate to={auth ? "/" : "/employee/login"} replace />}
+          element={auth && role === "employee" ? <EmployeeLayout auth={auth} onLogout={onLogout} /> : <Navigate to={auth ? "/" : "/login"} replace />}
         >
           <Route index element={<EmployeeDashboard />} />
           <Route path="scanner" element={<EmployeeQrScanner />} />

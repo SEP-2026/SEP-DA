@@ -56,6 +56,10 @@ body {
   width: min(1680px, 98vw);
 }
 
+.app-shell--employee {
+  width: min(1740px, 98.5vw);
+}
+
 .app-nav {
   display: flex;
   justify-content: space-between;
