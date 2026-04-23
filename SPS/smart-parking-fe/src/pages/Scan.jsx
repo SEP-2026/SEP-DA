@@ -5,7 +5,7 @@ import BookingInfoPanel from "../features/gate/BookingInfoPanel";
 import PaymentPanel from "../features/gate/PaymentPanel";
 import ScanZone from "../features/gate/ScanZone";
 import StatusBanner from "../features/gate/StatusBanner";
-import { checkInGate, checkOutGate, getGateBooking } from "../features/gate/gateService";
+import { checkInGate, confirmCheckout, getCheckoutPreview, getGateBooking } from "../features/gate/gateService";
 import { formatCurrency } from "../features/gate/gateFormatters";
 import { inferQrPreview, parseBookingIdFromQR, parseManualBookingId } from "../features/gate/scanParser";
 import { getBannerTone } from "../features/gate/statusLabel";
@@ -37,6 +37,9 @@ export default function Scan() {
     message: "Quét QR để tự động xử lý hoặc nhập mã booking để xem thông tin rồi thao tác thủ công.",
   });
   const [booking, setBooking] = useState(null);
+  const [checkoutPreview, setCheckoutPreview] = useState(null);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [confirmingCheckout, setConfirmingCheckout] = useState(false);
 
   const qrPreview = useMemo(() => inferQrPreview(scanValue), [scanValue]);
   const manualPreview = useMemo(() => parseManualBookingId(manualBookingId), [manualBookingId]);
@@ -205,29 +208,50 @@ export default function Scan() {
     }
 
     setUiState("action_submitting");
-    setBanner({ title: "Đang xử lý...", message: "Đang thực hiện check-out và tính phí thực tế." });
+    setBanner({ title: "Đang tính phí...", message: "Hệ thống đang tính phí checkout để xác nhận." });
 
     try {
-      const response = await checkOutGate({
-        booking_id: booking.booking_id,
-        gate_id: gateId.trim(),
-        source_type: "manual_id",
-        payment_method: paymentMethod,
+      const response = await getCheckoutPreview(booking.booking_id);
+      setCheckoutPreview(response);
+      setShowCheckoutModal(true);
+      setUiState("booking_loaded");
+      setBanner({
+        title: "Xác nhận checkout",
+        message: "Vui lòng kiểm tra chi tiết phí trước khi cho xe ra bãi.",
       });
-      applyBookingPayload(
-        response,
-        {
-          title: "Đã check-out",
-          message:
-            paymentMethod === "vnpay"
-              ? `Xe đã ra bãi. QR VNPay đã được tạo cho số tiền ${formatCurrency(response?.booking?.pricing_preview?.remaining_due)}.`
-              : `Xe đã ra bãi. Đã thu ${formatCurrency(response?.booking?.pricing_preview?.total_charge)} bằng tiền mặt.`,
-        },
-        "success",
-      );
     } catch (error) {
       setUiState("error");
       setBanner(buildBannerFromError(error, "Không thể cho xe ra bãi"));
+    }
+  };
+
+  const handleConfirmCheckout = async () => {
+    if (!booking?.booking_id) return;
+    setConfirmingCheckout(true);
+    try {
+      const response = await confirmCheckout(booking.booking_id);
+      setShowCheckoutModal(false);
+      setCheckoutPreview(null);
+      setBooking((prev) => ({
+        ...(prev || {}),
+        booking_id: response.booking_id,
+        booking_status: "checked_out",
+        checkin_status: "checked_out",
+        actual_checkout: response.actual_checkout,
+        overstay_minutes: response.overstay_minutes,
+        overstay_fee: response.overstay_fee,
+        total_actual_fee: response.total_actual_fee,
+      }));
+      setUiState("success");
+      setBanner({
+        title: "✓ Checkout thành công!",
+        message: "Xe đã ra khỏi bãi. Trạng thái booking đã được cập nhật.",
+      });
+    } catch (error) {
+      setUiState("error");
+      setBanner(buildBannerFromError(error, "Checkout thất bại"));
+    } finally {
+      setConfirmingCheckout(false);
     }
   };
 
@@ -291,6 +315,34 @@ export default function Scan() {
           </section>
         </div>
       </div>
+      {showCheckoutModal && checkoutPreview ? (
+        <div className="checkout-modal-overlay" onClick={() => !confirmingCheckout && setShowCheckoutModal(false)}>
+          <div className="checkout-modal" onClick={(event) => event.stopPropagation()}>
+            <h3>🚗 XÁC NHẬN CHO XE RA BÃI</h3>
+            <p><strong>Biển số:</strong> {checkoutPreview.license_plate || "--"}</p>
+            <p><strong>Check-in:</strong> {checkoutPreview.actual_checkin || "--"}</p>
+            <p><strong>Check-out:</strong> {checkoutPreview.current_time || "--"}</p>
+            <div className="checkout-breakdown">
+              <p><strong>Chi tiết phí</strong></p>
+              {checkoutPreview.fee_breakdown?.map((row) => (
+                <p key={row.label}>{row.label}: <strong>{formatCurrency(row.amount)}</strong></p>
+              ))}
+            </div>
+            {checkoutPreview.is_overstay ? (
+              <p className="checkout-warning">⚠️ Quá giờ {checkoutPreview.overstay_minutes} phút (tính thêm {checkoutPreview.overstay_hours_billed} giờ)</p>
+            ) : null}
+            {checkoutPreview.is_early ? <p className="checkout-note">ℹ️ Checkout sớm, không hoàn tiền</p> : null}
+            <div className="checkout-actions">
+              <button type="button" className="scan-secondary-btn" onClick={() => setShowCheckoutModal(false)} disabled={confirmingCheckout}>
+                Hủy
+              </button>
+              <button type="button" className="btn-checkout" onClick={handleConfirmCheckout} disabled={confirmingCheckout}>
+                {confirmingCheckout ? "Đang xử lý..." : "✓ Xác nhận cho xe ra"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

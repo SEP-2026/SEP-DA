@@ -84,6 +84,9 @@ class Booking(Base):
     expire_time = Column("checkout_time", DateTime)
     actual_checkin = Column(DateTime, nullable=True)
     actual_checkout = Column(DateTime, nullable=True)
+    overstay_minutes = Column(Integer, default=0, nullable=True)
+    overstay_fee = Column(Float, default=0, nullable=True)
+    total_actual_fee = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     booking_mode = Column(String(20), default="hourly")
