@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
-from app.services.qr_service import generate_booking_qr_code
+from app.services.qr_service import invalidate_booking_qr_code
 from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 router = APIRouter()
@@ -1311,8 +1311,8 @@ def check_out(
     if booking.slot:
         booking.slot.status = "available"
 
+    invalidate_booking_qr_code(booking, db)
     db.commit()
-    qr_result = generate_booking_qr_code(booking.id, db)
 
     return {
         "success": True,
@@ -1325,7 +1325,7 @@ def check_out(
         "overstay_fee": fee["overstay_fee"],
         "original_fee": fee["original_fee"],
         "total_actual_fee": fee["total_actual_fee"],
-        "qr_url": qr_result.get("qr_url") if qr_result.get("success") else None,
+        "qr_url": None,
     }
 
 
@@ -1399,9 +1399,8 @@ def checkout_booking(
     booking.last_gate_action_at = now
     if booking.slot:
         booking.slot.status = "available"
+    invalidate_booking_qr_code(booking, db)
     db.commit()
-
-    qr_result = generate_booking_qr_code(booking.id, db)
     return {
         "success": True,
         "booking_id": booking.id,
@@ -1412,7 +1411,7 @@ def checkout_booking(
         "original_fee": fee["original_fee"],
         "total_actual_fee": fee["total_actual_fee"],
         "message": "Checkout thành công. Xe đã ra khỏi bãi.",
-        "qr_url": qr_result.get("qr_url") if qr_result.get("success") else None,
+        "qr_url": None,
     }
 
 
