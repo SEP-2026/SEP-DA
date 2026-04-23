@@ -2,31 +2,66 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import API from "../services/api";
 import { OwnerIcon } from "./OwnerIcons";
-import { OWNER_NAV_ITEMS, OWNER_ROUTE_META, createOwnerSeedData } from "./ownerData";
+import { OWNER_NAV_ITEMS, OWNER_ROUTE_META } from "./ownerData";
+import { parseVietnamDate } from "../utils/dateTime";
 import "./owner.css";
 
-function normalizeBackendStatus(status, index) {
-  if (status === "available") {
-    return "available";
+const EMPTY_OWNER_DATA = {
+  parkingLot: null,
+  parkingLots: [],
+  slots: [],
+  bookings: [],
+  transactions: [],
+  activities: [],
+  settings: {
+    parkingName: "",
+    slotCapacity: "0",
+    totalSlotCapacity: "0",
+    managedParkingCount: "0",
+    districtName: "",
+    pricePerHour: "0",
+    pricePerDay: "0",
+    pricePerMonth: "0",
+    contactName: "",
+    contactPhone: "",
+    contactEmail: "",
+    parkingLots: [],
+  },
+  reviews: [],
+};
+
+function isTodayIso(value) {
+  if (!value) {
+    return false;
   }
-  if (status === "occupied") {
-    return index % 2 === 0 ? "reserved" : "in_use";
+  const date = parseVietnamDate(value);
+  if (!date) {
+    return false;
   }
-  return "maintenance";
+  const now = parseVietnamDate(new Date());
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
 }
 
 export default function OwnerLayout({ auth, onLogout }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [ownerData, setOwnerData] = useState(() => createOwnerSeedData());
+  const [ownerData, setOwnerData] = useState(EMPTY_OWNER_DATA);
   const [syncNote, setSyncNote] = useState("Đang tải dữ liệu bãi");
+  const [isSyncing, setIsSyncing] = useState(true);
 
   const refreshOwnerData = useCallback(async () => {
     try {
+      setIsSyncing(true);
       const res = await API.get("/owner/bootstrap");
       if (res.data?.parkingLot) {
+        const managedParkingCount = Array.isArray(res.data.parkingLots) ? res.data.parkingLots.length : 0;
         setOwnerData((prev) => ({
+          ...EMPTY_OWNER_DATA,
           ...prev,
+          parkingLot: res.data.parkingLot,
+          parkingLots: Array.isArray(res.data.parkingLots) ? res.data.parkingLots : prev.parkingLots,
           slots: Array.isArray(res.data.slots) ? res.data.slots : prev.slots,
           bookings: Array.isArray(res.data.bookings) ? res.data.bookings : prev.bookings,
           transactions: Array.isArray(res.data.transactions) ? res.data.transactions : prev.transactions,
@@ -34,47 +69,23 @@ export default function OwnerLayout({ auth, onLogout }) {
           reviews: Array.isArray(res.data.reviews) ? res.data.reviews : prev.reviews,
           settings: res.data.settings ? { ...prev.settings, ...res.data.settings } : prev.settings,
         }));
-        setSyncNote(`Đồng bộ bãi: ${res.data.parkingLot.name}`);
+        setSyncNote(`Quản lý ${managedParkingCount} bãi đỗ`);
         return;
       }
-      setOwnerData((prev) => ({
-        ...prev,
-        slots: [],
-        bookings: [],
-        transactions: [],
-        activities: [],
-        reviews: [],
+      setOwnerData({
+        ...EMPTY_OWNER_DATA,
         settings: {
-          ...prev.settings,
+          ...EMPTY_OWNER_DATA.settings,
           parkingName: "Chưa được gán bãi",
           slotCapacity: "0",
         },
-      }));
+      });
       setSyncNote("Owner chưa được gán bãi trong CSDL");
     } catch {
-      try {
-        const res = await API.get("/slots");
-        if (!Array.isArray(res.data) || res.data.length === 0) {
-          setSyncNote("Đang dùng dữ liệu mẫu");
-          return;
-        }
-
-        setOwnerData((prev) => ({
-          ...prev,
-          slots: res.data.map((slot, index) => ({
-            id: slot.id || `slot-api-${index + 1}`,
-            code: slot.code || slot.slot_number || `S-${index + 1}`,
-            zone: ["Khu A", "Khu B", "Khu C"][index % 3],
-            level: index < 6 ? "Tầng 1" : "Tầng 2",
-            status: normalizeBackendStatus(slot.status, index),
-            type: ["Sedan", "SUV", "EV"][index % 3],
-            updatedAt: new Date().toISOString(),
-            })),
-        }));
-        setSyncNote("Đồng bộ chỗ đỗ từ API");
-      } catch {
-        setSyncNote("Đang dùng dữ liệu mẫu");
-      }
+      setOwnerData(EMPTY_OWNER_DATA);
+      setSyncNote("Không tải được dữ liệu owner từ CSDL");
+    } finally {
+      setIsSyncing(false);
     }
   }, []);
 
@@ -82,18 +93,47 @@ export default function OwnerLayout({ auth, onLogout }) {
     refreshOwnerData();
   }, [refreshOwnerData]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      refreshOwnerData();
+    }, 10000);
+
+    const handleFocus = () => {
+      refreshOwnerData();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshOwnerData();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshOwnerData]);
+
   const stats = useMemo(() => {
     const todayRevenue = ownerData.transactions
       .filter((item) => item.status === "paid")
+      .filter((item) => isTodayIso(item.time))
       .reduce((sum, item) => sum + item.amount, 0);
-    const todayBookings = ownerData.bookings.filter((item) => item.startTime.startsWith("2026-04-15")).length;
+    const todayBookings = ownerData.bookings.filter((item) => isTodayIso(item.startTime)).length;
+    const activeSlots = ownerData.slots.filter((item) => item.status === "in_use" || item.status === "reserved").length;
+    const managedParkingCount = ownerData.parkingLots.length;
 
     return {
       totalSlots: ownerData.slots.length,
       availableSlots: ownerData.slots.filter((item) => item.status === "available").length,
-      usedSlots: ownerData.slots.filter((item) => item.status === "in_use").length,
+      usedSlots: activeSlots,
       todayBookings,
       todayRevenue,
+      managedParkingCount,
     };
   }, [ownerData]);
 
@@ -145,17 +185,33 @@ export default function OwnerLayout({ auth, onLogout }) {
     async updateSettings(payload) {
       try {
         await API.patch("/owner/settings", {
-          parkingName: payload.parkingName,
-          pricePerHour: payload.pricePerHour,
-          pricePerDay: payload.pricePerDay,
-          pricePerMonth: payload.pricePerMonth,
           contactPhone: payload.contactPhone,
           contactEmail: payload.contactEmail,
         });
         await refreshOwnerData();
         return true;
       } catch (error) {
-        window.alert(error?.response?.data?.detail || "Không thể lưu cài đặt bãi");
+        window.alert(error?.response?.data?.detail || "Không thể lưu thông tin owner");
+        return false;
+      }
+    },
+    async updateParkingLotSettings(parkingId, payload) {
+      try {
+        await API.patch(`/owner/parking-lots/${parkingId}/settings`, payload);
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể cập nhật bãi đỗ");
+        return false;
+      }
+    },
+    async updateReviewReply(reviewId, reply) {
+      try {
+        await API.patch(`/owner/reviews/${reviewId}/reply`, { reply });
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể lưu phản hồi đánh giá");
         return false;
       }
     },
@@ -250,7 +306,7 @@ export default function OwnerLayout({ auth, onLogout }) {
         </header>
 
         <main className="owner-content">
-          <Outlet context={{ auth, ownerData, stats, actions }} />
+          <Outlet context={{ auth, ownerData, stats, actions, isSyncing }} />
         </main>
       </div>
     </div>

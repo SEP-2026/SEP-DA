@@ -62,8 +62,12 @@ class ParkingSlot(Base):
     parking_id = Column(Integer, nullable=True)
     slot_number = Column(String(20), nullable=True)
     slot_type = Column(String(20), nullable=True)
+    zone = Column(String(50), nullable=True)
+    level = Column(String(50), nullable=True)
     code = Column(String(50), unique=True)
     status = Column(String(50), default="available")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Booking(Base):
@@ -88,6 +92,12 @@ class Booking(Base):
 
     status = Column(String(50), default="pending")
     qr_code = Column(String(255))
+    qr_code_path = Column(String(255), nullable=True)
+    qr_generated_at = Column(DateTime, nullable=True)
+    last_gate_action = Column(String(20), nullable=True)
+    last_gate_action_at = Column(DateTime, nullable=True)
+    qr_token_expires_at = Column(DateTime, nullable=True)
+    cancel_reason = Column(String(255), nullable=True)
 
     user = relationship("User")
     slot = relationship("ParkingSlot")
@@ -103,6 +113,16 @@ class Transaction(Base):
 
     amount = Column(Float)
     payment_status = Column(String(50), default="pending")
+    user_id = Column(Integer, nullable=True)
+    parking_id = Column(Integer, nullable=True)
+    vehicle_id = Column(Integer, nullable=True)
+    gate_id = Column(String(100), nullable=True)
+    action_type = Column(String(20), nullable=True)
+    source_type = Column(String(20), nullable=True)
+    result = Column(String(20), nullable=True)
+    note = Column(String(255), nullable=True)
+    image_url = Column(String(500), nullable=True)
+    license_plate = Column(String(30), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -121,6 +141,8 @@ class Payment(Base):
     vnpay_url = Column(String(500), nullable=True)
     qr_code = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deposit_amount = Column(Float, default=0)
+    remaining_amount = Column(Float, default=0)
 
 
 class OwnerParking(Base):
@@ -166,6 +188,8 @@ class Review(Base):
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False)
     rating = Column(Integer, nullable=False)
     comment = Column(String, nullable=True)
+    owner_reply = Column(String, nullable=True)
+    owner_replied_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")

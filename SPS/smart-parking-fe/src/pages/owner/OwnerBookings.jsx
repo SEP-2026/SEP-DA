@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatCurrency, formatDateTime, SectionCard, StatusBadge } from "../../owner/OwnerUI";
 import { useOwnerContext } from "../../owner/useOwnerContext";
 
 export default function OwnerBookings() {
-  const { ownerData, actions } = useOwnerContext();
+  const { ownerData, actions, isSyncing } = useOwnerContext();
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState(null);
 
@@ -27,34 +28,52 @@ export default function OwnerBookings() {
           </select>
         }
       >
+        {isSyncing ? <p className="owner-empty">Đang đồng bộ booking từ CSDL...</p> : null}
         <div className="owner-table-shell">
           <table className="owner-table">
             <thead>
               <tr>
                 <th>Mã đơn</th>
+                <th>Bãi đỗ</th>
                 <th>Người dùng</th>
                 <th>Biển số</th>
                 <th>Thời gian vào</th>
                 <th>Thời gian ra</th>
+                <th>Giờ booking</th>
                 <th>Giá tiền</th>
                 <th>Trạng thái</th>
                 <th>Hành động</th>
               </tr>
             </thead>
             <tbody>
+              {!isSyncing && filteredBookings.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="owner-empty-cell">Chưa có booking nào khớp bộ lọc hiện tại.</td>
+                </tr>
+              ) : null}
               {filteredBookings.map((booking) => (
                 <tr key={booking.id}>
                   <td>{booking.code}</td>
+                  <td>{booking.parkingLotName || "Chưa có bãi"}</td>
                   <td>{booking.user}</td>
                   <td>{booking.plate}</td>
                   <td>{formatDateTime(booking.startTime)}</td>
                   <td>{formatDateTime(booking.endTime)}</td>
+                  <td>
+                    {formatDateTime(booking.bookingStartTime)}
+                    <br />
+                    {formatDateTime(booking.bookingEndTime)}
+                  </td>
                   <td>{formatCurrency(booking.price)}</td>
                   <td><StatusBadge status={booking.status} /></td>
                   <td>
                     <div className="owner-row-actions">
-                      <button type="button" className="btn-primary owner-btn owner-btn--small" onClick={() => actions.updateBookingStatus(booking.id, "confirmed")}>Xác nhận</button>
-                      <button type="button" className="btn-secondary owner-btn owner-btn--small owner-btn--danger" onClick={() => actions.updateBookingStatus(booking.id, "cancelled")}>Hủy</button>
+                      {booking.status === "pending" ? (
+                        <button type="button" className="btn-primary owner-btn owner-btn--small" onClick={() => actions.updateBookingStatus(booking.id, "confirmed")}>Xác nhận</button>
+                      ) : null}
+                      {booking.status !== "cancelled" && booking.status !== "completed" ? (
+                        <button type="button" className="btn-secondary owner-btn owner-btn--small owner-btn--danger" onClick={() => actions.updateBookingStatus(booking.id, "cancelled")}>Hủy</button>
+                      ) : null}
                       <button type="button" className="btn-secondary owner-btn owner-btn--small" onClick={() => setSelectedBooking({ ...booking, supportMode: true })}>Hỗ trợ khách</button>
                       <button type="button" className="btn-secondary owner-btn owner-btn--small" onClick={() => setSelectedBooking(booking)}>Chi tiết</button>
                     </div>
@@ -66,7 +85,7 @@ export default function OwnerBookings() {
         </div>
       </SectionCard>
 
-      {selectedBooking ? (
+      {selectedBooking ? createPortal(
         <div className="owner-modal-backdrop" onClick={() => setSelectedBooking(null)}>
           <div className="owner-modal owner-modal--detail" onClick={(event) => event.stopPropagation()}>
             <div className="owner-modal-head">
@@ -77,12 +96,15 @@ export default function OwnerBookings() {
               <button type="button" className="owner-modal-close" onClick={() => setSelectedBooking(null)}>×</button>
             </div>
             <div className="owner-detail-grid">
+              <div><span>Bãi đỗ</span><strong>{selectedBooking.parkingLotName || "Chưa có bãi"}</strong></div>
               <div><span>Khách hàng</span><strong>{selectedBooking.user}</strong></div>
               <div><span>Số điện thoại</span><strong>{selectedBooking.phone}</strong></div>
               <div><span>Biển số</span><strong>{selectedBooking.plate}</strong></div>
               <div><span>Chỗ đỗ</span><strong>{selectedBooking.slotCode} • {selectedBooking.zone}</strong></div>
-              <div><span>Giờ vào</span><strong>{formatDateTime(selectedBooking.startTime)}</strong></div>
-              <div><span>Giờ ra</span><strong>{formatDateTime(selectedBooking.endTime)}</strong></div>
+              <div><span>Giờ vào thực tế</span><strong>{formatDateTime(selectedBooking.startTime)}</strong></div>
+              <div><span>Giờ ra thực tế</span><strong>{formatDateTime(selectedBooking.endTime)}</strong></div>
+              <div><span>Giờ booking</span><strong>{formatDateTime(selectedBooking.bookingStartTime)}</strong></div>
+              <div><span>Giờ kết thúc booking</span><strong>{formatDateTime(selectedBooking.bookingEndTime)}</strong></div>
               <div><span>Giá tiền</span><strong>{formatCurrency(selectedBooking.price)}</strong></div>
               <div><span>Trạng thái</span><strong><StatusBadge status={selectedBooking.status} /></strong></div>
             </div>
@@ -94,7 +116,7 @@ export default function OwnerBookings() {
             ) : null}
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
     </div>
   );
 }

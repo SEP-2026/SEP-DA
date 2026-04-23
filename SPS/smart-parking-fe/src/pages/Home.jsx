@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import API from "../services/api";
+import { formatDateTimeVN } from "../utils/dateTime";
 import "./Home.css";
 
 const OWNER_VISIBLE_BOOKING_STATUSES = new Set(["pending", "confirmed", "in_progress"]);
@@ -22,16 +23,7 @@ function formatStatusLabel(status) {
 }
 
 function formatDateTime(value) {
-  if (!value) {
-    return "Chưa có";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString("vi-VN");
+  return formatDateTimeVN(value, "Chưa có");
 }
 
 function getDesktopColumns() {

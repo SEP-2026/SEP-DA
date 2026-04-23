@@ -106,27 +106,37 @@ def _lot_status(lot: ParkingLot) -> str:
 
 
 def _owner_parking_maps(db: Session) -> tuple[dict[int, ParkingLot], dict[int, User]]:
-    assignments = db.query(OwnerParking).order_by(OwnerParking.id.asc()).all()
-    owner_ids = [int(item.owner_id) for item in assignments]
-    parking_ids = [int(item.parking_id) for item in assignments]
-    owners = {
-        int(item.id): item
-        for item in db.query(User).filter(User.id.in_(owner_ids)).all()
-    } if owner_ids else {}
-    parking_lots = {
-        int(item.id): item
-        for item in db.query(ParkingLot).filter(ParkingLot.id.in_(parking_ids)).all()
-    } if parking_ids else {}
+    # Use a join query to reliably collect parking lot names per owner.
+    rows = (
+        db.query(OwnerParking.owner_id, ParkingLot.id.label("parking_id"), ParkingLot.name)
+        .join(ParkingLot, ParkingLot.id == OwnerParking.parking_id)
+        .order_by(OwnerParking.id.asc())
+        .all()
+    )
 
-    lot_by_owner: dict[int, ParkingLot] = {}
+    # owner -> list of parking lot dicts {id, name}
+    lot_by_owner: dict[int, list[dict]] = {}
     owner_by_lot: dict[int, User] = {}
-    for assignment in assignments:
-        owner_id = int(assignment.owner_id)
-        parking_id = int(assignment.parking_id)
-        if owner_id not in lot_by_owner and parking_id in parking_lots:
-            lot_by_owner[owner_id] = parking_lots[parking_id]
-        if parking_id not in owner_by_lot and owner_id in owners:
-            owner_by_lot[parking_id] = owners[owner_id]
+    owner_ids = set()
+    for row in rows:
+        owner_id = int(row.owner_id)
+        owner_ids.add(owner_id)
+        items = lot_by_owner.get(owner_id)
+        if items:
+            items.append({"id": int(row.parking_id), "name": row.name})
+        else:
+            lot_by_owner[owner_id] = [{"id": int(row.parking_id), "name": row.name}]
+        owner_by_lot[int(row.parking_id)] = None  # placeholder, will be filled below
+
+    # populate owner_by_lot mapping with User objects for the first owner per lot
+    if owner_ids:
+        owners = {int(u.id): u for u in db.query(User).filter(User.id.in_(list(owner_ids))).all()}
+        for row in rows:
+            pid = int(row.parking_id)
+            oid = int(row.owner_id)
+            if pid not in owner_by_lot or owner_by_lot[pid] is None:
+                owner_by_lot[pid] = owners.get(oid)
+
     return lot_by_owner, owner_by_lot
 
 
@@ -349,7 +359,9 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": owner.id,
             "name": owner.name,
             "email": owner.email,
-            "parkingLot": lot_by_owner[int(owner.id)].name if int(owner.id) in lot_by_owner and lot_by_owner[int(owner.id)] else "Chưa gán trong CSDL",
+            "parkingLots": lot_by_owner.get(int(owner.id)) if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else [],
+            # legacy single-string field for backward compatibility (first lot name or placeholder)
+            "parkingLot": (lot_by_owner.get(int(owner.id))[0]["name"] if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "Chưa gán trong CSDL"),
             "status": "active" if _to_status_label(owner) == "active" else "suspended",
             "performance": f"{booking_counts_by_user.get(int(owner.id), 0)} booking",
             "passwordHint": "Có thể reset từ admin",
@@ -522,9 +534,35 @@ def create_owner(
             db.add(price)
             # tạo 1 slot mặc định
             db.add(ParkingSlot(code=f"P{lot.id}-1", slot_number="1", parking_id=lot.id, status="available"))
-        _assign_owner_parking(db, owner.id, lot.id)
+        # Avoid raising conflict if lot is already assigned to another owner.
+        existing_assignment = db.query(OwnerParking).filter(OwnerParking.parking_id == lot.id).first()
+        if not existing_assignment:
+            db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
     db.commit()
-    return {"message": "Tạo tài khoản owner thành công", "default_password": temporary_password}
+
+    # build response owner info including assigned parking lots (if any)
+    assigned = []
+    rows = (
+        db.query(OwnerParking.parking_id, ParkingLot.name)
+        .join(ParkingLot, ParkingLot.id == OwnerParking.parking_id)
+        .filter(OwnerParking.owner_id == owner.id)
+        .all()
+    )
+    for r in rows:
+        assigned.append({"id": int(r.parking_id), "name": r.name})
+
+    owner_info = {
+        "id": owner.id,
+        "name": owner.name,
+        "email": owner.email,
+        "parkingLots": assigned,
+        "parkingLot": assigned[0]["name"] if assigned else "Chưa gán trong CSDL",
+        "status": "active",
+        "performance": "0 booking",
+        "passwordHint": "Có thể reset từ admin",
+    }
+
+    return {"message": "Tạo tài khoản owner thành công", "default_password": temporary_password, "owner": owner_info}
 
 
 @router.patch("/owners/{owner_id}/status")
@@ -688,3 +726,127 @@ def update_admin_settings(
 ):
     ADMIN_RUNTIME_SETTINGS.update(payload.dict())
     return {"message": "Đã cập nhật cấu hình admin", "settings": ADMIN_RUNTIME_SETTINGS}
+
+
+@router.post("/rebuild-owner-assignments")
+def rebuild_owner_assignments(_ : User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Rebuild OwnerParking assignments from current `managed_district_id` on users.
+
+    For owners with `managed_district_id` set, existing assignments for that owner
+    will be removed and replaced by all active parking lots in that district.
+    Owners without `managed_district_id` are left unchanged.
+    """
+    from app.models.models import OwnerParking, ParkingLot, User
+
+    # clear all existing owner_parking rows first
+    removed = db.query(OwnerParking).delete()
+
+    # collect owners grouped by district
+    districts = db.query(User.managed_district_id).filter(User.role == "owner", User.managed_district_id != None).distinct().all()
+    created = 0
+    for (district_id,) in districts:
+        owners_in_district = db.query(User).filter(User.role == "owner", User.managed_district_id == district_id).order_by(User.id.asc()).all()
+        if not owners_in_district:
+            continue
+        lots = db.query(ParkingLot).filter(ParkingLot.district_id == district_id, ParkingLot.is_active == 1).order_by(ParkingLot.id.asc()).all()
+        if not lots:
+            continue
+        # distribute lots evenly among owners in that district (round-robin)
+        for index, lot in enumerate(lots):
+            owner = owners_in_district[index % len(owners_in_district)]
+            db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
+            created += 1
+
+    db.commit()
+    return {"message": "Đã rebuild owner_parking assignments", "removed": removed, "created": created}
+
+
+@router.get("/owner-assignments-debug")
+def owner_assignments_debug(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Debug endpoint: return all owner_parking rows with owner and parking names."""
+    rows = (
+        db.query(OwnerParking.id.label("id"), OwnerParking.owner_id.label("owner_id"), User.name.label("owner_name"), OwnerParking.parking_id.label("parking_id"), ParkingLot.name.label("parking_name"))
+        .join(User, User.id == OwnerParking.owner_id)
+        .join(ParkingLot, ParkingLot.id == OwnerParking.parking_id)
+        .order_by(OwnerParking.owner_id.asc(), OwnerParking.parking_id.asc())
+        .all()
+    )
+    return [ {"id": int(r.id), "owner_id": int(r.owner_id), "owner_name": r.owner_name, "parking_id": int(r.parking_id), "parking_name": r.parking_name} for r in rows ]
+
+
+@router.post("/auto-assign-owners")
+def auto_assign_owners(_: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Auto-assign owners to parking lots using managed_district_id or heuristics from owner name.
+
+    Behaviour:
+    - Clear existing `owner_parking` rows.
+    - For each owner:
+      * If `managed_district_id` present -> assign all active lots in that district (round-robin among owners in that district).
+      * Else try to extract district number from `name` (e.g. 'Quan 1', 'Quận 3', 'quận 7').
+      * If district found -> assign active lots in that district to the owner.
+    """
+    # New behavior: assign parking lots exclusively per district.
+    # For each district, find owner(s) that manage that district (by managed_district_id or name heuristic).
+    # If exactly one owner found -> assign all active lots in that district to that owner.
+    # If multiple owners found -> assign to the first and report potential conflicts.
+    from app.models.models import OwnerParking, ParkingLot, User, District
+    import re
+
+    # Clear existing assignments first
+    db.query(OwnerParking).delete()
+
+    owners_all = db.query(User).filter(User.role == "owner").all()
+    districts = db.query(District).order_by(District.id.asc()).all()
+
+    assigned = 0
+    conflicts: dict[int, list[int]] = {}
+    unassigned: list[str] = []
+
+    # index owners by managed_district_id
+    owners_by_did: dict[int, list[User]] = {}
+    for o in owners_all:
+        if o.managed_district_id:
+            owners_by_did.setdefault(int(o.managed_district_id), []).append(o)
+
+    # For quick name heuristics, lowercase owner names
+    owners_no_did = [o for o in owners_all if not o.managed_district_id]
+
+    for d in districts:
+        did = int(d.id)
+        candidate_owners = owners_by_did.get(did, [])
+
+        # if none by managed_district_id, try name heuristics
+        if not candidate_owners:
+            dname = (d.name or "").lower()
+            for o in owners_no_did:
+                on = (o.name or "").lower()
+                # match 'quan X' or district name substring
+                m = re.search(r"quan\s*(\d+)|quận\s*(\d+)", on)
+                matched = False
+                if m:
+                    num = m.group(1) or m.group(2)
+                    try:
+                        if int(num) == did:
+                            candidate_owners.append(o)
+                            matched = True
+                    except Exception:
+                        pass
+                if not matched and dname and dname in on:
+                    candidate_owners.append(o)
+
+        if not candidate_owners:
+            unassigned.append(d.name or f"district_{did}")
+            continue
+
+        # If multiple owners, record conflict and pick first
+        if len(candidate_owners) > 1:
+            conflicts[did] = [int(o.id) for o in candidate_owners]
+
+        owner = candidate_owners[0]
+        lots = db.query(ParkingLot).filter(ParkingLot.district_id == did, ParkingLot.is_active == 1).all()
+        for lot in lots:
+            db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
+            assigned += 1
+
+    db.commit()
+    return {"message": "Auto-assign completed (exclusive per-district)", "assigned": assigned, "conflicts": conflicts, "unassigned_districts": unassigned}

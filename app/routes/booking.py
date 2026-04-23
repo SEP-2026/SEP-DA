@@ -1,6 +1,6 @@
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import unicodedata
 from urllib.parse import quote_plus
@@ -14,9 +14,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
+
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
+from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 router = APIRouter()
 
@@ -113,6 +116,17 @@ def geocode_address(address: str):
     raise HTTPException(status_code=404, detail="Không tìm thấy tọa độ cho địa chỉ đã nhập")
 
 
+def _overview_slot_status(raw_status: str | None, booking_statuses: set[str]) -> str:
+    normalized = (raw_status or "").lower()
+    if normalized == "maintenance":
+        return "maintenance"
+    if booking_statuses.intersection({"pending", "booked", "checked_in"}):
+        return "occupied"
+    if normalized in {"reserved", "occupied", "in_use"}:
+        return "occupied"
+    return "available"
+
+
 @router.get("/slots")
 def get_slots(parking_id: int | None = None, db: Session = Depends(get_db)):
     query = db.query(ParkingSlot)
@@ -139,10 +153,29 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
             continue
         slots_by_parking.setdefault(slot.parking_id, []).append(slot)
 
+    active_bookings = (
+        db.query(Booking)
+        .filter(Booking.status.in_(["pending", "booked", "checked_in"]))
+        .all()
+    )
+    booking_statuses_by_slot: dict[int, set[str]] = {}
+    for booking in active_bookings:
+        if not booking.slot_id:
+            continue
+        booking_statuses_by_slot.setdefault(int(booking.slot_id), set()).add((booking.status or "").lower())
+
     result = []
     for lot in lots:
         lot_slots = slots_by_parking.get(lot.id, [])
-        available_count = sum(1 for slot in lot_slots if slot.status == "available")
+        effective_slots = [
+            {
+                "id": slot.id,
+                "code": slot.slot_number or slot.code,
+                "status": _overview_slot_status(slot.status, booking_statuses_by_slot.get(int(slot.id), set())),
+            }
+            for slot in lot_slots
+        ]
+        available_count = sum(1 for slot in effective_slots if slot["status"] == "available")
         occupied_count = len(lot_slots) - available_count
 
         result.append(
@@ -154,14 +187,7 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
                 "available_slots": available_count,
                 "occupied_or_reserved_slots": occupied_count,
                 "total_slots": len(lot_slots),
-                "slots": [
-                    {
-                        "id": slot.id,
-                        "code": slot.slot_number or slot.code,
-                        "status": slot.status,
-                    }
-                    for slot in lot_slots
-                ],
+                "slots": effective_slots,
             }
         )
 
@@ -342,7 +368,7 @@ def _save_booking_qr(content: str, file_path: str) -> None:
 
 
 def _validate_booking_window(checkin_time: datetime, checkout_time: datetime) -> None:
-    now = datetime.utcnow()
+    now = vn_now()
     if checkin_time >= checkout_time:
         raise HTTPException(status_code=400, detail="Thời gian vào phải nhỏ hơn thời gian ra")
     if checkin_time < now:
@@ -350,9 +376,7 @@ def _validate_booking_window(checkin_time: datetime, checkout_time: datetime) ->
 
 
 def _to_utc_naive(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return ensure_vn_local_naive(value)
 
 
 def _normalize_booking_mode(value: str | None) -> str:
@@ -651,12 +675,12 @@ def get_gate_booking_detail(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.role != "owner":
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
-
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem thông tin tại cổng")
 
     parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
     slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
@@ -1123,17 +1147,35 @@ def create_booking(
     except HTTPException:
         db.rollback()
         raise
-    except Exception:
+    except OSError as e:
         db.rollback()
-        raise
+        logger.error(f"File system error during booking creation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Không thể tạo mã QR. Vui lòng thử lại sau."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error during booking creation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi tạo booking: {str(e)}. Vui lòng liên hệ hỗ trợ."
+        )
 
 
 @router.post("/check-in")
-def check_in(booking_id: int, db: Session = Depends(get_db)):
+def check_in(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Booking không tồn tại")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
 
     if booking.status == "pending":
         raise HTTPException(status_code=400, detail="Booking chưa được thanh toán")
@@ -1142,7 +1184,7 @@ def check_in(booking_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Booking không hợp lệ")
 
     booking.status = "checked_in"
-    booking.start_time = datetime.utcnow()
+    booking.start_time = vn_now()
     if booking.slot:
         booking.slot.status = "occupied"
 
@@ -1152,16 +1194,23 @@ def check_in(booking_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/check-out")
-def check_out(booking_id: int, db: Session = Depends(get_db)):
+def check_out(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
 
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
+
     if booking.status != "checked_in":
         raise HTTPException(status_code=400, detail="Chưa check-in")
 
-    actual_checkout = datetime.utcnow()
+    actual_checkout = vn_now()
     overtime_fee = 0.0
 
     if booking.expire_time and actual_checkout > booking.expire_time:
@@ -1187,3 +1236,68 @@ def check_out(booking_id: int, db: Session = Depends(get_db)):
         "overtime_fee": overtime_fee,
         "total_paid": round(float(payment.amount + payment.overtime_fee), 2) if payment else None,
     }
+
+
+@router.get("/bookings/{booking_id}/qr")
+def get_booking_qr(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get QR code for a booking.
+    Only the booking owner or admin can access this.
+    
+    Returns:
+    {
+        "booking_id": 10,
+        "qr_url": "/qrcodes/booking_10.png",
+        "booking_status": "pending",
+        "checkin_time": "2026-04-21T10:36:00",
+        "checkout_time": "2026-04-21T11:36:00"
+    }
+    """
+    try:
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking không tồn tại")
+        
+        # Check access: only owner or admin
+        if booking.user_id != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xem QR của booking này")
+        
+        # Use booking.qr_code as the primary field (set during booking creation)
+        qr_path = booking.qr_code
+        
+        # If QR hasn't been generated yet, generate it now
+        if not qr_path:
+            from app.services.qr_service import generate_booking_qr_code
+            qr_result = generate_booking_qr_code(booking_id, db)
+            if not qr_result.get("success"):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Không thể tạo mã QR: {qr_result.get('error', 'Unknown error')}"
+                )
+            # Refresh to get the newly generated QR path
+            db.refresh(booking)
+            qr_path = booking.qr_code
+        
+        # Extract filename from path (e.g., "qrcodes/booking_10.png" → "booking_10.png")
+        qr_filename = qr_path.split('/')[-1] if qr_path else f"booking_{booking_id}.png"
+        
+        return {
+            "booking_id": booking.id,
+            "qr_url": f"/qrcodes/{qr_filename}",
+            "booking_status": booking.status,
+            "checkin_time": booking.start_time,
+            "checkout_time": booking.expire_time,
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting QR for booking {booking_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Không thể lấy mã QR. Vui lòng thử lại sau."
+        )

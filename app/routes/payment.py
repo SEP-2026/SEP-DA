@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Booking, Payment, User
 from app.routes.auth import get_current_user
+from app.services.qr_service import generate_booking_qr_code
+from app.utils.timezone import vn_now
 
 router = APIRouter(prefix="/payment", tags=["payment"])
 
@@ -120,8 +122,19 @@ def payment_callback(
 
     if status == "success":
         payment.payment_status = "paid"
-        payment.paid_at = datetime.utcnow()
+        payment.paid_at = vn_now()
         booking.status = "booked"
+        
+        # Generate QR code when payment succeeds
+        try:
+            qr_result = generate_booking_qr_code(booking_id, db)
+            if not qr_result.get("success"):
+                # Log the error but don't fail the payment
+                print(f"Warning: QR generation failed for booking {booking_id}: {qr_result.get('error')}")
+        except Exception as e:
+            # Log the error but don't fail the payment
+            print(f"Warning: Exception during QR generation for booking {booking_id}: {str(e)}")
+        
         message = "Thanh toán thành công"
     else:
         payment.payment_status = "failed"

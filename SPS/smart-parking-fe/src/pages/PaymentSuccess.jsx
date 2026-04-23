@@ -1,28 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import API from "../services/api";
+import { formatDateTimeVN } from "../utils/dateTime";
 import "./PaymentSuccess.css";
 
 const formatMoney = (value) => Number(value || 0).toLocaleString("vi-VN");
 const BACKEND_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-
-const formatDateTimeVN = (value) => {
-  if (!value) {
-    return "";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat("vi-VN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-};
 
 export default function PaymentSuccess() {
   const { bookingId } = useParams();
@@ -60,11 +43,14 @@ export default function PaymentSuccess() {
   }, [numericBookingId]);
 
   const qrImageUrl = useMemo(() => {
-    if (!booking?.qr_code) {
+    if (!booking?.qr_code && !booking?.qr_code_path) {
       return "";
     }
-    return `${BACKEND_BASE_URL}/${booking.qr_code}`;
-  }, [booking?.qr_code]);
+    const qrPath = booking.qr_code_path || booking.qr_code;
+    // Extract just the filename if it contains a path
+    const filename = qrPath.includes("/") ? qrPath.split("/").pop() : qrPath;
+    return `${BACKEND_BASE_URL}/qrcodes/${filename}`;
+  }, [booking?.qr_code, booking?.qr_code_path]);
 
   const buildShareMessage = () => {
     if (!booking) {
@@ -84,12 +70,15 @@ export default function PaymentSuccess() {
 
   const handleDownloadQr = async () => {
     if (!qrImageUrl) {
-      setShareNotice("Khong tim thay QR de tai.");
+      setShareNotice("Không tìm thấy QR để tải.");
       return;
     }
 
     try {
       const response = await fetch(qrImageUrl);
+      if (!response.ok) {
+        throw new Error("Failed to fetch QR");
+      }
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -99,9 +88,9 @@ export default function PaymentSuccess() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
-      setShareNotice("Da tai QR thanh cong.");
+      setShareNotice("Đã tải QR thành công.");
     } catch {
-      setShareNotice("Tai QR that bai. Vui long thu lai.");
+      setShareNotice("Tải QR thất bại. Vui lòng thử lại.");
     }
   };
 
@@ -110,7 +99,7 @@ export default function PaymentSuccess() {
       return;
     }
 
-    const subject = encodeURIComponent(`Thong tin booking #${booking.booking_id}`);
+    const subject = encodeURIComponent(`Thông tin booking #${booking.booking_id}`);
     const body = encodeURIComponent(buildShareMessage());
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
@@ -127,15 +116,15 @@ export default function PaymentSuccess() {
           title: `Booking #${booking.booking_id}`,
           text: message,
         });
-        setShareNotice("Da chia se qua ung dung tren dien thoai.");
+        setShareNotice("Đã chia sẻ qua ứng dụng trên điện thoại.");
         return;
       }
 
       await navigator.clipboard.writeText(message);
       window.open("https://zalo.me", "_blank", "noopener,noreferrer");
-      setShareNotice("Da copy noi dung. Hay dan vao Zalo de gui.");
+      setShareNotice("Đã copy nội dung. Hãy dán vào Zalo để gửi.");
     } catch {
-      setShareNotice("Chia se Zalo that bai. Hay thu lai.");
+      setShareNotice("Chia sẻ Zalo thất bại. Hãy thử lại.");
     }
   };
 
@@ -162,24 +151,31 @@ export default function PaymentSuccess() {
             <p><strong>Check-out:</strong> {formatDateTimeVN(booking.checkout_time)}</p>
             <p><strong>Số tiền:</strong> {formatMoney(booking.total_amount)}đ</p>
 
-            {booking.qr_code && (
+            {booking.qr_code || booking.qr_code_path ? (
               <div className="payment-success-qr-box">
-                <img src={qrImageUrl} alt="QR check-in/check-out" />
+                <img 
+                  src={qrImageUrl} 
+                  alt="QR check-in/check-out"
+                  onError={(e) => { e.target.src = '/placeholder-qr.png'; }}
+                  style={{ width: 220, height: 220, border: '1px solid #eee', borderRadius: 8 }}
+                />
               </div>
+            ) : (
+              <p className="payment-success-note">Đang tạo mã QR, vui lòng đợi...</p>
             )}
 
             <div className="payment-success-actions">
               <button type="button" className="payment-success-btn secondary" onClick={handleDownloadQr}>
-                Tai QR
+                Tải QR
               </button>
               <button type="button" className="payment-success-btn secondary" onClick={handleShareEmail}>
-                Gui qua Email
+                Gửi qua Email
               </button>
               <button type="button" className="payment-success-btn secondary" onClick={handleShareZalo}>
-                Gui qua Zalo
+                Gửi qua Zalo
               </button>
               <button type="button" className="btn-primary" onClick={() => navigate("/booking", { replace: true })}>
-                Quay lại đặt chỗ
+                Xem chi tiết booking
               </button>
             </div>
             {shareNotice && <p className="payment-success-share-notice">{shareNotice}</p>}

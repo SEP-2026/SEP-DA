@@ -131,6 +131,7 @@
 .owner-topbar {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--line);
@@ -174,11 +175,14 @@
 }
 
 .owner-topbar-tools {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: end;
+  margin-left: auto;
+  min-width: 0;
+  flex: 0 1 560px;
 }
 
 .owner-notify-pill,
@@ -199,26 +203,41 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  grid-column: 2;
+  justify-self: start;
   min-width: 0;
-  max-width: 260px;
-  padding-left: 4px;
+  width: min(480px, 48vw);
+  max-width: 100%;
 }
 
 .owner-avatar > div:last-child {
+  display: grid;
+  gap: 2px;
   min-width: 0;
 }
 
 .owner-avatar strong {
-  white-space: nowrap;
+  color: #173b5f;
+  line-height: 1.2;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
 }
 
 .owner-avatar span {
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.35;
+  color: #4b6d89;
+}
+
+.owner-avatar strong::selection,
+.owner-avatar span::selection {
+  color: #0f2f4d;
+  background: rgba(144, 198, 255, 0.85);
 }
 
 .owner-content {
@@ -233,6 +252,7 @@
 .owner-activity-list,
 .owner-quick-actions,
 .owner-reviews,
+.owner-settings-stack,
 .owner-settings-form,
 .owner-form-grid,
 .owner-detail-grid {
@@ -267,6 +287,7 @@
 
 .owner-section-card {
   padding: 18px;
+  margin-bottom: 20px;
 }
 
 .owner-section-head {
@@ -274,6 +295,17 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+/* Sticky headers for admin pages only */
+.admin-content .owner-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  margin-bottom: 0;
+  background: #ffffff;
+  padding: 14px 0 16px 0;
+  border-bottom: none;
 }
 
 .owner-section-head h2 {
@@ -299,6 +331,11 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.owner-section-actions {
+  justify-content: flex-end;
+  flex: 1 1 320px;
 }
 
 .owner-stat-card {
@@ -372,14 +409,15 @@
 
 .owner-table-shell {
   overflow: auto;
+  margin-top: 0;
 }
 
-/* For admin pages, limit table height and enable internal scrolling so page length doesn't grow */
+/* For admin pages, allow table to grow and rely on page scrolling when needed */
 .admin-main .owner-table-shell,
 .admin-content .owner-table-shell {
-  /* limit height relative to admin content so internal scroll appears */
-  max-height: calc(100% - 220px);
-  overflow: auto;
+  /* don't artificially cap the table height inside admin shell */
+  max-height: none;
+  overflow: visible;
 }
 
 .owner-table {
@@ -397,17 +435,45 @@
   vertical-align: middle;
 }
 
-.owner-table th {
+/* Make table header row sticky so column headings remain visible while scrolling */
+.owner-table thead th {
   color: #54738e;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
+/* Sticky table header for admin pages only */
+.admin-content .owner-table thead th {
+  position: sticky;
+  top: 60px; /* positioned after section head */
+  z-index: 99;
+  background: #ffffff;
+  border-top: 1px solid rgba(20, 57, 93, 0.1);
+  border-bottom: 1px solid rgba(20, 57, 93, 0.1);
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
 .owner-table td span {
   display: block;
   color: #5d7d97;
   font-size: 13px;
+}
+
+.owner-empty,
+.owner-empty-cell {
+  color: #5d7d97;
+  font-size: 14px;
+}
+
+.owner-empty {
+  margin: 0 0 12px;
+}
+
+.owner-empty-cell {
+  text-align: center !important;
+  padding: 24px 12px !important;
 }
 
 .owner-badge {
@@ -481,6 +547,12 @@
 .owner-chart-label {
   fill: #567892;
   font-size: 13px;
+}
+
+.owner-chart-empty {
+  fill: #6b879d;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .owner-chart-legend {
@@ -625,6 +697,10 @@
   min-width: 150px;
 }
 
+.owner-section-actions .owner-control {
+  min-width: min(100%, 300px);
+}
+
 .owner-control--date {
   min-width: 0;
   padding: 10px 12px;
@@ -667,6 +743,111 @@
 
 .owner-slot-grid {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.owner-lot-list {
+  display: grid;
+  gap: 16px;
+}
+
+.owner-lot-card {
+  border: 1px solid rgba(20, 57, 93, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 20px rgba(11, 36, 61, 0.06);
+  overflow: hidden;
+}
+
+.owner-lot-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px;
+}
+
+.owner-lot-summary-main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
+}
+
+.owner-lot-summary h3 {
+  margin: 0 0 6px;
+  color: #14395d;
+  font-size: 24px;
+}
+
+.owner-lot-summary p {
+  margin: 0;
+  color: #5c7d97;
+}
+
+.owner-lot-summary-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.owner-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.owner-summary-pill--success {
+  color: #1a6f46;
+  background: rgba(42, 140, 82, 0.12);
+}
+
+.owner-summary-pill--danger {
+  color: #9a3340;
+  background: rgba(199, 63, 76, 0.12);
+}
+
+.owner-summary-pill--neutral {
+  color: #526d83;
+  background: rgba(82, 109, 131, 0.12);
+}
+
+.owner-summary-pill--warning {
+  color: #8a5b0e;
+  background: rgba(241, 174, 54, 0.18);
+}
+
+.owner-lot-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.owner-lot-toggle {
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(82, 109, 131, 0.12);
+  color: #183f5f;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.owner-lot-toggle.is-open {
+  transform: rotate(45deg);
+  background: rgba(16, 128, 145, 0.12);
+}
+
+.owner-lot-detail {
+  padding: 0 24px 22px;
 }
 
 .owner-slot-card {
@@ -722,6 +903,12 @@
   width: min(720px, 100%);
 }
 
+.owner-modal--large {
+  width: min(960px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
 .owner-modal-head {
   display: flex;
   justify-content: space-between;
@@ -758,6 +945,14 @@
 .owner-form-grid,
 .owner-settings-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.owner-settings-form--card {
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid rgba(20, 57, 93, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 20px rgba(11, 36, 61, 0.05);
 }
 
 .owner-form-grid label,
@@ -798,6 +993,30 @@
 
 .owner-detail-grid strong {
   color: #173f5f;
+}
+
+.owner-section {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(20, 57, 93, 0.08);
+}
+
+.owner-section h3 {
+  margin: 0 0 15px;
+  font-size: 1.1rem;
+  color: #2c3e50;
+}
+
+.text-green,
+.table-cell-green {
+  color: #27ae60;
+  font-weight: 600;
+}
+
+.text-orange,
+.table-cell-orange {
+  color: #e67e22;
+  font-weight: 600;
 }
 
 .owner-settings-actions {
@@ -955,5 +1174,14 @@
     width: 100%;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .owner-lot-summary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .owner-lot-summary-actions {
+    justify-content: space-between;
   }
 }

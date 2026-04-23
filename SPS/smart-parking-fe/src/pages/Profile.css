@@ -134,6 +134,34 @@
   align-items: center;
 }
 
+.profile-manager-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+
+.profile-manager-stat {
+  border: 1px solid rgba(184, 218, 233, 0.95);
+  border-radius: 12px;
+  background: rgba(245, 252, 255, 0.76);
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.profile-manager-label {
+  color: #53708a;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.profile-manager-stat strong {
+  color: #173e59;
+  font-size: 1.02rem;
+}
+
 .profile-card label {
   color: #1e4764;
   font-weight: 650;
@@ -209,6 +237,10 @@
 
 @media (max-width: 900px) {
   .profile-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-manager-grid {
     grid-template-columns: 1fr;
   }
 

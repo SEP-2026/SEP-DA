@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from app.database import SessionLocal
-from app.models.models import District, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
+from app.models.models import Booking, District, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
+from app.utils.timezone import vn_now
 from werkzeug.security import generate_password_hash
 
 db = SessionLocal()
@@ -9,7 +12,17 @@ def seed_districts() -> dict[str, int]:
     district_names = [
         "Quận 1",
         "Quận 3",
+        "Quận 4",
+        "Quận 5",
+        "Quận 6",
+        "Quận 7",
+        "Quận 8",
+        "Quận 10",
+        "Quận 11",
+        "Quận 12",
         "Quận Tân Phú",
+        "Thủ Đức",
+        "Bình Tân",
     ]
 
     for name in district_names:
@@ -32,6 +45,9 @@ def seed_slots():
     for lot in parking_lots:
         for i in range(1, 11):
             code = f"A{i}"
+            slot_index = i - 1
+            zone = f"Khu {chr(65 + (slot_index % 4))}"
+            level = f"Tầng {(slot_index // 20) + 1}"
             exists = (
                 db.query(ParkingSlot)
                 .filter(
@@ -45,6 +61,8 @@ def seed_slots():
                     code=f"{lot.id}-{code}",
                     slot_number=code,
                     parking_id=lot.id,
+                    zone=zone,
+                    level=level,
                     status="available",
                 )
                 db.add(slot)
@@ -52,6 +70,9 @@ def seed_slots():
                 exists.code = f"{lot.id}-{code}"
                 exists.slot_number = code
                 exists.parking_id = lot.id
+                exists.zone = zone
+                exists.level = level
+                exists.updated_at = vn_now()
 
     db.commit()
     print("Seeded slots!")
@@ -165,6 +186,33 @@ def seed_default_user(district_map: dict[str, int]):
 
     db.commit()
     print("Seeded default users!")
+
+
+def sync_legacy_owner_districts(district_map: dict[str, int]):
+    legacy_owner_districts = {
+        "quan1@gmail.com": "Quận 1",
+        "quan3@gmail.com": "Quận 3",
+        "quan4@gmail.com": "Quận 4",
+        "quan5@gmail.com": "Quận 5",
+        "quan6@gmail.com": "Quận 6",
+        "quan7@gmail.com": "Quận 7",
+        "quan8@gmail.com": "Quận 8",
+        "quan10@gmail.com": "Quận 10",
+        "quan11@gmail.com": "Quận 11",
+        "quan12@gmail.com": "Quận 12",
+        "quanthuduc@gmail.com": "Thủ Đức",
+        "quantanphu@gmail.com": "Quận Tân Phú",
+        "quanbinhtan@gmail.com": "Bình Tân",
+    }
+
+    for email, district_name in legacy_owner_districts.items():
+        owner = db.query(User).filter(User.email == email, User.role == "owner").first()
+        if not owner:
+            continue
+        owner.managed_district_id = district_map.get(district_name)
+
+    db.commit()
+    print("Synced legacy owner districts!")
 
 
 def seed_parking_lots_and_prices(district_map: dict[str, int]):
@@ -376,9 +424,42 @@ def seed_owner_parking_assignments():
     print("Seeded owner parking assignments!")
 
 
+def sync_slot_statuses_from_real_bookings():
+    demo_bookings = db.query(Booking).filter(Booking.qr_code.like("seed-booking-%")).all()
+    for booking in demo_bookings:
+        db.delete(booking)
+
+    db.flush()
+
+    active_booking_by_slot = {
+        int(booking.slot_id): booking
+        for booking in db.query(Booking).filter(Booking.status.in_(["pending", "booked", "checked_in"])).all()
+        if booking.slot_id is not None and not (booking.qr_code or "").startswith("seed-booking-")
+    }
+
+    slots = db.query(ParkingSlot).order_by(ParkingSlot.parking_id.asc(), ParkingSlot.id.asc()).all()
+    for slot in slots:
+        normalized_status = (slot.status or "").lower()
+        active_booking = active_booking_by_slot.get(int(slot.id))
+
+        if normalized_status == "maintenance":
+            continue
+        if active_booking is None:
+            slot.status = "available"
+        elif (active_booking.status or "").lower() == "checked_in":
+            slot.status = "occupied"
+        else:
+            slot.status = "reserved"
+
+    db.commit()
+    print("Synced slot statuses from real bookings!")
+
+
 if __name__ == "__main__":
     district_map = seed_districts()
     seed_parking_lots_and_prices(district_map)
     seed_slots()
     seed_default_user(district_map)
+    sync_legacy_owner_districts(district_map)
     seed_owner_parking_assignments()
+    sync_slot_statuses_from_real_bookings()

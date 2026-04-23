@@ -20,6 +20,7 @@ services:
       - "8000:8000"
     volumes:
       - ./:/app
+      - ./qrcodes:/app/qrcodes
     depends_on:
       - db
 
@@ -33,7 +34,7 @@ services:
       MYSQL_USER: admin
       MYSQL_PASSWORD: 123456
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysqldata:/var/lib/mysql
 
