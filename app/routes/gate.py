@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Booking, EmployeeAccount, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Transaction, User, UserVehicle
 from app.routes.auth import get_current_user
+from app.services.qr_service import invalidate_booking_qr_code
 
 router = APIRouter(prefix="/gate", tags=["gate"])
 
@@ -636,6 +637,7 @@ def _execute_check_out(
     else:
         booking.status = "completed"
         _invalidate_qr(booking, now)
+    invalidate_booking_qr_code(booking, db)
 
     booking.last_gate_action = "check_out"
     booking.last_gate_action_at = now

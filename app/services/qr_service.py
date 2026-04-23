@@ -9,11 +9,12 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 
 import qrcode
 from sqlalchemy.orm import Session
 
-from app.models.models import Booking, ParkingLot, ParkingSlot, User
+from app.models.models import Booking, ParkingLot, ParkingSlot, Payment, User
 from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,47 @@ def _resolve_slot_display(slot: ParkingSlot | None) -> str:
     if slot.level:
         return f"O {slot_code} - {slot.level}"
     return f"O {slot_code}"
+
+
+def invalidate_booking_qr_code(booking: Booking, db: Session) -> dict:
+    """Delete QR image file and clear QR metadata for a booking."""
+    if not booking:
+        return {"success": False, "error": "Booking not found"}
+
+    payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
+    qr_paths = [booking.qr_code_path, booking.qr_code, payment.qr_code if payment else None]
+    removed_files: list[str] = []
+
+    for raw_path in qr_paths:
+        if not raw_path:
+            continue
+        normalized = str(raw_path).strip()
+        if not normalized:
+            continue
+        file_path = Path(normalized)
+        if not file_path.is_absolute():
+            file_path = Path.cwd() / file_path
+        if file_path.exists() and file_path.is_file():
+            try:
+                file_path.unlink()
+                removed_files.append(str(file_path))
+            except OSError:
+                logger.warning("Cannot remove QR file for booking_id=%s path=%s", booking.id, file_path)
+
+    booking.qr_code_path = None
+    booking.qr_code = None
+    if payment:
+        payment.qr_code = None
+        payment.vnpay_url = None
+    booking.qr_token_expires_at = vn_now()
+    booking.qr_generated_at = vn_now()
+    db.flush()
+
+    return {
+        "success": True,
+        "booking_id": booking.id,
+        "removed_files": removed_files,
+    }
 
 
 def generate_booking_qr_code(booking_id: int, db: Session) -> dict:
