@@ -42,6 +42,8 @@ def migrate_users_columns():
         alter_statements.append("ADD COLUMN full_name VARCHAR(255) NULL")
     if "email" not in columns:
         alter_statements.append("ADD COLUMN email VARCHAR(255) NULL")
+    if "username" not in columns:
+        alter_statements.append("ADD COLUMN username VARCHAR(100) NULL")
     if "password" not in columns:
         alter_statements.append("ADD COLUMN password VARCHAR(255) NULL")
     if "password_hash" not in columns:
@@ -52,6 +54,12 @@ def migrate_users_columns():
         alter_statements.append("ADD COLUMN vehicle_plate VARCHAR(30) NULL")
     if "vehicle_color" not in columns:
         alter_statements.append("ADD COLUMN vehicle_color VARCHAR(50) NULL")
+    if "owner_id" not in columns:
+        alter_statements.append("ADD COLUMN owner_id BIGINT NULL")
+    if "parking_lot_id" not in columns:
+        alter_statements.append("ADD COLUMN parking_lot_id BIGINT NULL")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
     if "is_active" not in columns:
         alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
     if "status" not in columns:
@@ -72,6 +80,61 @@ def migrate_users_columns():
     if "uq_users_email" not in indexes:
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX uq_users_email ON users (email)"))
+    if "uq_users_username" not in indexes:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE UNIQUE INDEX uq_users_username ON users (username)"))
+
+
+def migrate_employee_operational_tables():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "parking_lot_operational" in table_names:
+        columns = {column["name"] for column in inspector.get_columns("parking_lot_operational")}
+        alter_statements = []
+        if "status" not in columns:
+            alter_statements.append("ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open'")
+        if "revenue_today" not in columns:
+            alter_statements.append("ADD COLUMN revenue_today FLOAT NOT NULL DEFAULT 0")
+        if "revenue_month" not in columns:
+            alter_statements.append("ADD COLUMN revenue_month FLOAT NOT NULL DEFAULT 0")
+        if "updated_at" not in columns:
+            alter_statements.append("ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+        if alter_statements:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE parking_lot_operational {', '.join(alter_statements)}"))
+
+    # Seed or refresh operational rows based on parking_lots + parking_slots.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO parking_lot_operational (
+                    parking_lot_id, total_slots, occupied_slots, empty_slots, status, revenue_today, revenue_month, updated_at
+                )
+                SELECT
+                    p.id,
+                    COUNT(s.id) AS total_slots,
+                    SUM(CASE WHEN s.status IN ('occupied', 'in_use') THEN 1 ELSE 0 END) AS occupied_slots,
+                    GREATEST(
+                        COUNT(s.id) - SUM(CASE WHEN s.status IN ('occupied', 'in_use') THEN 1 ELSE 0 END),
+                        0
+                    ) AS empty_slots,
+                    'open' AS status,
+                    0 AS revenue_today,
+                    0 AS revenue_month,
+                    CURRENT_TIMESTAMP AS updated_at
+                FROM parking_lots p
+                LEFT JOIN parking_slots s ON s.parking_id = p.id
+                GROUP BY p.id
+                ON DUPLICATE KEY UPDATE
+                    total_slots = VALUES(total_slots),
+                    occupied_slots = LEAST(occupied_slots, VALUES(total_slots)),
+                    empty_slots = GREATEST(VALUES(total_slots) - LEAST(occupied_slots, VALUES(total_slots)), 0),
+                    updated_at = CURRENT_TIMESTAMP
+                """
+            )
+        )
 
 
 def migrate_user_vehicles_table():
@@ -241,6 +304,7 @@ def init_db():
     migrate_parking_slots_columns()
     migrate_bookings_columns()
     migrate_payments_columns()
+    migrate_employee_operational_tables()
 
 
 if __name__ == "__main__":

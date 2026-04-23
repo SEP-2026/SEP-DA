@@ -1,5 +1,5 @@
 from app.database import SessionLocal
-from app.models.models import ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
+from app.models.models import OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, User, UserVehicle
 from werkzeug.security import generate_password_hash
 
 db = SessionLocal()
@@ -112,6 +112,52 @@ def seed_default_user():
     print("Seeded default users!")
 
 
+def seed_owner_assignments_and_employee():
+    owner = db.query(User).filter(User.email == "owner1@gmail.com").first()
+    first_lot = db.query(ParkingLot).order_by(ParkingLot.id.asc()).first()
+
+    if not owner or not first_lot:
+        print("Missing owner or parking lot for employee seeding")
+        return
+
+    owner_parking = (
+        db.query(OwnerParking)
+        .filter(OwnerParking.owner_id == owner.id, OwnerParking.parking_id == first_lot.id)
+        .first()
+    )
+    if not owner_parking:
+        owner_parking = OwnerParking(owner_id=owner.id, parking_id=first_lot.id)
+        db.add(owner_parking)
+
+    employee = db.query(User).filter(User.username == "employee_demo").first()
+    if not employee:
+        employee = User(
+            name="Employee Demo",
+            email="employee_demo@local.smartparking",
+            username="employee_demo",
+            role="employee",
+            owner_id=owner.id,
+            parking_lot_id=first_lot.id,
+            status="active",
+            is_active=1,
+        )
+        db.add(employee)
+
+    employee.name = "Employee Demo"
+    employee.email = "employee_demo@local.smartparking"
+    employee.username = "employee_demo"
+    employee.role = "employee"
+    employee.owner_id = owner.id
+    employee.parking_lot_id = first_lot.id
+    employee.password = "123456"
+    employee.password_hash = generate_password_hash("123456")
+    employee.status = "active"
+    employee.is_active = 1
+
+    db.commit()
+    print("Seeded employee demo account!")
+
+
 def seed_parking_lots_and_prices():
     lots = [
         {
@@ -208,3 +254,4 @@ if __name__ == "__main__":
     seed_parking_lots_and_prices()
     seed_slots()
     seed_default_user()
+    seed_owner_assignments_and_employee()
