@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import API from "../services/api";
+import CountdownTimer from "../components/CountdownTimer";
 import { formatDateTimeVN } from "../utils/dateTime";
 import "./PaymentSuccess.css";
 
@@ -15,6 +16,7 @@ export default function PaymentSuccess() {
   const [error, setError] = useState("");
   const [booking, setBooking] = useState(null);
   const [shareNotice, setShareNotice] = useState("");
+  const [statusData, setStatusData] = useState(null);
 
   const numericBookingId = useMemo(() => Number(bookingId), [bookingId]);
 
@@ -41,6 +43,23 @@ export default function PaymentSuccess() {
 
     fetchBooking();
   }, [numericBookingId]);
+
+  useEffect(() => {
+    if (!numericBookingId || !booking) return undefined;
+    const currentStatus = (statusData?.checkin_status || booking.booking_status || "").toLowerCase();
+    if (currentStatus !== "checked_in") return undefined;
+
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await API.get(`/bookings/${numericBookingId}/status`);
+        setStatusData(res.data);
+      } catch {
+        // Keep old status if polling fails once.
+      }
+    }, 10000);
+
+    return () => window.clearInterval(timer);
+  }, [numericBookingId, booking, statusData?.checkin_status, booking?.booking_status]);
 
   const qrImageUrl = useMemo(() => {
     if (!booking?.qr_code && !booking?.qr_code_path) {
@@ -139,6 +158,15 @@ export default function PaymentSuccess() {
 
         {booking && !loading && (
           <div className="payment-success-card">
+            {((statusData?.checkin_status || booking.booking_status || "").toLowerCase() === "checked_in") ? (
+              <CountdownTimer
+                expectedCheckout={statusData?.checkout_time || booking.checkout_time}
+                pricePerHour={statusData?.price_per_hour || 0}
+              />
+            ) : null}
+            {((statusData?.checkin_status || booking.booking_status || "").toLowerCase() === "checked_out") ? (
+              <p className="payment-success-note">✅ Đã check-out thành công</p>
+            ) : null}
             <p><strong>Booking ID:</strong> {booking.booking_id}</p>
             <p><strong>Trạng thái:</strong> {booking.booking_status}</p>
             <p><strong>Bãi xe:</strong> {booking.parking?.name}</p>
@@ -150,6 +178,9 @@ export default function PaymentSuccess() {
             <p><strong>Check-in:</strong> {formatDateTimeVN(booking.checkin_time)}</p>
             <p><strong>Check-out:</strong> {formatDateTimeVN(booking.checkout_time)}</p>
             <p><strong>Số tiền:</strong> {formatMoney(booking.total_amount)}đ</p>
+            {(statusData?.checkin_status || "").toLowerCase() === "checked_out" ? (
+              <p><strong>Tổng chi phí thực tế:</strong> {formatMoney(statusData?.total_actual_fee || booking.total_amount)}đ</p>
+            ) : null}
 
             {booking.qr_code || booking.qr_code_path ? (
               <div className="payment-success-qr-box">
@@ -177,6 +208,11 @@ export default function PaymentSuccess() {
               <button type="button" className="btn-primary" onClick={() => navigate("/booking", { replace: true })}>
                 Xem chi tiết booking
               </button>
+              {(statusData?.checkin_status || "").toLowerCase() === "checked_out" ? (
+                <button type="button" className="btn-primary" onClick={() => navigate("/owner/reviews")}>
+                  Đánh giá bãi đỗ xe
+                </button>
+              ) : null}
             </div>
             {shareNotice && <p className="payment-success-share-notice">{shareNotice}</p>}
           </div>

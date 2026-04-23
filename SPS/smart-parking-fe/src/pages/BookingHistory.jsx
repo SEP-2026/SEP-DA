@@ -4,7 +4,7 @@ import API from "../services/api";
 import { formatDateTimeVN, parseVietnamDate, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import "./BookingHistory.css";
 
-const ACTIVE_STATUSES = ["pending", "booked", "checked_in"];
+const ACTIVE_STATUSES = ["pending", "booked", "checked_in", "checked_out", "completed"];
 
 const fmtDateTime = (value) => {
   return formatDateTimeVN(value, "N/A");
@@ -14,11 +14,22 @@ const toDatetimeLocal = (value) => {
   return toDatetimeLocalValue(value);
 };
 
+const formatDuration = (start, end) => {
+  const startDate = parseVietnamDate(start);
+  const endDate = parseVietnamDate(end);
+  if (!startDate || !endDate) return "N/A";
+  const totalMinutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours} giờ ${minutes} phút`;
+};
+
 const statusText = (status) => {
   const map = {
     pending: "Chờ thanh toán",
     booked: "Đã đặt",
     checked_in: "Đang gửi xe",
+    checked_out: "Đã check-out",
     completed: "Hoàn tất",
     cancelled: "Đã hủy",
   };
@@ -30,6 +41,7 @@ const statusClass = (status) => {
     pending: "is-pending",
     booked: "is-booked",
     checked_in: "is-checked-in",
+    checked_out: "is-completed",
     completed: "is-completed",
     cancelled: "is-cancelled",
   };
@@ -173,6 +185,38 @@ export default function BookingHistory() {
 
     loadSlots();
   }, [conflictingBooking?.parking_id, conflictingBooking?.slot_id, editMode]);
+
+  useEffect(() => {
+    const checkedIn = bookings.filter((item) => (item.checkin_status || item.status) === "checked_in");
+    if (!checkedIn.length) return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        const updates = await Promise.all(
+          checkedIn.map(async (item) => {
+            const res = await API.get(`/bookings/${item.booking_id}/status`);
+            return { booking_id: item.booking_id, payload: res.data };
+          }),
+        );
+        setBookings((prev) =>
+          prev.map((item) => {
+            const found = updates.find((u) => u.booking_id === item.booking_id);
+            if (!found) return item;
+            return {
+              ...item,
+              checkin_status: found.payload.checkin_status,
+              actual_checkin: found.payload.actual_checkin || item.actual_checkin,
+              actual_checkout: found.payload.actual_checkout || item.actual_checkout,
+              overstay_fee: found.payload.overstay_fee,
+              total_actual_fee: found.payload.total_actual_fee,
+            };
+          }),
+        );
+      } catch {
+        // Ignore a failed poll cycle.
+      }
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [bookings]);
 
   const activeBookings = useMemo(
     () => bookings.filter((item) => ACTIVE_STATUSES.includes(item.status)),
@@ -468,6 +512,17 @@ export default function BookingHistory() {
                 <p><strong>Check-in:</strong> {fmtDateTime(item.checkin_time)}</p>
                 <p><strong>Check-out:</strong> {fmtDateTime(item.checkout_time)}</p>
                 <p><strong>Tổng tiền:</strong> {Number(item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                {((item.checkin_status || item.status) === "checked_out" || item.status === "completed") ? (
+                  <>
+                    <p><strong>✅ Trạng thái:</strong> Đã check-out</p>
+                    <p><strong>Check-in thực tế:</strong> {fmtDateTime(item.actual_checkin)}</p>
+                    <p><strong>Check-out thực tế:</strong> {fmtDateTime(item.actual_checkout)}</p>
+                    <p><strong>Thời gian:</strong> {formatDuration(item.actual_checkin || item.checkin_time, item.actual_checkout || item.checkout_time)}</p>
+                    <p><strong>Phí đặt chỗ gốc:</strong> {Number(item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                    <p><strong>Phí quá giờ:</strong> {Number(item.overstay_fee || 0).toLocaleString("vi-VN")}đ</p>
+                    <p><strong>Tổng cộng:</strong> {Number(item.total_actual_fee || item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                  </>
+                ) : null}
                 {directionsUrl && mapUrl && (
                   <div className="history-item-actions">
                     {item.status !== "pending" && (
@@ -498,6 +553,11 @@ export default function BookingHistory() {
                     >
                       <span>Xem Bản Đồ</span>
                     </a>
+                    {((item.checkin_status || item.status) === "checked_out" || item.status === "completed") ? (
+                      <button type="button" className="btn-qr" onClick={() => navigate("/owner/reviews")}>
+                        <span>Đánh giá bãi đỗ xe ⭐</span>
+                      </button>
+                    ) : null}
                   </div>
                 )}
                     </>

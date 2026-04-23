@@ -70,6 +70,8 @@ def generate_booking_qr_code(booking_id: int, db: Session) -> dict:
     license_plate = (user.vehicle_plate if user else None) or "N/A"
     slot_display = _resolve_slot_display(slot)
     status_text = STATUS_LABELS.get((booking.status or "").lower(), booking.status or "Unknown")
+    if booking.actual_checkout and (booking.status or "").lower() in {"completed", "checked_out"}:
+        status_text = f"Da check-out luc {_format_datetime_vi(booking.actual_checkout)}"
 
     human_readable_content = (
         "=== PHIEU GUI XE THONG MINH ===\n"

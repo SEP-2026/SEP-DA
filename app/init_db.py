@@ -413,6 +413,12 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN qr_token_expires_at DATETIME NULL")
     if "cancel_reason" not in columns:
         alter_statements.append("ADD COLUMN cancel_reason VARCHAR(255) NULL")
+    if "overstay_minutes" not in columns:
+        alter_statements.append("ADD COLUMN overstay_minutes INT NULL DEFAULT 0")
+    if "overstay_fee" not in columns:
+        alter_statements.append("ADD COLUMN overstay_fee DECIMAL(10,2) NULL DEFAULT 0")
+    if "total_actual_fee" not in columns:
+        alter_statements.append("ADD COLUMN total_actual_fee DECIMAL(10,2) NULL")
 
     if alter_statements:
         _run_ddl_with_retry(f"ALTER TABLE bookings {', '.join(alter_statements)}")

@@ -77,3 +77,18 @@ export async function checkOutGate(payload) {
     };
   }
 }
+
+export async function getCheckoutPreview(bookingId) {
+  const response = await API.get(`/bookings/${bookingId}/checkout-preview`);
+  return response.data;
+}
+
+export async function confirmCheckout(bookingId) {
+  const response = await API.post(`/bookings/${bookingId}/checkout`, {});
+  return response.data;
+}
+
+export async function getBookingStatus(bookingId) {
+  const response = await API.get(`/bookings/${bookingId}/status`);
+  return response.data;
+}
