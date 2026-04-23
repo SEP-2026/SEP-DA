@@ -49,6 +49,37 @@
   color: #163f5c;
 }
 
+.history-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.history-tab {
+  border: 1px solid rgba(20, 57, 93, 0.22);
+  background: #f2f8fc;
+  color: #234d6b;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-tab:hover {
+  border-color: rgba(20, 57, 93, 0.38);
+  transform: translateY(-1px);
+}
+
+.history-tab.active {
+  background: linear-gradient(135deg, #1f6de0, #0f8fd3);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 14px rgba(20, 95, 150, 0.26);
+}
+
 .conflict-message {
   margin: 10px 0 16px;
   color: #294d6b;

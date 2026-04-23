@@ -264,6 +264,7 @@ export default function Booking() {
   const [vehicleNotice, setVehicleNotice] = useState("");
   const [bookingResult, setBookingResult] = useState(null);
   const [profile, setProfile] = useState(() => auth?.user || null);
+  const [expandedLotId, setExpandedLotId] = useState(null);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -498,6 +499,10 @@ export default function Booking() {
     setBookingResult(null);
     setError("");
     setBookingError("");
+  };
+
+  const handleToggleLotDetail = (lotId) => {
+    setExpandedLotId((prev) => (prev === lotId ? null : lotId));
   };
 
   const handleBookingModeChange = (mode) => {
@@ -825,9 +830,18 @@ export default function Booking() {
                     <p>🏠 {lot.has_roof ? "Có mái che" : "Không mái che"}</p>
                     <p>💰 {Number(lot.price_per_hour).toLocaleString("vi-VN")}đ/giờ</p>
                     <p>💵 {Number(lot.price_per_day).toLocaleString("vi-VN")}đ/ngày - {Number(lot.price_per_month).toLocaleString("vi-VN")}đ/tháng</p>
+                    {expandedLotId === lot.id ? (
+                      <div className="lot-detail-box">
+                        <p><strong>ID bãi:</strong> {lot.id}</p>
+                        <p><strong>Tọa độ:</strong> {lot.latitude}, {lot.longitude}</p>
+                        <p><strong>Giá theo giờ:</strong> {Number(lot.price_per_hour || 0).toLocaleString("vi-VN")}đ</p>
+                        <p><strong>Giá theo ngày:</strong> {Number(lot.price_per_day || 0).toLocaleString("vi-VN")}đ</p>
+                        <p><strong>Giá theo tháng:</strong> {Number(lot.price_per_month || 0).toLocaleString("vi-VN")}đ</p>
+                      </div>
+                    ) : null}
                     <div className="lot-actions">
-                      <button type="button" className="btn-secondary" onClick={() => handleSelectLot(lot)}>
-                        Chọn bãi xe này
+                      <button type="button" className="btn-secondary" onClick={() => handleToggleLotDetail(lot.id)}>
+                        {expandedLotId === lot.id ? "Ẩn chi tiết" : "Xem chi tiết"}
                       </button>
                       <button type="button" className="btn-primary" onClick={() => handleSelectLot(lot)}>
                         Đặt ngay
