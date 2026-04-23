@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Transaction, User, UserVehicle
+from app.models.models import Booking, EmployeeAccount, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Transaction, User, UserVehicle
 from app.routes.auth import get_current_user
 
 router = APIRouter(prefix="/gate", tags=["gate"])
@@ -49,12 +49,12 @@ def _local_now() -> datetime:
     return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
 
 
-def _ensure_gate_operator(current_user: User) -> None:
+def _ensure_gate_operator(current_user: User | EmployeeAccount) -> None:
     if current_user.role not in {"owner", "admin"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner hoặc admin mới được thao tác tại cổng")
 
 
-def _assert_gate_permission(current_user: User, booking: Booking, db: Session) -> None:
+def _assert_gate_permission(current_user: User | EmployeeAccount, booking: Booking, db: Session) -> None:
     _ensure_gate_operator(current_user)
     if current_user.role == "admin":
         return
@@ -136,6 +136,31 @@ def _round_up_hours(hours: float) -> int:
 
 def _round_up_days(hours: float) -> int:
     return max(1, int(math.ceil(max(hours, 0) / 24)))
+
+
+def _ensure_gate_operator(current_user: User | EmployeeAccount) -> None:
+    if current_user.role not in {"owner", "admin", "employee"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chá»‰ owner, admin hoáº·c employee má»›i Ä‘Æ°á»£c thao tÃ¡c táº¡i cá»•ng")
+
+
+def _assert_gate_permission(current_user: User | EmployeeAccount, booking: Booking, db: Session) -> None:
+    _ensure_gate_operator(current_user)
+    if current_user.role == "admin":
+        return
+    if current_user.role == "employee":
+        if int(current_user.parking_id) != int(booking.parking_id or 0):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee khÃ´ng cÃ³ quyá»n thao tÃ¡c táº¡i bÃ£i nÃ y")
+        return
+    assignment = (
+        db.query(OwnerParking)
+        .filter(
+            OwnerParking.owner_id == current_user.id,
+            OwnerParking.parking_id == booking.parking_id,
+        )
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Báº¡n khÃ´ng cÃ³ quyá»n thao tÃ¡c táº¡i cá»•ng cá»§a bÃ£i nÃ y")
 
 
 def _display_slot(slot: ParkingSlot | None) -> str | None:

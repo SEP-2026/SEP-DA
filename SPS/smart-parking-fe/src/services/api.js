@@ -41,8 +41,11 @@ API.interceptors.response.use(
   (error) => {
     if (error?.response?.status === 401) {
       clearAuth();
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login?sessionExpired=1";
+      if (typeof window !== "undefined") {
+        const onDefaultLogin = window.location.pathname.startsWith("/login");
+        if (!onDefaultLogin) {
+          window.location.href = "/login?sessionExpired=1";
+        }
       }
     }
     return Promise.reject(error);
