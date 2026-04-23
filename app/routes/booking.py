@@ -6,6 +6,7 @@ import unicodedata
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 import json
+import logging
 
 import qrcode
 

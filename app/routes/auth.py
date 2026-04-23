@@ -12,7 +12,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.database import get_db
 from app.models.models import District, RevokedToken, User
-from app.security.password_policy import ensure_strong_password
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -25,6 +24,7 @@ from app.schemas.auth import (
     UpdateProfileResponse,
     UserInfo,
 )
+from app.security.password_policy import ensure_strong_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
@@ -48,14 +48,14 @@ def _build_user_info(user: User) -> UserInfo:
     )
 
 
-def _create_access_token(user: User) -> tuple[str, datetime, str]:
+def create_access_token_for_subject(subject: str, role: str, identity: str) -> tuple[str, datetime, str]:
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     jti = str(uuid4())
     payload = {
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role,
+        "sub": subject,
+        "email": identity,
+        "role": role,
         "jti": jti,
         "iat": now,
         "exp": expires_at,
@@ -64,19 +64,17 @@ def _create_access_token(user: User) -> tuple[str, datetime, str]:
     return token, expires_at, jti
 
 
-def _decode_token(token: str) -> dict[str, Any]:
+def _create_access_token(user: User) -> tuple[str, datetime, str]:
+    return create_access_token_for_subject(str(user.id), user.role, user.email)
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except ExpiredSignatureError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token đã hết hạn",
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token Ä‘Ã£ háº¿t háº¡n") from exc
     except InvalidTokenError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ",
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng há»£p lá»‡") from exc
 
 
 def _is_token_revoked(db: Session, jti: str) -> bool:
@@ -88,77 +86,54 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Thiếu access token",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thiáº¿u access token")
 
-    payload = _decode_token(credentials.credentials)
+    payload = decode_access_token(credentials.credentials)
     jti = payload.get("jti")
     if not jti or _is_token_revoked(db, jti):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token đã bị thu hồi",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token Ä‘Ã£ bá»‹ thu há»“i")
 
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ",
-        )
+    subject = payload.get("sub")
+    if not subject or str(subject).startswith("employee:"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng thuá»™c ngÆ°á»i dÃ¹ng há»‡ thá»‘ng")
 
     try:
-        user_id_int = int(user_id)
+        user_id = int(subject)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ",
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng há»£p lá»‡") from exc
 
-    user = db.query(User).filter(User.id == user_id_int, User.is_active == 1).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active == 1).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Người dùng không tồn tại hoặc đã bị khóa",
-        )
-
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ khÃ³a")
     if user.status and user.status.lower() == "banned":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản đã bị vô hiệu hóa",
-        )
-
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TÃ i khoáº£n Ä‘Ã£ bá»‹ vÃ´ hiá»‡u hÃ³a")
     return user
 
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email.lower()).first()
-
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai email hoặc mật khẩu")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai email hoáº·c máº­t kháº©u")
 
     password_ok = False
     if user.password_hash:
         password_ok = check_password_hash(user.password_hash, payload.password)
     elif user.password:
         password_ok = user.password == payload.password
-
     if not password_ok:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai email hoặc mật khẩu")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sai email hoáº·c máº­t kháº©u")
 
     if not user.password_hash:
         user.password_hash = generate_password_hash(payload.password)
         db.commit()
 
     if user.is_active != 1 or (user.status and user.status.lower() == "banned"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản đã bị vô hiệu hóa")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TÃ i khoáº£n Ä‘Ã£ bá»‹ vÃ´ hiá»‡u hÃ³a")
 
     token, expires_at, _ = _create_access_token(user)
-
     return LoginResponse(
-        message="Đăng nhập thành công",
+        message="ÄÄƒng nháº­p thÃ nh cÃ´ng",
         token=token,
         expires_in=int((expires_at - datetime.now(timezone.utc)).total_seconds()),
         user=_build_user_info(user),
@@ -171,7 +146,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     normalized_email = payload.email.lower().strip()
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email đã được sử dụng")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng")
 
     user = User(
         name=payload.name.strip(),
@@ -185,15 +160,10 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         status="active",
         is_active=1,
     )
-
     db.add(user)
     db.commit()
     db.refresh(user)
-
-    return RegisterResponse(
-        message="Tạo tài khoản user thành công",
-        user=_build_user_info(user),
-    )
+    return RegisterResponse(message="Táº¡o tÃ i khoáº£n user thÃ nh cÃ´ng", user=_build_user_info(user))
 
 
 @router.post("/logout", response_model=LogoutResponse)
@@ -202,23 +172,19 @@ def logout(
     db: Session = Depends(get_db),
 ):
     if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Thiếu access token",
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thiáº¿u access token")
 
-    payload = _decode_token(credentials.credentials)
+    payload = decode_access_token(credentials.credentials)
     jti = payload.get("jti")
     exp = payload.get("exp")
     if not jti or not exp:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token không hợp lệ")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng há»£p lá»‡")
 
     if not _is_token_revoked(db, jti):
         expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
         db.add(RevokedToken(jti=jti, expires_at=expires_at))
         db.commit()
-
-    return LogoutResponse(message="Đăng xuất thành công")
+    return LogoutResponse(message="ÄÄƒng xuáº¥t thÃ nh cÃ´ng")
 
 
 @router.get("/me", response_model=UserInfo)
@@ -234,44 +200,33 @@ def update_me(
 ):
     user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Người dùng không tồn tại")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i")
 
     if payload.name is not None:
         name = payload.name.strip()
         if not name:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tên không được để trống")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="TÃªn khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng")
         user.name = name
-
     if payload.phone is not None:
-        phone = payload.phone.strip()
-        user.phone = phone or None
-
+        user.phone = payload.phone.strip() or None
     if payload.managed_district_id is not None:
         if user.role not in {"owner", "admin"}:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Chỉ owner hoặc admin mới được cập nhật quận quản lý",
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chá»‰ owner hoáº·c admin má»›i Ä‘Æ°á»£c cáº­p nháº­t quáº­n quáº£n lÃ½")
         district = db.query(District).filter(District.id == payload.managed_district_id).first()
         if not district:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quận không tồn tại")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quáº­n khÃ´ng tá»“n táº¡i")
         user.managed_district_id = district.id
-
     if payload.email is not None:
         normalized_email = payload.email.lower().strip()
         if normalized_email != user.email:
             existing_user = db.query(User).filter(User.email == normalized_email, User.id != user.id).first()
             if existing_user:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email đã được sử dụng")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng")
             user.email = normalized_email
 
     db.commit()
     db.refresh(user)
-
-    return UpdateProfileResponse(
-        message="Cập nhật hồ sơ thành công",
-        user=_build_user_info(user),
-    )
+    return UpdateProfileResponse(message="Cáº­p nháº­t há»“ sÆ¡ thÃ nh cÃ´ng", user=_build_user_info(user))
 
 
 @router.post("/change-password", response_model=ChangePasswordResponse)
@@ -282,24 +237,20 @@ def change_password(
 ):
     user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Người dùng không tồn tại")
-
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i")
     if payload.old_password == payload.new_password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mật khẩu mới phải khác mật khẩu cũ")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Máº­t kháº©u má»›i pháº£i khÃ¡c máº­t kháº©u cÅ©")
 
     ensure_strong_password(payload.new_password)
-
     password_ok = False
     if user.password_hash:
         password_ok = check_password_hash(user.password_hash, payload.old_password)
     elif user.password:
         password_ok = user.password == payload.old_password
-
     if not password_ok:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mật khẩu cũ không đúng")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Máº­t kháº©u cÅ© khÃ´ng Ä‘Ãºng")
 
     user.password_hash = generate_password_hash(payload.new_password)
     user.password = "__legacy_disabled__"
     db.commit()
-
-    return ChangePasswordResponse(message="Đổi mật khẩu thành công")
+    return ChangePasswordResponse(message="Äá»•i máº­t kháº©u thÃ nh cÃ´ng")

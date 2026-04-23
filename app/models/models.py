@@ -194,3 +194,48 @@ class Review(Base):
 
     user = relationship("User")
     parking = relationship("ParkingLot")
+
+
+class EmployeeAccount(Base):
+    __tablename__ = "employee_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
+    role = Column(String(50), default="employee", nullable=False)
+    status = Column(String(20), default="active", nullable=False)
+    is_active = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User")
+    parking_lot = relationship("ParkingLot")
+
+
+class ParkingOperationalState(Base):
+    __tablename__ = "parking_operational_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, unique=True, index=True)
+    status = Column(String(20), default="open", nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    parking_lot = relationship("ParkingLot")
+
+
+class EmployeeActivity(Base):
+    __tablename__ = "employee_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employee_accounts.id"), nullable=False, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
+    action = Column(String(50), nullable=False)
+    detail = Column(String(500), nullable=True)
+    amount = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    employee = relationship("EmployeeAccount")
+    parking_lot = relationship("ParkingLot")
+    booking = relationship("Booking")
