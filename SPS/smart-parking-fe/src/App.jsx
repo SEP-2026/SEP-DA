@@ -18,6 +18,7 @@ import OwnerCustomers from "./pages/owner/OwnerCustomers";
 import OwnerOverview from "./pages/owner/OwnerOverview";
 import OwnerParking from "./pages/owner/OwnerParking";
 import OwnerRevenue from "./pages/owner/OwnerRevenue";
+import OwnerReviewReplyPage from "./pages/owner/OwnerReviewReplyPage";
 import OwnerReviews from "./pages/owner/OwnerReviews";
 import OwnerSettings from "./pages/owner/OwnerSettings";
 import Payment from "./pages/Payment";
@@ -139,6 +140,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
       owner: [
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
+        { to: "/owner-review-replies", label: "Phản hồi đánh giá" },
       ],
       employee: [
         { to: "/employee", label: "Dashboard Employee" },
@@ -222,6 +224,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         <Route
           path="/scan"
           element={auth && (role === "owner" || role === "admin") ? <Scan /> : <Navigate to="/" replace />}
+        />
+        <Route
+          path="/owner-review-replies"
+          element={auth && role === "owner" ? <OwnerReviewReplyPage /> : <Navigate to={auth ? "/" : "/login"} replace />}
         />
         <Route
           path="/employee"

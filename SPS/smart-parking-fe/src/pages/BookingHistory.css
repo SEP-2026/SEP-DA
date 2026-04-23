@@ -471,6 +471,15 @@
   box-shadow: 0 6px 16px rgba(32, 132, 199, 0.3);
 }
 
+.booking-review-result {
+  text-align: left;
+  margin-top: 8px;
+}
+
+.booking-review-result h3 {
+  margin: 0 0 8px;
+}
+
 /* QR Button in History */
 .btn-qr {
   background: linear-gradient(135deg, #3a9a52 0%, #1f6f34 100%);

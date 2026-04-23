@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.database import get_db
-from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, Review, User, UserVehicle
+from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
 from app.services.qr_service import invalidate_booking_qr_code
 from app.utils.timezone import ensure_vn_local_naive, vn_now
@@ -186,6 +186,8 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
                 "parking_id": lot.id,
                 "parking_name": lot.name,
                 "parking_address": lot.address,
+                "avg_rating": float(lot.avg_rating or 0),
+                "review_count": int(lot.review_count or 0),
                 "district": lot.district.name if lot.district else None,
                 "available_slots": available_count,
                 "occupied_or_reserved_slots": occupied_count,
@@ -227,6 +229,8 @@ def search_parking(
             p.latitude,
             p.longitude,
             p.has_roof,
+            p.avg_rating,
+            p.review_count,
             pr.price_per_hour,
             pr.price_per_day,
             pr.price_per_month,
@@ -293,6 +297,8 @@ def search_parking_by_coords(
             p.latitude,
             p.longitude,
             p.has_roof,
+            p.avg_rating,
+            p.review_count,
             pr.price_per_hour,
             pr.price_per_day,
             pr.price_per_month,
@@ -718,6 +724,7 @@ def get_my_booking_detail(
         "overstay_minutes": int(booking.overstay_minutes or 0),
         "overstay_fee": float(booking.overstay_fee or 0),
         "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
+        "is_reviewed": bool(booking.is_reviewed),
         "qr_code": booking.qr_code,
         "payment_required": payment_required,
         "parking": {
@@ -799,16 +806,6 @@ def get_my_bookings(
         .all()
     )
 
-    parking_ids = [int(booking.parking_id) for booking in bookings if booking.parking_id is not None]
-    reviewed_parking_ids: set[int] = set()
-    if parking_ids:
-        reviewed_rows = (
-            db.query(Review.parking_id)
-            .filter(Review.user_id == current_user.id, Review.parking_id.in_(parking_ids))
-            .all()
-        )
-        reviewed_parking_ids = {int(row.parking_id) for row in reviewed_rows if row.parking_id is not None}
-
     result = []
     for booking in bookings:
         parking_lot = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
@@ -828,7 +825,8 @@ def get_my_bookings(
                 "overstay_minutes": int(booking.overstay_minutes or 0),
                 "overstay_fee": float(booking.overstay_fee or 0),
                 "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
-                "has_review": bool(booking.parking_id is not None and int(booking.parking_id) in reviewed_parking_ids),
+                "is_reviewed": bool(booking.is_reviewed),
+                "has_review": bool(booking.is_reviewed),
                 "created_at": booking.created_at,
                 "parking": {
                     "id": parking_lot.id if parking_lot else None,
@@ -1453,6 +1451,7 @@ def booking_status(
         "overstay_minutes": int(booking.overstay_minutes or 0),
         "overstay_fee": float(booking.overstay_fee or 0),
         "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
+        "is_reviewed": bool(booking.is_reviewed),
         "price_per_hour": float(parking_price.price_per_hour or 0) if parking_price else 0,
         "parking": {"id": parking.id, "name": parking.name} if parking else None,
         "slot": {"id": slot.id, "code": (slot.slot_number or slot.code) if slot else None} if slot else None,

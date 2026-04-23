@@ -52,6 +52,12 @@
   color: #143554;
 }
 
+.parking-lot-rating {
+  margin: 4px 0 0;
+  color: #9a6c10;
+  font-weight: 700;
+}
+
 .parking-lot-address,
 .parking-lot-district {
   margin: 4px 0 0;

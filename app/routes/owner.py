@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from werkzeug.security import generate_password_hash
 
@@ -55,7 +56,7 @@ class OwnerManagedParkingSettingsUpdateRequest(BaseModel):
 
 
 class OwnerReviewReplyRequest(BaseModel):
-    reply: str | None = Field(default=None, max_length=2000)
+    reply: str = Field(min_length=1, max_length=300)
 
 
 def require_owner(current_user: User = Depends(get_current_user)) -> User:
@@ -240,6 +241,8 @@ def _serialize_slots_overview(parking_lots: list[ParkingLot], db: Session) -> li
             "parking_id": lot.id,
             "parking_name": lot.name,
             "parking_address": lot.address,
+            "avg_rating": float(lot.avg_rating or 0),
+            "review_count": int(lot.review_count or 0),
             "district": lot.district.name if lot.district else None,
             "available_slots": available_count,
             "occupied_or_reserved_slots": occupied_count,
@@ -363,12 +366,13 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
     review_rows = [
         {
             "id": review.id,
+            "bookingId": review.booking_id,
             "parkingLotName": parking_by_id.get(int(review.parking_id)).name if review.parking_id and parking_by_id.get(int(review.parking_id)) else "Chưa có bãi",
             "user": review.user.name if review.user else f"User #{review.user_id}",
             "rating": review.rating,
             "createdAt": (review.created_at or datetime.utcnow()).isoformat(),
             "content": review.comment or "",
-            "reply": review.owner_reply or "",
+            "ownerReply": review.owner_reply or "",
             "replyUpdatedAt": review.owner_replied_at.isoformat() if review.owner_replied_at else None,
         }
         for review in reviews
@@ -625,7 +629,67 @@ def owner_reviews(
 ):
     parking_lots = _get_owner_parking_lots(current_user.id, db)
     bootstrap = _serialize_owner_bootstrap(current_user, parking_lots, db)
-    return {"reviews": bootstrap["reviews"]}
+    parking_ids = [lot.id for lot in parking_lots]
+    rating_distribution = {str(i): 0 for i in range(1, 6)}
+    avg_rating = 0.0
+    total_reviews = 0
+    unresolved_count = 0
+    if parking_ids:
+        avg_count = (
+            db.query(func.avg(Review.rating), func.count(Review.id))
+            .filter(Review.parking_id.in_(parking_ids))
+            .first()
+        )
+        avg_rating = round(float(avg_count[0]), 1) if avg_count and avg_count[0] is not None else 0.0
+        total_reviews = int(avg_count[1]) if avg_count and avg_count[1] is not None else 0
+        unresolved_count = (
+            db.query(func.count(Review.id))
+            .filter(Review.parking_id.in_(parking_ids), Review.owner_reply.is_(None))
+            .scalar()
+            or 0
+        )
+        distribution_rows = (
+            db.query(Review.rating, func.count(Review.id))
+            .filter(Review.parking_id.in_(parking_ids))
+            .group_by(Review.rating)
+            .all()
+        )
+        for rating, count in distribution_rows:
+            rating_distribution[str(int(rating))] = int(count)
+
+    return {
+        "reviews": bootstrap["reviews"],
+        "avg_rating": avg_rating,
+        "total_reviews": total_reviews,
+        "rating_distribution": rating_distribution,
+        "unreplied_count": int(unresolved_count),
+    }
+
+
+@router.patch("/reviews/{review_id}/reply")
+def owner_reply_review(
+    review_id: int,
+    payload: OwnerReviewReplyRequest,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    review = db.query(Review).filter(Review.id == review_id).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Không tìm thấy đánh giá")
+    if _get_owner_parking_assignment(current_user.id, review.parking_id, db) is None:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền phản hồi đánh giá này")
+    if review.owner_reply:
+        raise HTTPException(status_code=400, detail="Đã phản hồi đánh giá này rồi")
+
+    review.owner_reply = payload.reply.strip()
+    review.owner_replied_at = datetime.utcnow()
+    db.commit()
+    return {
+        "success": True,
+        "review_id": review.id,
+        "owner_reply": review.owner_reply,
+        "owner_replied_at": review.owner_replied_at.isoformat() if review.owner_replied_at else None,
+    }
 
 
 @router.get("/settings")
