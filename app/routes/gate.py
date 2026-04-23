@@ -475,6 +475,7 @@ def _serialize_booking_detail(booking: Booking, payment: Payment | None, db: Ses
     pricing_preview = _compute_pricing_preview(booking, payment, price, now)
 
     return {
+        "server_now": now,
         "booking_id": booking.id,
         "input_type": parsed["input_type"] if parsed else None,
         "input_label": parsed["input_label"] if parsed else None,
@@ -695,30 +696,8 @@ def resolve_gate_scan(
         db=db,
     )
 
-    auto_action_result = None
-    auto_action = None
-    if payload.source_type == "qr_scan":
-        if detail["cooldown"]["active"]:
-            db.commit()
-            return {
-                "message": detail["cooldown"]["message"],
-                "booking": detail,
-                "parsed_payload": detail["parsed_payload"],
-                "allowed_actions": detail["allowed_actions"],
-                "cooldown": detail["cooldown"],
-                "payment_preview": detail["pricing_preview"],
-                "auto_action": None,
-                "auto_action_result": None,
-            }
-        if "check_in" in detail["allowed_actions"]:
-            auto_action = "check_in"
-            auto_action_result = _execute_check_in(booking, payment, payload.gate_id, payload.source_type, current_user, db)
-        elif "check_out" in detail["allowed_actions"]:
-            auto_action = "check_out"
-            auto_action_result = _execute_check_out(booking, payment, payload.gate_id, payload.source_type, "cash", current_user, db)
-
     db.commit()
-    latest_booking = auto_action_result or detail
+    latest_booking = detail
     return {
         "message": "Resolve thành công",
         "booking": latest_booking,
@@ -726,8 +705,8 @@ def resolve_gate_scan(
         "allowed_actions": latest_booking["allowed_actions"],
         "cooldown": latest_booking["cooldown"],
         "payment_preview": latest_booking["pricing_preview"],
-        "auto_action": auto_action,
-        "auto_action_result": auto_action_result,
+        "auto_action": None,
+        "auto_action_result": None,
     }
 
 
