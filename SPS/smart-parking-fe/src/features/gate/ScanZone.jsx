@@ -80,13 +80,9 @@ export default function ScanZone({
 
       <div className="scan-actions scan-actions--single">
         <button type="button" className="scan-primary-btn" onClick={onSubmitQr} disabled={!scanValue.trim()}>
-          Quét QR và lấy thông tin
+          Quét QR
         </button>
       </div>
-
-      <p className="scan-hint">
-        Sau khi quét/xem booking, nhân viên chủ động bấm nút cho xe vào bãi hoặc ra bãi.
-      </p>
 
       {qrPreviewError ? <p className="scan-inline-error">{qrPreviewError}</p> : null}
     </section>
