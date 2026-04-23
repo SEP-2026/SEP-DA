@@ -5,6 +5,13 @@ import { formatDateTimeVN, parseVietnamDate, toDatetimeLocalValue, toVietnamIsoS
 import "./BookingHistory.css";
 
 const ACTIVE_STATUSES = ["pending", "booked", "checked_in", "checked_out", "completed"];
+const BOOKING_TABS = [
+  { key: "all", label: "Tất cả" },
+  { key: "not_checked_in", label: "Chưa check in" },
+  { key: "checked_in", label: "Đang check in" },
+  { key: "checked_out", label: "Đã check out" },
+  { key: "review", label: "Đánh giá" },
+];
 
 const fmtDateTime = (value) => {
   return formatDateTimeVN(value, "N/A");
@@ -128,6 +135,7 @@ export default function BookingHistory() {
   const [editMode, setEditMode] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [slotOptions, setSlotOptions] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
 
   const conflictingBooking = conflictContext?.conflicting_booking || null;
   const requestedBooking = conflictContext?.requested_booking_view || conflictContext?.requested_booking || null;
@@ -222,6 +230,28 @@ export default function BookingHistory() {
     () => bookings.filter((item) => ACTIVE_STATUSES.includes(item.status)),
     [bookings],
   );
+
+  const filteredBookings = useMemo(() => {
+    const normalizedStatus = (item) => `${item.checkin_status || item.status || ""}`.toLowerCase();
+    if (activeTab === "all") return activeBookings;
+    if (activeTab === "not_checked_in") {
+      return activeBookings.filter((item) => ["pending", "booked"].includes(normalizedStatus(item)));
+    }
+    if (activeTab === "checked_in") {
+      return activeBookings.filter((item) => normalizedStatus(item) === "checked_in");
+    }
+    if (activeTab === "checked_out" || activeTab === "review") {
+      return activeBookings.filter((item) => {
+        const status = normalizedStatus(item);
+        const isCheckedOut = status === "checked_out" || status === "completed";
+        if (activeTab === "review") {
+          return isCheckedOut && Boolean(item.has_review);
+        }
+        return isCheckedOut;
+      });
+    }
+    return activeBookings;
+  }, [activeBookings, activeTab]);
 
   const segments = useMemo(() => {
     if (!conflictingBooking || !requestedBooking) {
@@ -488,14 +518,32 @@ export default function BookingHistory() {
 
         <section className="history-panel">
           <h2>Thông tin booking hiện tại</h2>
+          <div className="history-tabs" role="tablist" aria-label="Bộ lọc lịch sử booking">
+            {BOOKING_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                className={`history-tab ${activeTab === tab.key ? "active" : ""}`}
+                aria-selected={activeTab === tab.key}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
           {loading ? <p>Đang tải danh sách booking...</p> : null}
 
-          {!loading && activeBookings.length === 0 && (
-            <p className="empty-state">Bạn chưa có booking đang hoạt động.</p>
+          {!loading && filteredBookings.length === 0 && (
+            <p className="empty-state">
+              {activeTab === "review"
+                ? "Chưa có booking nào đã được đánh giá."
+                : "Không có booking trong tab này."}
+            </p>
           )}
 
           <div className="history-list">
-            {activeBookings.map((item) => (
+            {filteredBookings.map((item) => (
               <article key={item.booking_id} className="history-item">
                 {(() => {
                   const { directionsUrl, mapUrl } = buildGoogleMapsLinks(item.parking);
@@ -554,9 +602,15 @@ export default function BookingHistory() {
                       <span>Xem Bản Đồ</span>
                     </a>
                     {((item.checkin_status || item.status) === "checked_out" || item.status === "completed") ? (
-                      <button type="button" className="btn-qr" onClick={() => navigate("/owner/reviews")}>
-                        <span>Đánh giá bãi đỗ xe ⭐</span>
-                      </button>
+                      item.has_review ? (
+                        <button type="button" className="btn-qr" onClick={() => navigate("/owner/reviews")}>
+                          <span>Đã đánh giá ⭐</span>
+                        </button>
+                      ) : (
+                        <button type="button" className="btn-qr" onClick={() => navigate("/owner/reviews")}>
+                          <span>Đánh giá bãi đỗ xe ⭐</span>
+                        </button>
+                      )
                     ) : null}
                   </div>
                 )}
