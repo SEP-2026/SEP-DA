@@ -62,3 +62,29 @@ export function inferQrPreview(rawValue) {
     };
   }
 }
+
+export function parseBookingIdFromQR(text) {
+  const raw = `${text ?? ""}`.trim();
+  if (!raw) return null;
+
+  const jsonNewMatch = raw.match(/"b"\s*:\s*(\d+)/);
+  if (jsonNewMatch) {
+    return Number(jsonNewMatch[1]);
+  }
+
+  const jsonOldMatch = raw.match(/"booking_id"\s*:\s*(\d+)/);
+  if (jsonOldMatch) {
+    return Number(jsonOldMatch[1]);
+  }
+
+  const lineMatch = raw.match(/Mã đặt chỗ\s*:\s*#(\d+)/);
+  if (lineMatch) {
+    return Number(lineMatch[1]);
+  }
+
+  if (/^\d+$/.test(raw)) {
+    return Number(raw);
+  }
+
+  return null;
+}

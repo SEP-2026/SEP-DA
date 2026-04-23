@@ -5,9 +5,9 @@ import BookingInfoPanel from "../features/gate/BookingInfoPanel";
 import PaymentPanel from "../features/gate/PaymentPanel";
 import ScanZone from "../features/gate/ScanZone";
 import StatusBanner from "../features/gate/StatusBanner";
-import { checkInGate, checkOutGate, getGateBooking, resolveGateScan } from "../features/gate/gateService";
+import { checkInGate, checkOutGate, getGateBooking } from "../features/gate/gateService";
 import { formatCurrency } from "../features/gate/gateFormatters";
-import { inferQrPreview, parseManualBookingId } from "../features/gate/scanParser";
+import { inferQrPreview, parseBookingIdFromQR, parseManualBookingId } from "../features/gate/scanParser";
 import { getBannerTone } from "../features/gate/statusLabel";
 import "./Scan.css";
 
@@ -20,10 +20,17 @@ function buildBannerFromError(error, fallbackTitle) {
 
 export default function Scan() {
   const scanInputRef = useRef(null);
+  const successTimeoutRef = useRef(null);
   const [gateId, setGateId] = useState("GATE-A1");
   const [scanValue, setScanValue] = useState("");
   const [manualBookingId, setManualBookingId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [scanMode, setScanMode] = useState("manual");
+  const [cameraActive, setCameraActive] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const [scanSuccess, setScanSuccess] = useState("");
+  const [imagePreview, setImagePreview] = useState(null);
   const [uiState, setUiState] = useState("idle");
   const [banner, setBanner] = useState({
     title: "Sẵn sàng xử lý",
@@ -37,6 +44,15 @@ export default function Scan() {
   useEffect(() => {
     scanInputRef.current?.focus();
   }, []);
+
+  useEffect(
+    () => () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const applyBookingPayload = (payload, nextBanner, nextUiState = "booking_loaded") => {
     setBooking(payload?.booking || payload || null);
@@ -75,44 +91,80 @@ export default function Scan() {
     }
   };
 
-  const handleSubmitQr = async () => {
+  const handleSubmitQr = async (incomingText) => {
+    const rawScanText = typeof incomingText === "string" ? incomingText : scanValue;
     if (!gateId.trim()) {
       setUiState("error");
+      setScanError("Vui lòng nhập mã cổng trước khi quét.");
       setBanner({ title: "Thiếu mã cổng", message: "Vui lòng nhập mã cổng trước khi quét." });
       return;
     }
-    if (!scanValue.trim()) {
+    if (!rawScanText.trim()) {
       setUiState("error");
+      setScanError("Hãy quét QR hoặc nhập payload QR trước khi xử lý.");
       setBanner({ title: "Chưa có dữ liệu quét", message: "Hãy quét QR hoặc nhập payload QR trước khi xử lý." });
       return;
     }
 
+    setScanError("");
     setBanner({ title: "Đang quét...", message: "Đã nhận dữ liệu từ scanner, đang lấy thông tin booking." });
     setUiState("scanning");
 
     try {
-      setUiState("processing");
-      const response = await resolveGateScan({
-        raw_scan_text: scanValue,
-        source_type: "qr_scan",
-        gate_id: gateId.trim(),
-      });
+      const bookingId = parseBookingIdFromQR(rawScanText);
+      if (!bookingId) {
+        setBooking(null);
+        setUiState("error");
+        setScanError("Không tìm thấy thông tin booking trong mã QR này.");
+        setBanner({
+          title: "QR không hợp lệ",
+          message: "Không tìm thấy booking_id khả dụng trong dữ liệu QR.",
+        });
+        return;
+      }
 
-      const resolvedBooking = response?.booking;
+      setUiState("processing");
+      const response = await getGateBooking(bookingId);
       applyBookingPayload(
-        { booking: resolvedBooking },
+        response,
         {
-          title: response?.cooldown?.active ? "Đang trong cooldown" : "Đã resolve QR",
-          message:
-            response?.cooldown?.message
-            || "QR hợp lệ. Vui lòng bấm nút để chọn cho xe vào bãi hoặc ra bãi.",
+          title: "Đã đọc QR",
+          message: "Thông tin booking đã hiển thị ở panel bên phải. Bạn có thể chọn thao tác vào/ra bãi.",
         },
       );
     } catch (error) {
       setBooking(null);
       setUiState("error");
+      setScanError(error?.response?.data?.detail || "Không đọc được QR.");
       setBanner(buildBannerFromError(error, "Không đọc được QR"));
     }
+  };
+
+  const handleQRResult = async (rawText) => {
+    const normalized = `${rawText ?? ""}`.trim();
+    setScanValue(normalized);
+    setScanError("");
+    setScanSuccess("");
+
+    const bookingId = parseBookingIdFromQR(normalized);
+    if (!bookingId) {
+      setUiState("error");
+      setScanError("Không tìm thấy thông tin booking trong mã QR này.");
+      setBanner({
+        title: "QR không hợp lệ",
+        message: "Không tìm thấy booking_id khả dụng trong dữ liệu QR.",
+      });
+      return;
+    }
+
+    setManualBookingId(String(bookingId));
+    setScanMode("manual");
+    setScanSuccess("✓ Đọc QR thành công!");
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+    }
+    successTimeoutRef.current = setTimeout(() => setScanSuccess(""), 1000);
+    await handleSubmitQr(normalized);
   };
 
   const handleCheckIn = async () => {
@@ -203,6 +255,7 @@ export default function Scan() {
             scanValue={scanValue}
             setScanValue={setScanValue}
             onSubmitQr={handleSubmitQr}
+            onQrDecoded={handleQRResult}
             manualBookingId={manualBookingId}
             setManualBookingId={setManualBookingId}
             onResolveManual={handleResolveManual}
@@ -211,6 +264,18 @@ export default function Scan() {
             uiState={uiState}
             qrPreviewError={qrPreview.error}
             inputRef={scanInputRef}
+            scanMode={scanMode}
+            setScanMode={setScanMode}
+            cameraActive={cameraActive}
+            setCameraActive={setCameraActive}
+            scanning={scanning}
+            setScanning={setScanning}
+            scanError={scanError}
+            setScanError={setScanError}
+            scanSuccess={scanSuccess}
+            setScanSuccess={setScanSuccess}
+            imagePreview={imagePreview}
+            setImagePreview={setImagePreview}
           />
 
           <section className="scan-panel">
