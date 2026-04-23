@@ -1184,13 +1184,21 @@ def check_in(
         raise HTTPException(status_code=400, detail="Booking không hợp lệ")
 
     booking.status = "checked_in"
-    booking.start_time = vn_now()
+    # Keep scheduled booking window intact; store real gate time separately (VN local time).
+    booking.actual_checkin = vn_now()
+    booking.last_gate_action = "check_in"
+    booking.last_gate_action_at = booking.actual_checkin
     if booking.slot:
         booking.slot.status = "occupied"
 
     db.commit()
 
-    return {"message": "Check-in thành công"}
+    return {
+        "message": "Check-in thành công",
+        "booking_id": booking.id,
+        "booking_status": booking.status,
+        "actual_checkin": booking.actual_checkin,
+    }
 
 
 @router.post("/check-out")
@@ -1223,7 +1231,10 @@ def check_out(
     if payment and overtime_fee > 0:
         payment.overtime_fee = overtime_fee
 
+    booking.actual_checkout = actual_checkout
     booking.status = "completed"
+    booking.last_gate_action = "check_out"
+    booking.last_gate_action_at = actual_checkout
     if booking.slot:
         booking.slot.status = "available"
 
@@ -1233,6 +1244,8 @@ def check_out(
         "message": "Check-out thành công",
         "booking_id": booking.id,
         "booking_status": booking.status,
+        "actual_checkin": booking.actual_checkin,
+        "actual_checkout": booking.actual_checkout,
         "overtime_fee": overtime_fee,
         "total_paid": round(float(payment.amount + payment.overtime_fee), 2) if payment else None,
     }

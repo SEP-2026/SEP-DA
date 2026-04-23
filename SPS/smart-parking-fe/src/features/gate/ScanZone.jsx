@@ -19,7 +19,7 @@ export default function ScanZone({
         <div className="scan-frame-content">
           <strong>Vùng scan cổng</strong>
           <span>
-            Quét QR để tự động check-in/check-out. Nhập Booking ID ở khung bên dưới nếu cần thao tác tay.
+            Quét QR để tải thông tin booking. Sau đó nhân viên bấm nút để chọn vào bãi hoặc ra bãi.
           </span>
           <span className="scan-live-indicator">
             {uiState === "scanning" ? "Đang quét..." : uiState === "processing" || uiState === "action_submitting" ? "Đang xử lý..." : "Sẵn sàng nhận dữ liệu"}
@@ -80,12 +80,12 @@ export default function ScanZone({
 
       <div className="scan-actions scan-actions--single">
         <button type="button" className="scan-primary-btn" onClick={onSubmitQr} disabled={!scanValue.trim()}>
-          Quét QR và tự động xử lý
+          Quét QR và lấy thông tin
         </button>
       </div>
 
       <p className="scan-hint">
-        Quét QR sẽ tự động xử lý nếu hợp lệ. Nhập mã booking thủ công chỉ để xem thông tin, nhân viên phải bấm nút cho xe vào hoặc ra.
+        Sau khi quét/xem booking, nhân viên chủ động bấm nút cho xe vào bãi hoặc ra bãi.
       </p>
 
       {qrPreviewError ? <p className="scan-inline-error">{qrPreviewError}</p> : null}
