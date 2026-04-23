@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.models.models import Booking, ParkingLot, ParkingSlot, User
 from app.utils.timezone import ensure_vn_local_naive, vn_now
 
+logger = logging.getLogger(__name__)
+
 
 def _ensure_qr_directory() -> None:
     """Ensure qrcodes directory exists."""
@@ -60,43 +62,6 @@ def generate_booking_qr_code(booking_id: int, db: Session) -> dict:
     Returns:
         Dictionary with qr_code_path and status info, or error info
     """
-    # Query booking with related data
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not booking:
-        return {"success": False, "error": "Booking not found"}
-    
-    # Get related entities
-    user = db.query(User).filter(User.id == booking.user_id).first()
-    parking = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
-    slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
-    
-    if not user or not parking or not slot:
-        return {"success": False, "error": "Related booking data not found"}
-    
-    # Extract vehicle info (prioritize from user's vehicle_plate)
-    license_plate = user.vehicle_plate or "N/A"
-    
-    # Format status
-    status_map = {
-        "pending": "Chờ thanh toán",
-        "booked": "Chờ check-in",
-        "checked_in": "Đã check-in",
-        "checked_out": "Đã check-out",
-        "completed": "Hoàn tất",
-        "cancelled": "Đã hủy",
-    }
-    status_text = status_map.get(booking.status, booking.status)
-    
-    # Extract floor or use slot_type as fallback
-    floor = slot.floor or slot.slot_type or "N/A"
-    
-    # Build human-readable content
-    slot_display = f"Ô số {slot.slot_number or slot.code}" if slot.slot_number else f"Ô {slot.code}"
-    if floor and floor != "N/A":
-        slot_display += f" - Tầng {floor}"
-    
-    # Try to get parking phone, fallback to generic if not available
-    parking_phone = "[Hotline]"
     try:
         if hasattr(parking, 'phone') and parking.phone:
             parking_phone = parking.phone

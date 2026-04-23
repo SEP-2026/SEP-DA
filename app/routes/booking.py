@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
+
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
@@ -1145,9 +1147,20 @@ def create_booking(
     except HTTPException:
         db.rollback()
         raise
-    except Exception:
+    except OSError as e:
         db.rollback()
-        raise
+        logger.error(f"File system error during booking creation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Không thể tạo mã QR. Vui lòng thử lại sau."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error during booking creation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi tạo booking: {str(e)}. Vui lòng liên hệ hỗ trợ."
+        )
 
 
 @router.post("/check-in")
@@ -1234,34 +1247,57 @@ def get_booking_qr(
     """
     Get QR code for a booking.
     Only the booking owner or admin can access this.
-    """
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
-    if not booking:
-        raise HTTPException(status_code=404, detail="Booking không tồn tại")
     
-    # Check access: only owner or admin
-    if booking.user_id != current_user.id and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Bạn không có quyền xem QR của booking này")
-    
-    # If QR hasn't been generated yet, generate it now
-    if not booking.qr_code_path:
-        from app.services.qr_service import generate_booking_qr_code
-        qr_result = generate_booking_qr_code(booking_id, db)
-        if not qr_result.get("success"):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Không thể tạo mã QR: {qr_result.get('error', 'Unknown error')}"
-            )
-    
-    # Refresh to get latest data
-    db.refresh(booking)
-    
-    return {
-        "booking_id": booking.id,
-        "qr_url": f"/qrcodes/{booking.qr_code_path.split('/')[-1]}",
-        "qr_code_path": booking.qr_code_path,
-        "generated_at": booking.qr_generated_at,
-        "booking_status": booking.status,
-        "checkin_time": booking.start_time,
-        "checkout_time": booking.expire_time,
+    Returns:
+    {
+        "booking_id": 10,
+        "qr_url": "/qrcodes/booking_10.png",
+        "booking_status": "pending",
+        "checkin_time": "2026-04-21T10:36:00",
+        "checkout_time": "2026-04-21T11:36:00"
     }
+    """
+    try:
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking không tồn tại")
+        
+        # Check access: only owner or admin
+        if booking.user_id != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xem QR của booking này")
+        
+        # Use booking.qr_code as the primary field (set during booking creation)
+        qr_path = booking.qr_code
+        
+        # If QR hasn't been generated yet, generate it now
+        if not qr_path:
+            from app.services.qr_service import generate_booking_qr_code
+            qr_result = generate_booking_qr_code(booking_id, db)
+            if not qr_result.get("success"):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Không thể tạo mã QR: {qr_result.get('error', 'Unknown error')}"
+                )
+            # Refresh to get the newly generated QR path
+            db.refresh(booking)
+            qr_path = booking.qr_code
+        
+        # Extract filename from path (e.g., "qrcodes/booking_10.png" → "booking_10.png")
+        qr_filename = qr_path.split('/')[-1] if qr_path else f"booking_{booking_id}.png"
+        
+        return {
+            "booking_id": booking.id,
+            "qr_url": f"/qrcodes/{qr_filename}",
+            "booking_status": booking.status,
+            "checkin_time": booking.start_time,
+            "checkout_time": booking.expire_time,
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting QR for booking {booking_id}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Không thể lấy mã QR. Vui lòng thử lại sau."
+        )
