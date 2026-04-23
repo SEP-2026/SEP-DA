@@ -87,7 +87,7 @@ export default function Scan() {
       return;
     }
 
-    setBanner({ title: "Đang quét...", message: "Đã nhận dữ liệu từ scanner, đang resolve booking." });
+    setBanner({ title: "Đang quét...", message: "Đã nhận dữ liệu từ scanner, đang lấy thông tin booking." });
     setUiState("scanning");
 
     try {
@@ -98,34 +98,16 @@ export default function Scan() {
         gate_id: gateId.trim(),
       });
 
-      const resolvedBooking = response?.booking || response?.auto_action_result;
-      const autoAction = response?.auto_action;
-
-      if (autoAction === "check_in") {
-        applyBookingPayload(
-          { booking: resolvedBooking },
-          { title: "Đã check-in", message: "QR hợp lệ và xe đã được ghi nhận vào bãi." },
-          "success",
-        );
-      } else if (autoAction === "check_out") {
-        applyBookingPayload(
-          { booking: resolvedBooking },
-          {
-            title: "Đã check-out",
-            message: `QR hợp lệ và xe đã ra bãi. Tổng thu ${formatCurrency(resolvedBooking?.pricing_preview?.total_charge)}.`,
-          },
-          "success",
-        );
-      } else {
-        applyBookingPayload(
-          { booking: resolvedBooking },
-          {
-            title: response?.cooldown?.active ? "Đang trong cooldown" : "Đã resolve QR",
-            message: response?.cooldown?.message || response?.message || "QR hợp lệ nhưng không có auto action hợp lệ.",
-          },
-          response?.cooldown?.active ? "booking_loaded" : "booking_loaded",
-        );
-      }
+      const resolvedBooking = response?.booking;
+      applyBookingPayload(
+        { booking: resolvedBooking },
+        {
+          title: response?.cooldown?.active ? "Đang trong cooldown" : "Đã resolve QR",
+          message:
+            response?.cooldown?.message
+            || "QR hợp lệ. Vui lòng bấm nút để chọn cho xe vào bãi hoặc ra bãi.",
+        },
+      );
     } catch (error) {
       setBooking(null);
       setUiState("error");
@@ -205,7 +187,7 @@ export default function Scan() {
             <p className="scan-eyebrow">SCAN GATE</p>
             <h1 className="page-title scan-title">Cổng quét QR vào / ra bãi</h1>
             <p className="scan-subtitle">
-              Quét QR sẽ tự động nhận diện và xử lý nếu hợp lệ. Nhập mã booking thủ công chỉ để xem thông tin rồi nhân viên tự chọn thao tác phù hợp.
+              Quét QR để nhận diện booking, sau đó nhân viên chủ động chọn thao tác cho xe vào hoặc ra bãi.
             </p>
           </div>
 

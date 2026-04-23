@@ -2,6 +2,9 @@ import { formatDateTime, formatInputType } from "./gateFormatters";
 import { getBookingStatusLabel } from "./statusLabel";
 
 export default function BookingInfoPanel({ booking }) {
+  const checkinTime = booking?.checkin_time || booking?.start_time;
+  const checkoutTime = booking?.checkout_time || booking?.expire_time;
+
   return (
     <div className="scan-summary">
       <h2>Thông tin booking tại cổng</h2>
@@ -40,7 +43,7 @@ export default function BookingInfoPanel({ booking }) {
         </div>
         <div>
           <span>Thời gian booking</span>
-          <strong>{`${formatDateTime(booking?.checkin_time)} - ${formatDateTime(booking?.checkout_time)}`}</strong>
+          <strong>{`${formatDateTime(checkinTime)} - ${formatDateTime(checkoutTime)}`}</strong>
         </div>
         <div>
           <span>Thời gian vào thực tế</span>
