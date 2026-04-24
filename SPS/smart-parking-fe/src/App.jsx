@@ -141,6 +141,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
         { to: "/owner-review-replies", label: "Phản hồi đánh giá" },
+        { to: "/owner/settings", label: "Tạo nhân viên" },
       ],
       employee: [
         { to: "/employee", label: "Dashboard Employee" },

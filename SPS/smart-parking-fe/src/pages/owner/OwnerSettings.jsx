@@ -36,6 +36,17 @@ export default function OwnerSettings() {
   const [accountSaved, setAccountSaved] = useState(false);
   const [savedParkingId, setSavedParkingId] = useState(null);
 
+  const [employees, setEmployees] = useState([]);
+  const [employeeCreated, setEmployeeCreated] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+    parking_id: "",
+  });
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -65,6 +76,21 @@ export default function OwnerSettings() {
       email: auth?.user?.email || "",
     }));
   }, [auth?.user?.email]);
+
+  useEffect(() => {
+    setEmployeeForm((prev) => ({
+      ...prev,
+      parking_id: prev.parking_id || String(parkingRows[0]?.id || ""),
+    }));
+  }, [parkingRows]);
+
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      const nextEmployees = await actions.listEmployees();
+      setEmployees(nextEmployees);
+    };
+    fetchEmployees();
+  }, []);
 
   const handleParkingChange = (parkingId, key, value) => {
     setSavedParkingId(null);
@@ -224,6 +250,140 @@ export default function OwnerSettings() {
             </form>
           ))}
           {parkingRows.length === 0 ? <p className="owner-empty-cell">Owner hiện chưa được gán bãi đỗ nào.</p> : null}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Tài khoản nhân viên" subtitle="Owner tạo tài khoản nhân viên tại đây. Backend sẽ lưu vào bảng users với role employee.">
+        <form
+          className="owner-settings-form"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!employeeForm.parking_id) {
+              window.alert("Vui lòng chọn bãi phụ trách cho nhân viên");
+              return;
+            }
+            if (!employeeForm.full_name.trim() || !employeeForm.email.trim()) {
+              window.alert("Vui lòng nhập đầy đủ họ tên và email");
+              return;
+            }
+            if (!isStrongPassword(employeeForm.password)) {
+              window.alert(PASSWORD_POLICY_TEXT);
+              return;
+            }
+            if (employeeForm.password !== employeeForm.confirmPassword) {
+              window.alert("Mật khẩu xác nhận không khớp");
+              return;
+            }
+
+            const created = await actions.createEmployee({
+              full_name: employeeForm.full_name.trim(),
+              email: employeeForm.email.trim().toLowerCase(),
+              phone: employeeForm.phone.trim() || null,
+              password: employeeForm.password,
+              parking_id: Number(employeeForm.parking_id),
+            });
+            if (!created) {
+              return;
+            }
+
+            setEmployeeCreated(true);
+            setEmployeeForm((prev) => ({
+              ...prev,
+              full_name: "",
+              email: "",
+              phone: "",
+              password: "",
+              confirmPassword: "",
+            }));
+
+            const nextEmployees = await actions.listEmployees();
+            setEmployees(nextEmployees);
+          }}
+        >
+          <label>
+            Họ tên nhân viên
+            <input className="owner-input" value={employeeForm.full_name} onChange={(event) => {
+              setEmployeeCreated(false);
+              setEmployeeForm((prev) => ({ ...prev, full_name: event.target.value }));
+            }} />
+          </label>
+          <label>
+            Email đăng nhập
+            <input className="owner-input" type="email" value={employeeForm.email} onChange={(event) => {
+              setEmployeeCreated(false);
+              setEmployeeForm((prev) => ({ ...prev, email: event.target.value }));
+            }} />
+          </label>
+          <label>
+            Số điện thoại
+            <input className="owner-input" value={employeeForm.phone} onChange={(event) => {
+              setEmployeeCreated(false);
+              setEmployeeForm((prev) => ({ ...prev, phone: event.target.value }));
+            }} />
+          </label>
+          <label>
+            Bãi phụ trách
+            <select className="owner-input owner-select" value={employeeForm.parking_id} onChange={(event) => {
+              setEmployeeCreated(false);
+              setEmployeeForm((prev) => ({ ...prev, parking_id: event.target.value }));
+            }}>
+              {parkingRows.map((row) => (
+                <option key={row.id} value={row.id}>{row.parkingName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Mật khẩu
+            <input className="owner-input" type="password" minLength={8} value={employeeForm.password} onChange={(event) => {
+              setEmployeeCreated(false);
+              setEmployeeForm((prev) => ({ ...prev, password: event.target.value }));
+            }} />
+          </label>
+          <label>
+            Nhập lại mật khẩu
+            <input className="owner-input" type="password" minLength={8} value={employeeForm.confirmPassword} onChange={(event) => {
+              setEmployeeCreated(false);
+              setEmployeeForm((prev) => ({ ...prev, confirmPassword: event.target.value }));
+            }} />
+          </label>
+          <p className="owner-save-note owner-form-span">{PASSWORD_POLICY_TEXT}</p>
+          <div className="owner-settings-actions owner-form-span">
+            {employeeCreated ? <p className="owner-save-note">Đã tạo tài khoản nhân viên thành công.</p> : <span />}
+            <button type="submit" className="btn-primary owner-btn">Tạo tài khoản nhân viên</button>
+          </div>
+        </form>
+
+        <div className="owner-table-shell">
+          <table className="owner-table">
+            <thead>
+              <tr>
+                <th>Nhân viên</th>
+                <th>Email</th>
+                <th>SĐT</th>
+                <th>Bãi phụ trách</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="owner-empty-cell">Chưa có tài khoản nhân viên nào.</td>
+                </tr>
+              ) : employees.map((employee) => (
+                <tr key={employee.id}>
+                  <td>{employee.full_name || employee.username}</td>
+                  <td>{employee.email || "-"}</td>
+                  <td>{employee.phone || "-"}</td>
+                  <td>{employee.parking_name || `Bãi #${employee.parking_id}`}</td>
+                  <td>
+                    <span className={`owner-badge ${employee.status === "active" ? "owner-badge--success" : "owner-badge--warning"}`}>
+                      {employee.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </SectionCard>
     </div>

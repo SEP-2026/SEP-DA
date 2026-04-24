@@ -232,6 +232,25 @@ export default function OwnerLayout({ auth, onLogout }) {
         return false;
       }
     },
+    async createEmployee(payload) {
+      try {
+        const res = await API.post("/api/owner/create-employee", payload);
+        await refreshOwnerData();
+        return res.data?.employee || null;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể tạo tài khoản nhân viên");
+        return null;
+      }
+    },
+    async listEmployees() {
+      try {
+        const res = await API.get("/api/owner/employees");
+        return Array.isArray(res.data?.employees) ? res.data.employees : [];
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể tải danh sách nhân viên");
+        return [];
+      }
+    },
   };
 
   return (

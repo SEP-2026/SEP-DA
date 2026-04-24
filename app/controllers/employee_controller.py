@@ -6,6 +6,7 @@ from app.services.employee_service import (
     employee_check_in,
     employee_check_out,
     employee_login,
+    get_owner_employees,
     get_employee_dashboard,
     get_employee_history,
     get_employee_profile,
@@ -15,8 +16,30 @@ from app.services.employee_service import (
 )
 
 
-def create_owner_employee_controller(owner: User, username: str, password: str, parking_id: int, db: Session) -> dict:
-    return create_employee_for_owner(owner, username, password, parking_id, db)
+def create_owner_employee_controller(
+    owner: User,
+    full_name: str,
+    email: str,
+    phone: str | None,
+    password: str,
+    parking_id: int,
+    db: Session,
+    username: str | None = None,
+) -> dict:
+    return create_employee_for_owner(
+        owner=owner,
+        full_name=full_name,
+        email=email,
+        phone=phone,
+        password=password,
+        parking_id=parking_id,
+        db=db,
+        username=username,
+    )
+
+
+def owner_employees_controller(owner: User, db: Session) -> dict:
+    return get_owner_employees(owner, db)
 
 
 def employee_login_controller(username: str, password: str, db: Session) -> dict:

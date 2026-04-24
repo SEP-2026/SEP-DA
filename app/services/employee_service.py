@@ -88,6 +88,10 @@ def _serialize_employee(employee: EmployeeAccount) -> dict:
     }
 
 
+def _normalize_identity(value: str) -> str:
+    return value.strip().lower()
+
+
 def _serialize_parking(parking_lot: ParkingLot, db: Session) -> dict:
     total_slots, occupied_slots, empty_slots = _compute_slot_metrics(parking_lot.id, db)
     return {
@@ -122,17 +126,47 @@ def _log_activity(
     )
 
 
-def create_employee_for_owner(owner: User, username: str, password: str, parking_id: int, db: Session) -> dict:
+def create_employee_for_owner(
+    owner: User,
+    full_name: str,
+    email: str,
+    phone: str | None,
+    password: str,
+    parking_id: int,
+    db: Session,
+    username: str | None = None,
+) -> dict:
     if owner.role != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner mới tạo được employee")
     if _get_owner_assignment(owner.id, parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Owner không quản lý bãi này")
 
     ensure_strong_password(password)
-    normalized_username = username.strip().lower()
+    normalized_email = _normalize_identity(email)
+    normalized_username = _normalize_identity(username) if username else normalized_email
+    if "@" not in normalized_email:
+        raise HTTPException(status_code=400, detail="Email nhân viên không hợp lệ")
+
+    existing_user = db.query(User).filter(User.email == normalized_email).first()
+    if existing_user:
+        raise HTTPException(status_code=409, detail="Email employee đã tồn tại")
+
     existing = db.query(EmployeeAccount).filter(EmployeeAccount.username == normalized_username).first()
     if existing:
         raise HTTPException(status_code=409, detail="Username employee đã tồn tại")
+
+    user = User(
+        name=full_name.strip(),
+        email=normalized_email,
+        password="__legacy_disabled__",
+        password_hash=generate_password_hash(password),
+        phone=phone.strip() if phone else None,
+        role="employee",
+        status="active",
+        is_active=1,
+    )
+    db.add(user)
+    db.flush()
 
     employee = EmployeeAccount(
         username=normalized_username,
@@ -150,7 +184,54 @@ def create_employee_for_owner(owner: User, username: str, password: str, parking
     _log_activity(employee, parking_id, "employee_created", f"Owner #{owner.id} tạo employee {normalized_username}", db)
     db.commit()
     db.refresh(employee)
-    return _serialize_employee(employee)
+    return {
+        **_serialize_employee(employee),
+        "user_id": user.id,
+        "email": user.email,
+        "full_name": user.name,
+        "phone": user.phone,
+    }
+
+
+def get_owner_employees(owner: User, db: Session) -> dict:
+    employees = (
+        db.query(EmployeeAccount)
+        .filter(EmployeeAccount.owner_id == owner.id)
+        .order_by(EmployeeAccount.created_at.desc(), EmployeeAccount.id.desc())
+        .all()
+    )
+    if not employees:
+        return {"employees": [], "total_count": 0}
+
+    parking_ids = list({int(item.parking_id) for item in employees})
+    parking_rows = db.query(ParkingLot).filter(ParkingLot.id.in_(parking_ids)).all()
+    parking_names = {int(item.id): item.name for item in parking_rows}
+
+    usernames = [_normalize_identity(item.username) for item in employees]
+    user_rows = db.query(User).filter(User.email.in_(usernames)).all()
+    users_by_email = {_normalize_identity(item.email): item for item in user_rows}
+
+    result = []
+    for employee in employees:
+        employee_email = _normalize_identity(employee.username)
+        user = users_by_email.get(employee_email)
+        result.append(
+            {
+                "id": employee.id,
+                "user_id": user.id if user else None,
+                "username": employee.username,
+                "email": user.email if user else employee.username,
+                "full_name": user.name if user else None,
+                "phone": user.phone if user else None,
+                "role": employee.role,
+                "owner_id": employee.owner_id,
+                "parking_id": employee.parking_id,
+                "parking_name": parking_names.get(int(employee.parking_id)),
+                "status": employee.status,
+                "created_at": employee.created_at,
+            }
+        )
+    return {"employees": result, "total_count": len(result)}
 
 
 def employee_login(username: str, password: str, db: Session) -> dict:

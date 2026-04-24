@@ -5,7 +5,7 @@ export const OWNER_NAV_ITEMS = [
   { to: "/owner/customers", label: "Quản lý khách hàng", icon: "customer" },
   { to: "/owner/revenue", label: "Doanh thu", icon: "revenue" },
   { to: "/owner/reviews", label: "Đánh giá", icon: "reviews" },
-  { to: "/owner/settings", label: "Cài đặt bãi đỗ", icon: "settings" },
+  { to: "/owner/settings", label: "Cài đặt & nhân viên", icon: "settings" },
 ];
 
 export const OWNER_ROUTE_META = {
@@ -30,8 +30,8 @@ export const OWNER_ROUTE_META = {
     description: "Theo dõi doanh thu của bãi theo ngày hoặc tuần và kiểm tra giao dịch gần đây.",
   },
   "/owner/settings": {
-    title: "Cài đặt bãi đỗ",
-    description: "Quản lý thông tin tài khoản owner và cấu hình vận hành của bãi đỗ.",
+    title: "Cài đặt & nhân viên",
+    description: "Quản lý thông tin owner, cấu hình bãi đỗ và tạo tài khoản nhân viên.",
   },
   "/owner/reviews": {
     title: "Đánh giá khách hàng",
