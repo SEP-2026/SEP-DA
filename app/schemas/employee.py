@@ -31,7 +31,7 @@ class OwnerCreateEmployeeRequest(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     phone: str | None = Field(default=None, max_length=30)
     username: str | None = Field(default=None, min_length=3, max_length=100)
-    password: str = Field(min_length=8, max_length=255)
+    password: str = Field(min_length=6, max_length=255)
     parking_id: int = Field(gt=0)
 
 
@@ -53,6 +53,19 @@ class OwnerEmployeeItem(BaseModel):
 class OwnerEmployeeListResponse(BaseModel):
     employees: list[OwnerEmployeeItem]
     total_count: int
+
+
+class OwnerUpdateEmployeeRequest(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=255)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
+    password: str | None = Field(default=None, min_length=6, max_length=255)
+    parking_id: int | None = Field(default=None, gt=0)
+
+
+class OwnerEmployeeActionResponse(BaseModel):
+    message: str
+    employee: OwnerEmployeeItem | None = None
 
 
 class EmployeeParkingOverview(BaseModel):

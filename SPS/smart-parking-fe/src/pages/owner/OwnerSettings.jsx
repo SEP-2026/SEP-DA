@@ -19,7 +19,19 @@ function buildParkingSettingsRows(settings) {
     : [];
 }
 
+const EMPTY_EDIT_FORM = {
+  full_name: "",
+  email: "",
+  phone: "",
+  parking_id: "",
+  password: "",
+  confirmPassword: "",
+};
+
 export default function OwnerSettings() {
+  const EMPLOYEE_PASSWORD_MIN_LENGTH = 6;
+  const EMPLOYEE_PASSWORD_NOTE = `Mật khẩu nhân viên tối thiểu ${EMPLOYEE_PASSWORD_MIN_LENGTH} ký tự.`;
+
   const { auth, ownerData, actions } = useOwnerContext();
   const [settingsData, setSettingsData] = useState(ownerData.settings);
   const [ownerForm, setOwnerForm] = useState({
@@ -46,6 +58,13 @@ export default function OwnerSettings() {
     confirmPassword: "",
     parking_id: "",
   });
+  const [showEmployeePassword, setShowEmployeePassword] = useState(false);
+  const [showEmployeeConfirmPassword, setShowEmployeeConfirmPassword] = useState(false);
+
+  const [editingEmployeeId, setEditingEmployeeId] = useState(null);
+  const [editEmployeeForm, setEditEmployeeForm] = useState(EMPTY_EDIT_FORM);
+  const [showEditEmployeePassword, setShowEditEmployeePassword] = useState(false);
+  const [showEditEmployeeConfirmPassword, setShowEditEmployeeConfirmPassword] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -97,6 +116,27 @@ export default function OwnerSettings() {
     setParkingRows((prev) =>
       prev.map((row) => (row.id === parkingId ? { ...row, [key]: value } : row)),
     );
+  };
+
+  const startEditEmployee = (employee) => {
+    setEditingEmployeeId(employee.id);
+    setEditEmployeeForm({
+      full_name: employee.full_name || "",
+      email: employee.email || "",
+      phone: employee.phone || "",
+      parking_id: String(employee.parking_id || ""),
+      password: "",
+      confirmPassword: "",
+    });
+    setShowEditEmployeePassword(false);
+    setShowEditEmployeeConfirmPassword(false);
+  };
+
+  const cancelEditEmployee = () => {
+    setEditingEmployeeId(null);
+    setEditEmployeeForm(EMPTY_EDIT_FORM);
+    setShowEditEmployeePassword(false);
+    setShowEditEmployeeConfirmPassword(false);
   };
 
   return (
@@ -253,7 +293,7 @@ export default function OwnerSettings() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Tài khoản nhân viên" subtitle="Owner tạo tài khoản nhân viên tại đây. Backend sẽ lưu vào bảng users với role employee.">
+      <SectionCard title="Tài khoản nhân viên" subtitle="Owner tạo, sửa và xóa tài khoản nhân viên. Khi xóa sẽ xóa cứng khỏi cơ sở dữ liệu.">
         <form
           className="owner-settings-form"
           onSubmit={async (event) => {
@@ -262,12 +302,18 @@ export default function OwnerSettings() {
               window.alert("Vui lòng chọn bãi phụ trách cho nhân viên");
               return;
             }
+            const parkingId = Number(employeeForm.parking_id);
+            const allowedParking = parkingRows.some((row) => Number(row.id) === parkingId);
+            if (!allowedParking) {
+              window.alert("Bạn chỉ có thể tạo nhân viên cho bãi xe thuộc owner hiện tại.");
+              return;
+            }
             if (!employeeForm.full_name.trim() || !employeeForm.email.trim()) {
               window.alert("Vui lòng nhập đầy đủ họ tên và email");
               return;
             }
-            if (!isStrongPassword(employeeForm.password)) {
-              window.alert(PASSWORD_POLICY_TEXT);
+            if ((employeeForm.password || "").length < EMPLOYEE_PASSWORD_MIN_LENGTH) {
+              window.alert(EMPLOYEE_PASSWORD_NOTE);
               return;
             }
             if (employeeForm.password !== employeeForm.confirmPassword) {
@@ -280,7 +326,7 @@ export default function OwnerSettings() {
               email: employeeForm.email.trim().toLowerCase(),
               phone: employeeForm.phone.trim() || null,
               password: employeeForm.password,
-              parking_id: Number(employeeForm.parking_id),
+              parking_id: parkingId,
             });
             if (!created) {
               return;
@@ -295,6 +341,8 @@ export default function OwnerSettings() {
               password: "",
               confirmPassword: "",
             }));
+            setShowEmployeePassword(false);
+            setShowEmployeeConfirmPassword(false);
 
             const nextEmployees = await actions.listEmployees();
             setEmployees(nextEmployees);
@@ -334,19 +382,37 @@ export default function OwnerSettings() {
           </label>
           <label>
             Mật khẩu
-            <input className="owner-input" type="password" minLength={8} value={employeeForm.password} onChange={(event) => {
-              setEmployeeCreated(false);
-              setEmployeeForm((prev) => ({ ...prev, password: event.target.value }));
-            }} />
+            <div className="owner-password-row">
+              <input className="owner-input" type={showEmployeePassword ? "text" : "password"} minLength={EMPLOYEE_PASSWORD_MIN_LENGTH} value={employeeForm.password} onChange={(event) => {
+                setEmployeeCreated(false);
+                setEmployeeForm((prev) => ({ ...prev, password: event.target.value }));
+              }} />
+              <button
+                type="button"
+                className="btn-secondary owner-btn owner-password-toggle"
+                onClick={() => setShowEmployeePassword((prev) => !prev)}
+              >
+                {showEmployeePassword ? "Ẩn" : "Hiện"}
+              </button>
+            </div>
           </label>
           <label>
             Nhập lại mật khẩu
-            <input className="owner-input" type="password" minLength={8} value={employeeForm.confirmPassword} onChange={(event) => {
-              setEmployeeCreated(false);
-              setEmployeeForm((prev) => ({ ...prev, confirmPassword: event.target.value }));
-            }} />
+            <div className="owner-password-row">
+              <input className="owner-input" type={showEmployeeConfirmPassword ? "text" : "password"} minLength={EMPLOYEE_PASSWORD_MIN_LENGTH} value={employeeForm.confirmPassword} onChange={(event) => {
+                setEmployeeCreated(false);
+                setEmployeeForm((prev) => ({ ...prev, confirmPassword: event.target.value }));
+              }} />
+              <button
+                type="button"
+                className="btn-secondary owner-btn owner-password-toggle"
+                onClick={() => setShowEmployeeConfirmPassword((prev) => !prev)}
+              >
+                {showEmployeeConfirmPassword ? "Ẩn" : "Hiện"}
+              </button>
+            </div>
           </label>
-          <p className="owner-save-note owner-form-span">{PASSWORD_POLICY_TEXT}</p>
+          <p className="owner-save-note owner-form-span">{EMPLOYEE_PASSWORD_NOTE}</p>
           <div className="owner-settings-actions owner-form-span">
             {employeeCreated ? <p className="owner-save-note">Đã tạo tài khoản nhân viên thành công.</p> : <span />}
             <button type="submit" className="btn-primary owner-btn">Tạo tài khoản nhân viên</button>
@@ -362,12 +428,13 @@ export default function OwnerSettings() {
                 <th>SĐT</th>
                 <th>Bãi phụ trách</th>
                 <th>Trạng thái</th>
+                <th>Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {employees.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="owner-empty-cell">Chưa có tài khoản nhân viên nào.</td>
+                  <td colSpan={6} className="owner-empty-cell">Chưa có tài khoản nhân viên nào.</td>
                 </tr>
               ) : employees.map((employee) => (
                 <tr key={employee.id}>
@@ -380,11 +447,171 @@ export default function OwnerSettings() {
                       {employee.status}
                     </span>
                   </td>
+                  <td>
+                    <div className="owner-row-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary owner-btn owner-btn--small"
+                        onClick={() => startEditEmployee(employee)}
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-secondary owner-btn owner-btn--small owner-btn--danger"
+                        onClick={async () => {
+                          const ok = window.confirm("Xóa tài khoản nhân viên này vĩnh viễn?");
+                          if (!ok) {
+                            return;
+                          }
+                          const deleted = await actions.deleteEmployee(employee.id);
+                          if (!deleted) {
+                            return;
+                          }
+                          if (editingEmployeeId === employee.id) {
+                            cancelEditEmployee();
+                          }
+                          const nextEmployees = await actions.listEmployees();
+                          setEmployees(nextEmployees);
+                        }}
+                      >
+                        Xóa
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {editingEmployeeId ? (
+          <form
+            className="owner-settings-form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const parkingId = Number(editEmployeeForm.parking_id);
+              const allowedParking = parkingRows.some((row) => Number(row.id) === parkingId);
+              if (!allowedParking) {
+                window.alert("Bạn chỉ có thể gán nhân viên vào bãi thuộc owner hiện tại.");
+                return;
+              }
+              if (!editEmployeeForm.full_name.trim() || !editEmployeeForm.email.trim()) {
+                window.alert("Vui lòng nhập đầy đủ họ tên và email");
+                return;
+              }
+              if (editEmployeeForm.password && editEmployeeForm.password.length < EMPLOYEE_PASSWORD_MIN_LENGTH) {
+                window.alert(EMPLOYEE_PASSWORD_NOTE);
+                return;
+              }
+              if (editEmployeeForm.password !== editEmployeeForm.confirmPassword) {
+                window.alert("Mật khẩu xác nhận không khớp");
+                return;
+              }
+
+              const payload = {
+                full_name: editEmployeeForm.full_name.trim(),
+                email: editEmployeeForm.email.trim().toLowerCase(),
+                phone: editEmployeeForm.phone.trim() || null,
+                parking_id: parkingId,
+              };
+              if (editEmployeeForm.password) {
+                payload.password = editEmployeeForm.password;
+              }
+
+              const updated = await actions.updateEmployee(editingEmployeeId, payload);
+              if (!updated) {
+                return;
+              }
+
+              const nextEmployees = await actions.listEmployees();
+              setEmployees(nextEmployees);
+              cancelEditEmployee();
+            }}
+          >
+            <label className="owner-form-span">Chỉnh sửa tài khoản nhân viên</label>
+            <label>
+              Họ tên nhân viên
+              <input
+                className="owner-input"
+                value={editEmployeeForm.full_name}
+                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, full_name: event.target.value }))}
+              />
+            </label>
+            <label>
+              Email đăng nhập
+              <input
+                className="owner-input"
+                type="email"
+                value={editEmployeeForm.email}
+                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, email: event.target.value }))}
+              />
+            </label>
+            <label>
+              Số điện thoại
+              <input
+                className="owner-input"
+                value={editEmployeeForm.phone}
+                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, phone: event.target.value }))}
+              />
+            </label>
+            <label>
+              Bãi phụ trách
+              <select
+                className="owner-input owner-select"
+                value={editEmployeeForm.parking_id}
+                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, parking_id: event.target.value }))}
+              >
+                {parkingRows.map((row) => (
+                  <option key={row.id} value={row.id}>{row.parkingName}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Mật khẩu mới (tùy chọn)
+              <div className="owner-password-row">
+                <input
+                  className="owner-input"
+                  type={showEditEmployeePassword ? "text" : "password"}
+                  minLength={EMPLOYEE_PASSWORD_MIN_LENGTH}
+                  value={editEmployeeForm.password}
+                  onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, password: event.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary owner-btn owner-password-toggle"
+                  onClick={() => setShowEditEmployeePassword((prev) => !prev)}
+                >
+                  {showEditEmployeePassword ? "Ẩn" : "Hiện"}
+                </button>
+              </div>
+            </label>
+            <label>
+              Nhập lại mật khẩu mới
+              <div className="owner-password-row">
+                <input
+                  className="owner-input"
+                  type={showEditEmployeeConfirmPassword ? "text" : "password"}
+                  minLength={EMPLOYEE_PASSWORD_MIN_LENGTH}
+                  value={editEmployeeForm.confirmPassword}
+                  onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary owner-btn owner-password-toggle"
+                  onClick={() => setShowEditEmployeeConfirmPassword((prev) => !prev)}
+                >
+                  {showEditEmployeeConfirmPassword ? "Ẩn" : "Hiện"}
+                </button>
+              </div>
+            </label>
+            <p className="owner-save-note owner-form-span">{EMPLOYEE_PASSWORD_NOTE}</p>
+            <div className="owner-settings-actions owner-form-span">
+              <button type="button" className="btn-secondary owner-btn" onClick={cancelEditEmployee}>Hủy</button>
+              <button type="submit" className="btn-primary owner-btn">Lưu chỉnh sửa</button>
+            </div>
+          </form>
+        ) : null}
       </SectionCard>
     </div>
   );

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.controllers.employee_controller import (
     create_owner_employee_controller,
+    delete_owner_employee_controller,
     employee_check_in_controller,
     employee_check_out_controller,
     employee_dashboard_controller,
@@ -14,6 +15,7 @@ from app.controllers.employee_controller import (
     employee_revenue_controller,
     employee_vehicles_controller,
     owner_employees_controller,
+    update_owner_employee_controller,
 )
 from app.database import get_db
 from app.models.models import EmployeeAccount, RevokedToken, User
@@ -31,7 +33,9 @@ from app.schemas.employee import (
     EmployeeRevenueResponse,
     EmployeeVehicleResponse,
     OwnerCreateEmployeeRequest,
+    OwnerEmployeeActionResponse,
     OwnerEmployeeListResponse,
+    OwnerUpdateEmployeeRequest,
 )
 
 router = APIRouter(prefix="/api/employee", tags=["employee"])
@@ -107,6 +111,36 @@ def owner_employees(
     db: Session = Depends(get_db),
 ):
     return OwnerEmployeeListResponse(**owner_employees_controller(owner, db))
+
+
+@owner_employee_router.patch("/employees/{employee_id}", response_model=OwnerEmployeeActionResponse)
+def update_owner_employee(
+    employee_id: int,
+    payload: OwnerUpdateEmployeeRequest,
+    owner: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    employee = update_owner_employee_controller(
+        owner=owner,
+        employee_id=employee_id,
+        db=db,
+        full_name=payload.full_name,
+        email=payload.email,
+        phone=payload.phone,
+        password=payload.password,
+        parking_id=payload.parking_id,
+    )
+    return OwnerEmployeeActionResponse(message="Updated employee account", employee=employee)
+
+
+@owner_employee_router.delete("/employees/{employee_id}", response_model=OwnerEmployeeActionResponse)
+def delete_owner_employee(
+    employee_id: int,
+    owner: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    result = delete_owner_employee_controller(owner=owner, employee_id=employee_id, db=db)
+    return OwnerEmployeeActionResponse(message=result["message"], employee=None)
 
 
 @router.post("/login", response_model=EmployeeLoginResponse)

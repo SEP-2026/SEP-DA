@@ -1024,6 +1024,22 @@
   justify-content: space-between;
 }
 
+.owner-password-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.owner-password-row .owner-input {
+  flex: 1 1 auto;
+}
+
+.owner-password-toggle {
+  min-height: 44px;
+  min-width: 70px;
+  padding: 10px 12px;
+}
+
 .owner-save-note {
   margin: 0;
   color: #1a6f46;

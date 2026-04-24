@@ -18,9 +18,9 @@ from app.models.models import (
 )
 from app.routes.auth import create_access_token_for_subject
 from app.routes.gate import _execute_check_in, _execute_check_out, _get_payment, _parse_scan_payload
-from app.security.password_policy import ensure_strong_password
 
 APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
+EMPLOYEE_PASSWORD_MIN_LENGTH = 6
 
 
 def _get_owner_assignment(owner_id: int, parking_id: int, db: Session) -> OwnerParking | None:
@@ -92,6 +92,17 @@ def _normalize_identity(value: str) -> str:
     return value.strip().lower()
 
 
+def _resolve_employee_user(employee: EmployeeAccount, db: Session) -> User | None:
+    username_key = _normalize_identity(employee.username or "")
+    if not username_key:
+        return None
+    return (
+        db.query(User)
+        .filter(User.email == username_key, User.role == "employee")
+        .first()
+    )
+
+
 def _serialize_parking(parking_lot: ParkingLot, db: Session) -> dict:
     total_slots, occupied_slots, empty_slots = _compute_slot_metrics(parking_lot.id, db)
     return {
@@ -136,14 +147,32 @@ def create_employee_for_owner(
     db: Session,
     username: str | None = None,
 ) -> dict:
+    owner_email = _normalize_identity(owner.email or "")
+    owner_record = (
+        db.query(User)
+        .filter(
+            User.id == owner.id,
+            User.email == owner_email,
+            User.role == "owner",
+            User.is_active == 1,
+        )
+        .first()
+    )
+    if not owner_record:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner account is not authorized")
+
     if owner.role != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner mới tạo được employee")
     if _get_owner_assignment(owner.id, parking_id, db) is None:
-        raise HTTPException(status_code=403, detail="Owner không quản lý bãi này")
+        raise HTTPException(status_code=403, detail="Owner email is not allowed to manage this parking")
 
-    ensure_strong_password(password)
+    if len(password or "") < EMPLOYEE_PASSWORD_MIN_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Employee password must be at least {EMPLOYEE_PASSWORD_MIN_LENGTH} characters",
+        )
     normalized_email = _normalize_identity(email)
-    normalized_username = _normalize_identity(username) if username else normalized_email
+    normalized_username = normalized_email
     if "@" not in normalized_email:
         raise HTTPException(status_code=400, detail="Email nhân viên không hợp lệ")
 
@@ -232,6 +261,123 @@ def get_owner_employees(owner: User, db: Session) -> dict:
             }
         )
     return {"employees": result, "total_count": len(result)}
+
+
+def update_owner_employee(
+    owner: User,
+    employee_id: int,
+    db: Session,
+    *,
+    full_name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    password: str | None = None,
+    parking_id: int | None = None,
+) -> dict:
+    employee = (
+        db.query(EmployeeAccount)
+        .filter(EmployeeAccount.id == employee_id, EmployeeAccount.owner_id == owner.id)
+        .first()
+    )
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    next_parking_id = int(parking_id) if parking_id else int(employee.parking_id)
+    if _get_owner_assignment(owner.id, next_parking_id, db) is None:
+        raise HTTPException(status_code=403, detail="Owner email is not allowed to manage this parking")
+
+    linked_user = _resolve_employee_user(employee, db)
+
+    next_email = _normalize_identity(email) if email else _normalize_identity(employee.username)
+    if "@" not in next_email:
+        raise HTTPException(status_code=400, detail="Employee email is invalid")
+
+    duplicate_user = db.query(User).filter(User.email == next_email).first()
+    if duplicate_user and (linked_user is None or duplicate_user.id != linked_user.id):
+        raise HTTPException(status_code=409, detail="Employee email already exists")
+
+    duplicate_employee = db.query(EmployeeAccount).filter(
+        EmployeeAccount.username == next_email,
+        EmployeeAccount.id != employee.id,
+    ).first()
+    if duplicate_employee:
+        raise HTTPException(status_code=409, detail="Employee account already exists")
+
+    employee.username = next_email
+    employee.parking_id = next_parking_id
+
+    if password:
+        if len(password) < EMPLOYEE_PASSWORD_MIN_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Employee password must be at least {EMPLOYEE_PASSWORD_MIN_LENGTH} characters",
+            )
+        password_hash = generate_password_hash(password)
+        employee.password_hash = password_hash
+    else:
+        password_hash = employee.password_hash
+
+    if linked_user is None:
+        linked_user = User(
+            name=(full_name or next_email).strip(),
+            email=next_email,
+            password="__legacy_disabled__",
+            password_hash=password_hash or generate_password_hash("employee123"),
+            phone=phone.strip() if phone else None,
+            role="employee",
+            status="active",
+            is_active=1,
+        )
+        db.add(linked_user)
+    else:
+        linked_user.email = next_email
+        if full_name is not None:
+            linked_user.name = full_name.strip()
+        if phone is not None:
+            linked_user.phone = phone.strip() or None
+        if password:
+            linked_user.password = "__legacy_disabled__"
+            linked_user.password_hash = password_hash
+
+    db.commit()
+    db.refresh(employee)
+    linked_user = _resolve_employee_user(employee, db)
+    return {
+        "id": employee.id,
+        "user_id": linked_user.id if linked_user else None,
+        "username": employee.username,
+        "email": linked_user.email if linked_user else employee.username,
+        "full_name": linked_user.name if linked_user else None,
+        "phone": linked_user.phone if linked_user else None,
+        "role": employee.role,
+        "owner_id": employee.owner_id,
+        "parking_id": employee.parking_id,
+        "parking_name": (
+            db.query(ParkingLot.name).filter(ParkingLot.id == employee.parking_id).scalar()
+        ),
+        "status": employee.status,
+        "created_at": employee.created_at,
+    }
+
+
+def delete_owner_employee(owner: User, employee_id: int, db: Session) -> dict:
+    employee = (
+        db.query(EmployeeAccount)
+        .filter(EmployeeAccount.id == employee_id, EmployeeAccount.owner_id == owner.id)
+        .first()
+    )
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    linked_user = _resolve_employee_user(employee, db)
+
+    db.query(EmployeeActivity).filter(EmployeeActivity.employee_id == employee.id).delete(synchronize_session=False)
+    db.delete(employee)
+    if linked_user is not None:
+        db.delete(linked_user)
+
+    db.commit()
+    return {"message": "Deleted employee account permanently"}
 
 
 def employee_login(username: str, password: str, db: Session) -> dict:

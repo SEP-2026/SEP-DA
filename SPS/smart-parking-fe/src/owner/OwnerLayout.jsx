@@ -251,6 +251,26 @@ export default function OwnerLayout({ auth, onLogout }) {
         return [];
       }
     },
+    async updateEmployee(employeeId, payload) {
+      try {
+        const res = await API.patch(`/api/owner/employees/${employeeId}`, payload);
+        await refreshOwnerData();
+        return res.data?.employee || null;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể cập nhật tài khoản nhân viên");
+        return null;
+      }
+    },
+    async deleteEmployee(employeeId) {
+      try {
+        await API.delete(`/api/owner/employees/${employeeId}`);
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể xóa tài khoản nhân viên");
+        return false;
+      }
+    },
   };
 
   return (

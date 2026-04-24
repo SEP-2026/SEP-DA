@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.models import EmployeeAccount, User
 from app.services.employee_service import (
     create_employee_for_owner,
+    delete_owner_employee,
     employee_check_in,
     employee_check_out,
     employee_login,
@@ -12,6 +13,7 @@ from app.services.employee_service import (
     get_employee_profile,
     get_employee_revenue,
     get_employee_vehicles,
+    update_owner_employee,
     update_employee_parking_status,
 )
 
@@ -40,6 +42,33 @@ def create_owner_employee_controller(
 
 def owner_employees_controller(owner: User, db: Session) -> dict:
     return get_owner_employees(owner, db)
+
+
+def update_owner_employee_controller(
+    owner: User,
+    employee_id: int,
+    db: Session,
+    *,
+    full_name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    password: str | None = None,
+    parking_id: int | None = None,
+) -> dict:
+    return update_owner_employee(
+        owner,
+        employee_id,
+        db,
+        full_name=full_name,
+        email=email,
+        phone=phone,
+        password=password,
+        parking_id=parking_id,
+    )
+
+
+def delete_owner_employee_controller(owner: User, employee_id: int, db: Session) -> dict:
+    return delete_owner_employee(owner, employee_id, db)
 
 
 def employee_login_controller(username: str, password: str, db: Session) -> dict:
