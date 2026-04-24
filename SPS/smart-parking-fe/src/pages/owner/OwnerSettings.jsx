@@ -184,7 +184,7 @@ export default function OwnerSettings() {
     <div className="owner-page-grid">
       <SectionCard title="Tài khoản Owner" subtitle="Tài khoản này do admin cấp. Owner có thể thay đổi email và mật khẩu sau khi đăng nhập.">
         <form
-          className="owner-settings-form"
+          className="owner-settings-form owner-settings-form--employee"
           onSubmit={async (event) => {
             event.preventDefault();
             if (accountForm.password || accountForm.confirmPassword) {
@@ -402,7 +402,7 @@ export default function OwnerSettings() {
                 setEmployeeRequiredErrors((prev) => ({ ...prev, full_name: "" }));
               }
             }} />
-            {employeeRequiredErrors.full_name ? <span className="owner-input-error">{employeeRequiredErrors.full_name}</span> : null}
+            <span className="owner-input-error-slot">{employeeRequiredErrors.full_name || ""}</span>
           </label>
           <label>
             Email đăng nhập
@@ -413,7 +413,7 @@ export default function OwnerSettings() {
                 setEmployeeRequiredErrors((prev) => ({ ...prev, email: "" }));
               }
             }} />
-            {employeeRequiredErrors.email ? <span className="owner-input-error">{employeeRequiredErrors.email}</span> : null}
+            <span className="owner-input-error-slot">{employeeRequiredErrors.email || ""}</span>
           </label>
           <label>
             Số điện thoại
@@ -424,7 +424,7 @@ export default function OwnerSettings() {
                 setEmployeeRequiredErrors((prev) => ({ ...prev, phone: "" }));
               }
             }} />
-            {employeeRequiredErrors.phone ? <span className="owner-input-error">{employeeRequiredErrors.phone}</span> : null}
+            <span className="owner-input-error-slot">{employeeRequiredErrors.phone || ""}</span>
           </label>
           <label>
             Bãi phụ trách
@@ -436,40 +436,43 @@ export default function OwnerSettings() {
                 <option key={row.id} value={row.id}>{row.parkingName}</option>
               ))}
             </select>
+            <span className="owner-input-error-slot">{""}</span>
           </label>
           <label>
             Mật khẩu
-            <div className="owner-password-row">
-              <input className="owner-input" type={showEmployeePassword ? "text" : "password"} minLength={EMPLOYEE_PASSWORD_MIN_LENGTH} value={employeeForm.password} onChange={(event) => {
+            <div className="owner-input-wrap owner-input-wrap--password">
+              <input className="owner-input owner-input--with-icon" type={showEmployeePassword ? "text" : "password"} minLength={EMPLOYEE_PASSWORD_MIN_LENGTH} value={employeeForm.password} onChange={(event) => {
                 setEmployeeCreated(false);
                 setEmployeeForm((prev) => ({ ...prev, password: event.target.value }));
               }} />
               <button
                 type="button"
-                className="owner-password-icon"
+                className="owner-password-icon owner-password-icon--inside"
                 aria-label={showEmployeePassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                 onClick={() => setShowEmployeePassword((prev) => !prev)}
               >
                 <EyeIcon open={showEmployeePassword} />
               </button>
             </div>
+            <span className="owner-input-error-slot">{""}</span>
           </label>
           <label>
             Nhập lại mật khẩu
-            <div className="owner-password-row">
-              <input className="owner-input" type={showEmployeeConfirmPassword ? "text" : "password"} minLength={EMPLOYEE_PASSWORD_MIN_LENGTH} value={employeeForm.confirmPassword} onChange={(event) => {
+            <div className="owner-input-wrap owner-input-wrap--password">
+              <input className="owner-input owner-input--with-icon" type={showEmployeeConfirmPassword ? "text" : "password"} minLength={EMPLOYEE_PASSWORD_MIN_LENGTH} value={employeeForm.confirmPassword} onChange={(event) => {
                 setEmployeeCreated(false);
                 setEmployeeForm((prev) => ({ ...prev, confirmPassword: event.target.value }));
               }} />
               <button
                 type="button"
-                className="owner-password-icon"
+                className="owner-password-icon owner-password-icon--inside"
                 aria-label={showEmployeeConfirmPassword ? "Ẩn xác nhận mật khẩu" : "Hiện xác nhận mật khẩu"}
                 onClick={() => setShowEmployeeConfirmPassword((prev) => !prev)}
               >
                 <EyeIcon open={showEmployeeConfirmPassword} />
               </button>
             </div>
+            <span className="owner-input-error-slot">{""}</span>
           </label>
           <p className="owner-save-note owner-form-span">{EMPLOYEE_PASSWORD_NOTE}</p>
           <div className="owner-settings-actions owner-form-span">
@@ -546,7 +549,7 @@ export default function OwnerSettings() {
 
         {editingEmployeeId ? (
           <form
-            className="owner-settings-form"
+            className="owner-settings-form owner-settings-form--employee"
             onSubmit={async (event) => {
               event.preventDefault();
 
@@ -604,7 +607,7 @@ export default function OwnerSettings() {
                   }
                 }}
               />
-              {editRequiredErrors.full_name ? <span className="owner-input-error">{editRequiredErrors.full_name}</span> : null}
+              <span className="owner-input-error-slot">{editRequiredErrors.full_name || ""}</span>
             </label>
             <label>
               Email đăng nhập
@@ -619,7 +622,7 @@ export default function OwnerSettings() {
                   }
                 }}
               />
-              {editRequiredErrors.email ? <span className="owner-input-error">{editRequiredErrors.email}</span> : null}
+              <span className="owner-input-error-slot">{editRequiredErrors.email || ""}</span>
             </label>
             <label>
               Số điện thoại
@@ -633,7 +636,7 @@ export default function OwnerSettings() {
                   }
                 }}
               />
-              {editRequiredErrors.phone ? <span className="owner-input-error">{editRequiredErrors.phone}</span> : null}
+              <span className="owner-input-error-slot">{editRequiredErrors.phone || ""}</span>
             </label>
             <label>
               Bãi phụ trách
@@ -646,12 +649,13 @@ export default function OwnerSettings() {
                   <option key={row.id} value={row.id}>{row.parkingName}</option>
                 ))}
               </select>
+              <span className="owner-input-error-slot">{""}</span>
             </label>
             <label>
               Mật khẩu mới (tùy chọn)
-              <div className="owner-password-row">
+              <div className="owner-input-wrap owner-input-wrap--password">
                 <input
-                  className="owner-input"
+                  className="owner-input owner-input--with-icon"
                   type={showEditEmployeePassword ? "text" : "password"}
                   minLength={EMPLOYEE_PASSWORD_MIN_LENGTH}
                   value={editEmployeeForm.password}
@@ -659,19 +663,20 @@ export default function OwnerSettings() {
                 />
                 <button
                   type="button"
-                  className="owner-password-icon"
+                  className="owner-password-icon owner-password-icon--inside"
                   aria-label={showEditEmployeePassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
                   onClick={() => setShowEditEmployeePassword((prev) => !prev)}
                 >
                   <EyeIcon open={showEditEmployeePassword} />
                 </button>
               </div>
+              <span className="owner-input-error-slot">{""}</span>
             </label>
             <label>
               Nhập lại mật khẩu mới
-              <div className="owner-password-row">
+              <div className="owner-input-wrap owner-input-wrap--password">
                 <input
-                  className="owner-input"
+                  className="owner-input owner-input--with-icon"
                   type={showEditEmployeeConfirmPassword ? "text" : "password"}
                   minLength={EMPLOYEE_PASSWORD_MIN_LENGTH}
                   value={editEmployeeForm.confirmPassword}
@@ -679,13 +684,14 @@ export default function OwnerSettings() {
                 />
                 <button
                   type="button"
-                  className="owner-password-icon"
+                  className="owner-password-icon owner-password-icon--inside"
                   aria-label={showEditEmployeeConfirmPassword ? "Ẩn xác nhận mật khẩu mới" : "Hiện xác nhận mật khẩu mới"}
                   onClick={() => setShowEditEmployeeConfirmPassword((prev) => !prev)}
                 >
                   <EyeIcon open={showEditEmployeeConfirmPassword} />
                 </button>
               </div>
+              <span className="owner-input-error-slot">{""}</span>
             </label>
             <p className="owner-save-note owner-form-span">{EMPLOYEE_PASSWORD_NOTE}</p>
             <div className="owner-settings-actions owner-form-span">

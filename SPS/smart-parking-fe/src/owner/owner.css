@@ -684,6 +684,14 @@
   box-shadow: 0 0 0 4px rgba(45, 135, 164, 0.18);
 }
 
+/* Hide browser built-in password reveal controls (Edge/IE) */
+.owner-input[type="password"]::-ms-reveal,
+.owner-input[type="password"]::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .owner-select {
   appearance: none;
 }
@@ -958,10 +966,14 @@
 .owner-form-grid label,
 .owner-settings-form label {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   color: #18384f;
   font-size: 14px;
   font-weight: 700;
+}
+
+.owner-settings-form--employee {
+  gap: 12px 14px;
 }
 
 .owner-form-span {
@@ -1024,26 +1036,36 @@
   justify-content: space-between;
 }
 
-.owner-password-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.owner-input-wrap {
+  position: relative;
+  width: 100%;
 }
 
-.owner-password-row .owner-input {
-  flex: 1 1 auto;
+.owner-input-wrap--password .owner-input {
+  padding-right: 52px;
+}
+
+.owner-input--with-icon {
+  padding-right: 52px;
 }
 
 .owner-password-icon {
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(20, 57, 93, 0.2);
-  border-radius: 12px;
-  background: #f5fbff;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   color: #1d5578;
   display: grid;
   place-items: center;
   cursor: pointer;
+}
+
+.owner-password-icon--inside {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .owner-password-icon svg {
@@ -1053,7 +1075,7 @@
 }
 
 .owner-password-icon:hover {
-  background: #ebf7ff;
+  background: rgba(45, 135, 164, 0.12);
 }
 
 .owner-input-error {
@@ -1061,6 +1083,16 @@
   color: #c23535;
   font-size: 13px;
   font-weight: 600;
+}
+
+.owner-input-error-slot {
+  margin-top: 0;
+  min-height: 14px;
+  line-height: 1.2;
+  color: #c23535;
+  font-size: 12px;
+  font-weight: 600;
+  display: block;
 }
 
 .owner-save-note {
