@@ -29,7 +29,7 @@ class EmployeeLoginResponse(BaseModel):
 class OwnerCreateEmployeeRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=255)
     email: str = Field(min_length=3, max_length=255)
-    phone: str | None = Field(default=None, max_length=30)
+    phone: str = Field(min_length=1, max_length=30)
     username: str | None = Field(default=None, min_length=3, max_length=100)
     password: str = Field(min_length=6, max_length=255)
     parking_id: int = Field(gt=0)

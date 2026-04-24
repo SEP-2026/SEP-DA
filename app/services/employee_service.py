@@ -172,6 +172,12 @@ def create_employee_for_owner(
             detail=f"Employee password must be at least {EMPLOYEE_PASSWORD_MIN_LENGTH} characters",
         )
     normalized_email = _normalize_identity(email)
+    normalized_full_name = (full_name or "").strip()
+    normalized_phone = (phone or "").strip()
+    if not normalized_full_name:
+        raise HTTPException(status_code=400, detail="Employee full name is required")
+    if not normalized_phone:
+        raise HTTPException(status_code=400, detail="Employee phone is required")
     normalized_username = normalized_email
     if "@" not in normalized_email:
         raise HTTPException(status_code=400, detail="Email nhân viên không hợp lệ")
@@ -185,11 +191,11 @@ def create_employee_for_owner(
         raise HTTPException(status_code=409, detail="Username employee đã tồn tại")
 
     user = User(
-        name=full_name.strip(),
+        name=normalized_full_name,
         email=normalized_email,
         password="__legacy_disabled__",
         password_hash=generate_password_hash(password),
-        phone=phone.strip() if phone else None,
+        phone=normalized_phone,
         role="employee",
         status="active",
         is_active=1,
@@ -288,6 +294,11 @@ def update_owner_employee(
 
     linked_user = _resolve_employee_user(employee, db)
 
+    if full_name is not None and not full_name.strip():
+        raise HTTPException(status_code=400, detail="Employee full name is required")
+    if phone is not None and not phone.strip():
+        raise HTTPException(status_code=400, detail="Employee phone is required")
+
     next_email = _normalize_identity(email) if email else _normalize_identity(employee.username)
     if "@" not in next_email:
         raise HTTPException(status_code=400, detail="Employee email is invalid")
@@ -323,7 +334,7 @@ def update_owner_employee(
             email=next_email,
             password="__legacy_disabled__",
             password_hash=password_hash or generate_password_hash("employee123"),
-            phone=phone.strip() if phone else None,
+            phone=(phone or "").strip() or None,
             role="employee",
             status="active",
             is_active=1,

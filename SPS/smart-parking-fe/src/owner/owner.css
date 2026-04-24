@@ -1034,10 +1034,33 @@
   flex: 1 1 auto;
 }
 
-.owner-password-toggle {
-  min-height: 44px;
-  min-width: 70px;
-  padding: 10px 12px;
+.owner-password-icon {
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(20, 57, 93, 0.2);
+  border-radius: 12px;
+  background: #f5fbff;
+  color: #1d5578;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.owner-password-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.owner-password-icon:hover {
+  background: #ebf7ff;
+}
+
+.owner-input-error {
+  margin-top: 2px;
+  color: #c23535;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .owner-save-note {

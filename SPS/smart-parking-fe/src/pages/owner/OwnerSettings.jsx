@@ -19,6 +19,21 @@ function buildParkingSettingsRows(settings) {
     : [];
 }
 
+function EyeIcon({ open }) {
+  if (open) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 5c5.2 0 9.6 3.2 11 7-1.4 3.8-5.8 7-11 7S2.4 15.8 1 12C2.4 8.2 6.8 5 12 5Zm0 2C8 7 4.5 9.3 3.1 12 4.5 14.7 8 17 12 17s7.5-2.3 8.9-5C19.5 9.3 16 7 12 7Zm0 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m3.3 2 18.7 18.7-1.4 1.4-3-3a13.5 13.5 0 0 1-5.6 1.2c-5.2 0-9.6-3.2-11-7a12.7 12.7 0 0 1 4.2-5.2l-3.3-3.3L3.3 2Zm3.4 7.7A10.7 10.7 0 0 0 3.1 12c1.4 2.7 4.9 5 8.9 5a10.7 10.7 0 0 0 3.8-.7l-2.1-2.1a3.5 3.5 0 0 1-4.9-4.9L6.7 9.7Zm10.7 2.1-4.3-4.3A3.5 3.5 0 0 0 9 8.3L7.2 6.5A13.2 13.2 0 0 1 12 5c5.2 0 9.6 3.2 11 7a12.7 12.7 0 0 1-3.8 5l-1.8-1.8a10.6 10.6 0 0 0 3.5-3.2c-.7-1.2-1.9-2.4-3.5-3.2Z" />
+    </svg>
+  );
+}
+
 const EMPTY_EDIT_FORM = {
   full_name: "",
   email: "",
@@ -27,6 +42,30 @@ const EMPTY_EDIT_FORM = {
   password: "",
   confirmPassword: "",
 };
+
+const EMPTY_REQUIRED_ERRORS = {
+  full_name: "",
+  email: "",
+  phone: "",
+};
+
+function validateRequiredEmployeeFields(form) {
+  const errors = { ...EMPTY_REQUIRED_ERRORS };
+  if (!form.full_name?.trim()) {
+    errors.full_name = "Vui lòng nhập tên nhân viên.";
+  }
+  if (!form.email?.trim()) {
+    errors.email = "Vui lòng nhập email đăng nhập.";
+  }
+  if (!form.phone?.trim()) {
+    errors.phone = "Vui lòng nhập số điện thoại.";
+  }
+  return errors;
+}
+
+function hasRequiredErrors(errors) {
+  return Boolean(errors.full_name || errors.email || errors.phone);
+}
 
 export default function OwnerSettings() {
   const EMPLOYEE_PASSWORD_MIN_LENGTH = 6;
@@ -58,11 +97,13 @@ export default function OwnerSettings() {
     confirmPassword: "",
     parking_id: "",
   });
+  const [employeeRequiredErrors, setEmployeeRequiredErrors] = useState(EMPTY_REQUIRED_ERRORS);
   const [showEmployeePassword, setShowEmployeePassword] = useState(false);
   const [showEmployeeConfirmPassword, setShowEmployeeConfirmPassword] = useState(false);
 
   const [editingEmployeeId, setEditingEmployeeId] = useState(null);
   const [editEmployeeForm, setEditEmployeeForm] = useState(EMPTY_EDIT_FORM);
+  const [editRequiredErrors, setEditRequiredErrors] = useState(EMPTY_REQUIRED_ERRORS);
   const [showEditEmployeePassword, setShowEditEmployeePassword] = useState(false);
   const [showEditEmployeeConfirmPassword, setShowEditEmployeeConfirmPassword] = useState(false);
 
@@ -113,9 +154,7 @@ export default function OwnerSettings() {
 
   const handleParkingChange = (parkingId, key, value) => {
     setSavedParkingId(null);
-    setParkingRows((prev) =>
-      prev.map((row) => (row.id === parkingId ? { ...row, [key]: value } : row)),
-    );
+    setParkingRows((prev) => prev.map((row) => (row.id === parkingId ? { ...row, [key]: value } : row)));
   };
 
   const startEditEmployee = (employee) => {
@@ -128,6 +167,7 @@ export default function OwnerSettings() {
       password: "",
       confirmPassword: "",
     });
+    setEditRequiredErrors(EMPTY_REQUIRED_ERRORS);
     setShowEditEmployeePassword(false);
     setShowEditEmployeeConfirmPassword(false);
   };
@@ -135,6 +175,7 @@ export default function OwnerSettings() {
   const cancelEditEmployee = () => {
     setEditingEmployeeId(null);
     setEditEmployeeForm(EMPTY_EDIT_FORM);
+    setEditRequiredErrors(EMPTY_REQUIRED_ERRORS);
     setShowEditEmployeePassword(false);
     setShowEditEmployeeConfirmPassword(false);
   };
@@ -298,6 +339,13 @@ export default function OwnerSettings() {
           className="owner-settings-form"
           onSubmit={async (event) => {
             event.preventDefault();
+
+            const requiredErrors = validateRequiredEmployeeFields(employeeForm);
+            setEmployeeRequiredErrors(requiredErrors);
+            if (hasRequiredErrors(requiredErrors)) {
+              return;
+            }
+
             if (!employeeForm.parking_id) {
               window.alert("Vui lòng chọn bãi phụ trách cho nhân viên");
               return;
@@ -306,10 +354,6 @@ export default function OwnerSettings() {
             const allowedParking = parkingRows.some((row) => Number(row.id) === parkingId);
             if (!allowedParking) {
               window.alert("Bạn chỉ có thể tạo nhân viên cho bãi xe thuộc owner hiện tại.");
-              return;
-            }
-            if (!employeeForm.full_name.trim() || !employeeForm.email.trim()) {
-              window.alert("Vui lòng nhập đầy đủ họ tên và email");
               return;
             }
             if ((employeeForm.password || "").length < EMPLOYEE_PASSWORD_MIN_LENGTH) {
@@ -324,7 +368,7 @@ export default function OwnerSettings() {
             const created = await actions.createEmployee({
               full_name: employeeForm.full_name.trim(),
               email: employeeForm.email.trim().toLowerCase(),
-              phone: employeeForm.phone.trim() || null,
+              phone: employeeForm.phone.trim(),
               password: employeeForm.password,
               parking_id: parkingId,
             });
@@ -341,6 +385,7 @@ export default function OwnerSettings() {
               password: "",
               confirmPassword: "",
             }));
+            setEmployeeRequiredErrors(EMPTY_REQUIRED_ERRORS);
             setShowEmployeePassword(false);
             setShowEmployeeConfirmPassword(false);
 
@@ -349,25 +394,37 @@ export default function OwnerSettings() {
           }}
         >
           <label>
-            Họ tên nhân viên
+            Tên nhân viên
             <input className="owner-input" value={employeeForm.full_name} onChange={(event) => {
               setEmployeeCreated(false);
               setEmployeeForm((prev) => ({ ...prev, full_name: event.target.value }));
+              if (employeeRequiredErrors.full_name) {
+                setEmployeeRequiredErrors((prev) => ({ ...prev, full_name: "" }));
+              }
             }} />
+            {employeeRequiredErrors.full_name ? <span className="owner-input-error">{employeeRequiredErrors.full_name}</span> : null}
           </label>
           <label>
             Email đăng nhập
             <input className="owner-input" type="email" value={employeeForm.email} onChange={(event) => {
               setEmployeeCreated(false);
               setEmployeeForm((prev) => ({ ...prev, email: event.target.value }));
+              if (employeeRequiredErrors.email) {
+                setEmployeeRequiredErrors((prev) => ({ ...prev, email: "" }));
+              }
             }} />
+            {employeeRequiredErrors.email ? <span className="owner-input-error">{employeeRequiredErrors.email}</span> : null}
           </label>
           <label>
             Số điện thoại
             <input className="owner-input" value={employeeForm.phone} onChange={(event) => {
               setEmployeeCreated(false);
               setEmployeeForm((prev) => ({ ...prev, phone: event.target.value }));
+              if (employeeRequiredErrors.phone) {
+                setEmployeeRequiredErrors((prev) => ({ ...prev, phone: "" }));
+              }
             }} />
+            {employeeRequiredErrors.phone ? <span className="owner-input-error">{employeeRequiredErrors.phone}</span> : null}
           </label>
           <label>
             Bãi phụ trách
@@ -389,10 +446,11 @@ export default function OwnerSettings() {
               }} />
               <button
                 type="button"
-                className="btn-secondary owner-btn owner-password-toggle"
+                className="owner-password-icon"
+                aria-label={showEmployeePassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
                 onClick={() => setShowEmployeePassword((prev) => !prev)}
               >
-                {showEmployeePassword ? "Ẩn" : "Hiện"}
+                <EyeIcon open={showEmployeePassword} />
               </button>
             </div>
           </label>
@@ -405,10 +463,11 @@ export default function OwnerSettings() {
               }} />
               <button
                 type="button"
-                className="btn-secondary owner-btn owner-password-toggle"
+                className="owner-password-icon"
+                aria-label={showEmployeeConfirmPassword ? "Ẩn xác nhận mật khẩu" : "Hiện xác nhận mật khẩu"}
                 onClick={() => setShowEmployeeConfirmPassword((prev) => !prev)}
               >
-                {showEmployeeConfirmPassword ? "Ẩn" : "Hiện"}
+                <EyeIcon open={showEmployeeConfirmPassword} />
               </button>
             </div>
           </label>
@@ -490,14 +549,17 @@ export default function OwnerSettings() {
             className="owner-settings-form"
             onSubmit={async (event) => {
               event.preventDefault();
+
+              const requiredErrors = validateRequiredEmployeeFields(editEmployeeForm);
+              setEditRequiredErrors(requiredErrors);
+              if (hasRequiredErrors(requiredErrors)) {
+                return;
+              }
+
               const parkingId = Number(editEmployeeForm.parking_id);
               const allowedParking = parkingRows.some((row) => Number(row.id) === parkingId);
               if (!allowedParking) {
                 window.alert("Bạn chỉ có thể gán nhân viên vào bãi thuộc owner hiện tại.");
-                return;
-              }
-              if (!editEmployeeForm.full_name.trim() || !editEmployeeForm.email.trim()) {
-                window.alert("Vui lòng nhập đầy đủ họ tên và email");
                 return;
               }
               if (editEmployeeForm.password && editEmployeeForm.password.length < EMPLOYEE_PASSWORD_MIN_LENGTH) {
@@ -512,7 +574,7 @@ export default function OwnerSettings() {
               const payload = {
                 full_name: editEmployeeForm.full_name.trim(),
                 email: editEmployeeForm.email.trim().toLowerCase(),
-                phone: editEmployeeForm.phone.trim() || null,
+                phone: editEmployeeForm.phone.trim(),
                 parking_id: parkingId,
               };
               if (editEmployeeForm.password) {
@@ -531,12 +593,18 @@ export default function OwnerSettings() {
           >
             <label className="owner-form-span">Chỉnh sửa tài khoản nhân viên</label>
             <label>
-              Họ tên nhân viên
+              Tên nhân viên
               <input
                 className="owner-input"
                 value={editEmployeeForm.full_name}
-                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, full_name: event.target.value }))}
+                onChange={(event) => {
+                  setEditEmployeeForm((prev) => ({ ...prev, full_name: event.target.value }));
+                  if (editRequiredErrors.full_name) {
+                    setEditRequiredErrors((prev) => ({ ...prev, full_name: "" }));
+                  }
+                }}
               />
+              {editRequiredErrors.full_name ? <span className="owner-input-error">{editRequiredErrors.full_name}</span> : null}
             </label>
             <label>
               Email đăng nhập
@@ -544,16 +612,28 @@ export default function OwnerSettings() {
                 className="owner-input"
                 type="email"
                 value={editEmployeeForm.email}
-                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, email: event.target.value }))}
+                onChange={(event) => {
+                  setEditEmployeeForm((prev) => ({ ...prev, email: event.target.value }));
+                  if (editRequiredErrors.email) {
+                    setEditRequiredErrors((prev) => ({ ...prev, email: "" }));
+                  }
+                }}
               />
+              {editRequiredErrors.email ? <span className="owner-input-error">{editRequiredErrors.email}</span> : null}
             </label>
             <label>
               Số điện thoại
               <input
                 className="owner-input"
                 value={editEmployeeForm.phone}
-                onChange={(event) => setEditEmployeeForm((prev) => ({ ...prev, phone: event.target.value }))}
+                onChange={(event) => {
+                  setEditEmployeeForm((prev) => ({ ...prev, phone: event.target.value }));
+                  if (editRequiredErrors.phone) {
+                    setEditRequiredErrors((prev) => ({ ...prev, phone: "" }));
+                  }
+                }}
               />
+              {editRequiredErrors.phone ? <span className="owner-input-error">{editRequiredErrors.phone}</span> : null}
             </label>
             <label>
               Bãi phụ trách
@@ -579,10 +659,11 @@ export default function OwnerSettings() {
                 />
                 <button
                   type="button"
-                  className="btn-secondary owner-btn owner-password-toggle"
+                  className="owner-password-icon"
+                  aria-label={showEditEmployeePassword ? "Ẩn mật khẩu mới" : "Hiện mật khẩu mới"}
                   onClick={() => setShowEditEmployeePassword((prev) => !prev)}
                 >
-                  {showEditEmployeePassword ? "Ẩn" : "Hiện"}
+                  <EyeIcon open={showEditEmployeePassword} />
                 </button>
               </div>
             </label>
@@ -598,10 +679,11 @@ export default function OwnerSettings() {
                 />
                 <button
                   type="button"
-                  className="btn-secondary owner-btn owner-password-toggle"
+                  className="owner-password-icon"
+                  aria-label={showEditEmployeeConfirmPassword ? "Ẩn xác nhận mật khẩu mới" : "Hiện xác nhận mật khẩu mới"}
                   onClick={() => setShowEditEmployeeConfirmPassword((prev) => !prev)}
                 >
-                  {showEditEmployeeConfirmPassword ? "Ẩn" : "Hiện"}
+                  <EyeIcon open={showEditEmployeeConfirmPassword} />
                 </button>
               </div>
             </label>
