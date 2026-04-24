@@ -145,7 +145,25 @@
 }
 
 .booking-slot-select {
-  min-height: 48px;
+  min-width: 180px;
+}
+
+.prefilled-slot-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prefilled-slot-display .booking-input:disabled {
+  background-color: #f0f0f0;
+  color: #333;
+  cursor: not-allowed;
+}
+
+.slot-hint {
+  color: #666;
+  font-size: 12px;
+  font-style: italic;
 }
 
 .booking-mode-switch {

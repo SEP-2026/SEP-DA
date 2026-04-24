@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import API, { getAuth, saveAuth } from "../services/api";
 import { formatDateOnlyVN, toDateInputValue, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
+import ParkingMap from "../components/ParkingMap";
 import "./Booking.css";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -245,6 +246,7 @@ const loadGoogleMapsScript = () => {
 export default function Booking() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const auth = getAuth();
   const [address, setAddress] = useState("");
   const [sortBy, setSortBy] = useState("nearest");
@@ -265,6 +267,7 @@ export default function Booking() {
   const [bookingResult, setBookingResult] = useState(null);
   const [profile, setProfile] = useState(() => auth?.user || null);
   const [expandedLotId, setExpandedLotId] = useState(null);
+  const [prefilledSlotName, setPrefilledSlotName] = useState("");
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
@@ -326,6 +329,23 @@ export default function Booking() {
       setBookingResult({ message: location.state.paymentNotice });
     }
   }, [location.state]);
+
+  useEffect(() => {
+    const lotIdParam = searchParams.get("lotId");
+    const slotIdParam = searchParams.get("slotId");
+    const slotNameParam = searchParams.get("slotName");
+
+    if (lotIdParam && slotIdParam) {
+      const lotId = Number(lotIdParam);
+      const slotId = Number(slotIdParam);
+
+      if (lotId && slotId) {
+        setSelectedLot((prev) => (prev?.id === lotId ? prev : { id: lotId, name: "" }));
+        setSelectedSlotId(String(slotId));
+        setPrefilledSlotName(slotNameParam || "");
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const loadSlots = async () => {
@@ -497,6 +517,14 @@ export default function Booking() {
   const handleSelectLot = (lot) => {
     setSelectedLot(lot);
     setBookingResult(null);
+    setError("");
+    setBookingError("");
+    setPrefilledSlotName("");
+  };
+
+  const handleSlotSelectFromMap = (slot) => {
+    setSelectedSlotId(String(slot.id));
+    setPrefilledSlotName(slot.code || slot.slot_number || "");
     setError("");
     setBookingError("");
   };
@@ -870,6 +898,12 @@ export default function Booking() {
               </div>
             </div>
 
+            <ParkingMap
+              lotId={selectedLot.id}
+              lotName={selectedLot.name}
+              onSelectSlot={handleSlotSelectFromMap}
+            />
+
             <div className="booking-form-sheet">
               <h3>Chi tiết đặt chỗ</h3>
 
@@ -971,18 +1005,30 @@ export default function Booking() {
               <div className="booking-form-grid booking-form-grid--three">
                 <div className="field-wrap">
                   <label>Vị trí mong muốn (Preferred Slot)</label>
-                  <select
-                    className="booking-input booking-slot-select"
-                    value={selectedSlotId}
-                    onChange={(e) => setSelectedSlotId(e.target.value)}
-                  >
-                    <option value="">Chọn slot trống</option>
-                    {availableSlots.map((slot) => (
-                      <option key={slot.id} value={slot.id}>
-                        {slot.code} {slot.slot_number ? `- ${slot.slot_number}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  {prefilledSlotName ? (
+                    <div className="prefilled-slot-display">
+                      <input
+                        className="booking-input"
+                        value={prefilledSlotName}
+                        readOnly
+                        disabled
+                      />
+                      <small className="slot-hint">Vị trí đã chọn từ sơ đồ bãi xe</small>
+                    </div>
+                  ) : (
+                    <select
+                      className="booking-input booking-slot-select"
+                      value={selectedSlotId}
+                      onChange={(e) => setSelectedSlotId(e.target.value)}
+                    >
+                      <option value="">Chọn slot trống</option>
+                      {availableSlots.map((slot) => (
+                        <option key={slot.id} value={slot.id}>
+                          {slot.code} {slot.slot_number ? `- ${slot.slot_number}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="field-wrap">
                   <label>Hình thức đặt chỗ (Booking Mode)</label>
