@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Transaction, User, UserVehicle
 from app.routes.auth import get_current_user
+from app.utils.timezone import isoformat_vn
 
 router = APIRouter(prefix="/gate", tags=["gate"])
 
@@ -411,7 +412,7 @@ def _cooldown_info(booking: Booking, now: datetime) -> dict:
         "remaining_seconds": remaining_seconds,
         "message": message,
         "last_action": booking.last_gate_action,
-        "last_action_at": booking.last_gate_action_at.isoformat() if booking.last_gate_action_at else None,
+        "last_action_at": isoformat_vn(booking.last_gate_action_at),
     }
 
 

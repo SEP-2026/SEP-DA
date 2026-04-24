@@ -1,8 +1,7 @@
-from datetime import datetime
-
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.utils.timezone import vn_now
 
 
 class District(Base):
@@ -49,8 +48,8 @@ class UserVehicle(Base):
     vehicle_model = Column(String(100), nullable=True)
     seat_count = Column(Integer, nullable=True)
     vehicle_color = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=vn_now)
+    updated_at = Column(DateTime, default=vn_now, onupdate=vn_now)
 
     user = relationship("User", back_populates="vehicle_profile")
 
@@ -66,8 +65,8 @@ class ParkingSlot(Base):
     level = Column(String(50), nullable=True)
     code = Column(String(50), unique=True)
     status = Column(String(50), default="available")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=vn_now)
+    updated_at = Column(DateTime, default=vn_now, onupdate=vn_now)
 
 
 class Booking(Base):
@@ -80,11 +79,11 @@ class Booking(Base):
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=True)
     slot_id = Column(Integer, ForeignKey("parking_slots.id"))
 
-    start_time = Column("checkin_time", DateTime, default=datetime.utcnow)
+    start_time = Column("checkin_time", DateTime, default=vn_now)
     expire_time = Column("checkout_time", DateTime)
     actual_checkin = Column(DateTime, nullable=True)
     actual_checkout = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=vn_now)
 
     booking_mode = Column(String(20), default="hourly")
     billed_units = Column(Float, default=0)
@@ -124,7 +123,7 @@ class Transaction(Base):
     image_url = Column(String(500), nullable=True)
     license_plate = Column(String(30), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=vn_now)
 
 
 class Payment(Base):
@@ -140,7 +139,7 @@ class Payment(Base):
     paid_at = Column(DateTime, nullable=True)
     vnpay_url = Column(String(500), nullable=True)
     qr_code = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=vn_now)
     deposit_amount = Column(Float, default=0)
     remaining_amount = Column(Float, default=0)
 
@@ -190,7 +189,7 @@ class Review(Base):
     comment = Column(String, nullable=True)
     owner_reply = Column(String, nullable=True)
     owner_replied_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=vn_now)
 
     user = relationship("User")
     parking = relationship("ParkingLot")

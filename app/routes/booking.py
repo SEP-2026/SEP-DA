@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
-from app.utils.timezone import ensure_vn_local_naive, vn_now
+from app.utils.timezone import ensure_vn_local_naive, isoformat_vn, vn_now
 
 router = APIRouter()
 
@@ -488,8 +488,8 @@ def _create_booking_qr_content(booking: Booking, slot: ParkingSlot, user: User) 
         "parking_id": booking.parking_id,
         "slot_id": slot.id,
         "license_plate": user.vehicle_plate or "",
-        "checkin_time": booking.start_time.isoformat() if booking.start_time else None,
-        "checkout_time": booking.expire_time.isoformat() if booking.expire_time else None,
+        "checkin_time": isoformat_vn(booking.start_time),
+        "checkout_time": isoformat_vn(booking.expire_time),
     }
     return json.dumps(qr_payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -515,7 +515,7 @@ def _extract_vehicle_model(vehicle_type: str | None) -> str | None:
 def _format_vi_datetime(value: datetime | None) -> str:
     if value is None:
         return "N/A"
-    return value.strftime("%d/%m/%Y %H:%M")
+    return ensure_vn_local_naive(value).strftime("%d/%m/%Y %H:%M")
 
 
 def _build_overlap_error_message(
@@ -547,8 +547,8 @@ def _serialize_conflicting_booking(booking: Booking, db: Session) -> dict:
         "slot_id": booking.slot_id,
         "slot_code": slot.code if slot else None,
         "license_plate": user.vehicle_plate if user else None,
-        "checkin_time": booking.start_time.isoformat() if booking.start_time else None,
-        "checkout_time": booking.expire_time.isoformat() if booking.expire_time else None,
+        "checkin_time": isoformat_vn(booking.start_time),
+        "checkout_time": isoformat_vn(booking.expire_time),
         "status": booking.status,
     }
 
@@ -571,8 +571,8 @@ def _build_overlap_error_detail(
             "parking_id": payload.parking_id,
             "slot_id": payload.slot_id,
             "license_plate": license_plate,
-            "checkin_time": normalized_checkin_time.isoformat(),
-            "checkout_time": normalized_checkout_time.isoformat(),
+            "checkin_time": isoformat_vn(normalized_checkin_time),
+            "checkout_time": isoformat_vn(normalized_checkout_time),
             "booking_mode": billing["resolved_mode"],
             "estimated_total_amount": billing["total_amount"],
         },

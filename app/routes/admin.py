@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 import secrets
 import string
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -15,6 +16,8 @@ from app.security.password_policy import ensure_strong_password
 import unicodedata
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
+UTC_TIMEZONE = ZoneInfo("UTC")
 
 ADMIN_RUNTIME_SETTINGS = {
     "commissionRate": "10",
@@ -22,6 +25,24 @@ ADMIN_RUNTIME_SETTINGS = {
     "maintenanceWindow": "Chủ nhật 23:00 - 01:00",
     "alertThreshold": "85",
 }
+
+
+def _vn_now() -> datetime:
+    return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
+
+
+def _to_vn_naive(value: datetime | None, fallback_now: bool = False) -> datetime | None:
+    if value is None:
+        return _vn_now() if fallback_now else None
+    # Naive timestamps in this project are treated as Vietnam local time.
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(APP_TIMEZONE).replace(tzinfo=None)
+
+
+def _to_vn_iso(value: datetime | None, fallback_now: bool = False) -> str | None:
+    normalized = _to_vn_naive(value, fallback_now=fallback_now)
+    return normalized.isoformat() if normalized else None
 
 
 def _generate_strong_password(length: int = 12) -> str:
@@ -227,7 +248,7 @@ def _slot_counts_by_lot(slots: list[ParkingSlot]) -> dict[int, dict[str, int]]:
 
 
 def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[dict], list[dict]]:
-    today = datetime.utcnow().date()
+    today = _vn_now().date()
     revenue = []
     commission = []
     commission_rate = float(ADMIN_RUNTIME_SETTINGS["commissionRate"]) / 100
@@ -236,7 +257,8 @@ def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[
         current_day = today - timedelta(days=offset)
         day_payments = [
             payment for payment in payments
-            if (payment.paid_at or payment.created_at) and (payment.paid_at or payment.created_at).date() == current_day
+            if (payment.paid_at or payment.created_at)
+            and _to_vn_naive(payment.paid_at or payment.created_at).date() == current_day
             and payment.payment_status == "paid"
         ]
         gross = round(sum(float(payment.amount or 0) + float(payment.overtime_fee or 0) for payment in day_payments), 2)
@@ -247,11 +269,15 @@ def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[
 
 
 def _build_booking_series(bookings: list[Booking], days: int = 7) -> list[dict]:
-    today = datetime.utcnow().date()
+    today = _vn_now().date()
     result = []
     for offset in range(days - 1, -1, -1):
         current_day = today - timedelta(days=offset)
-        count = sum(1 for booking in bookings if booking.created_at and booking.created_at.date() == current_day)
+        count = sum(
+            1
+            for booking in bookings
+            if booking.created_at and _to_vn_naive(booking.created_at).date() == current_day
+        )
         result.append({"label": _format_day_label(datetime.combine(current_day, datetime.min.time())), "amount": count})
     return result
 
@@ -260,7 +286,8 @@ def _build_user_growth_series(bookings: list[Booking]) -> list[dict]:
     buckets: dict[tuple[int, int], set[int]] = defaultdict(set)
     for booking in bookings:
         if booking.created_at and booking.user_id:
-            buckets[(booking.created_at.year, booking.created_at.month)].add(int(booking.user_id))
+            created_vn = _to_vn_naive(booking.created_at)
+            buckets[(created_vn.year, created_vn.month)].add(int(booking.user_id))
 
     series = []
     for key in sorted(buckets.keys())[-4:]:
@@ -276,7 +303,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
             "id": f"booking-{booking.id}",
             "actor": booking.user.name if booking.user else "system",
             "action": f"Booking #{booking.id} được tạo",
-            "time": booking.created_at.isoformat() if booking.created_at else datetime.utcnow().isoformat(),
+            "time": _to_vn_iso(booking.created_at, fallback_now=True),
             "type": "system",
         })
 
@@ -286,7 +313,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
                 "id": f"user-{user.id}",
                 "actor": "system",
                 "action": f"Tài khoản {user.email} đang bị khóa",
-                "time": datetime.utcnow().isoformat(),
+                "time": _to_vn_iso(None, fallback_now=True),
                 "type": "security",
             })
 
@@ -296,7 +323,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
                 "id": f"lot-{lot.id}",
                 "actor": "system",
                 "action": f"Bãi {lot.name} đang bị khóa",
-                "time": datetime.utcnow().isoformat(),
+                "time": _to_vn_iso(None, fallback_now=True),
                 "type": "warning",
             })
 
@@ -311,7 +338,7 @@ def _build_login_history(db: Session) -> list[dict]:
             "email": "admin-session",
             "ip": "Không lưu trong CSDL",
             "device": "Không lưu trong CSDL",
-            "time": token.expires_at.isoformat(),
+            "time": _to_vn_iso(token.expires_at, fallback_now=True),
             "status": "blocked",
         }
         for token in revoked
@@ -348,7 +375,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "email": user.email,
             "status": _to_status_label(user),
             "bookingCount": booking_counts_by_user.get(int(user.id), 0),
-            "lastActive": (last_booking_by_user.get(int(user.id)) or datetime.utcnow()).isoformat(),
+            "lastActive": _to_vn_iso(last_booking_by_user.get(int(user.id)), fallback_now=True),
             "phone": user.phone,
         }
         for user in users if user.role == "user"
@@ -395,8 +422,8 @@ def _serialize_bootstrap(db: Session) -> dict:
             "user": user.name if user else "Unknown user",
             "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
             "parkingLot": lot.name if lot else "Chưa có bãi",
-            "checkIn": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
-            "checkOut": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
+            "checkIn": _to_vn_iso(booking.start_time or booking.created_at, fallback_now=True),
+            "checkOut": _to_vn_iso(booking.expire_time or booking.created_at, fallback_now=True),
             "status": booking.status,
             "amount": float(booking.total_amount or 0),
             "anomaly": booking.total_amount is None or float(booking.total_amount or 0) <= 0 or slot is None,
@@ -415,7 +442,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "bookingId": f"BK-{payment.booking_id}",
                 "user": user.name if user else "Unknown user",
                 "parkingLot": lot.name if lot else "Chưa có bãi",
-                "time": (payment.paid_at or payment.created_at or datetime.utcnow()).isoformat(),
+                "time": _to_vn_iso(payment.paid_at or payment.created_at, fallback_now=True),
                 "gross": gross,
                 "commission": round(gross * commission_rate, 2),
                 "ownerPayout": round(gross * (1 - commission_rate), 2),
@@ -429,7 +456,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "bookingId": f"BK-{booking.id}",
                 "user": booking.user.name if booking.user else "Unknown user",
                 "parkingLot": booking.parking_lot.name if booking.parking_lot else "Chưa có bãi",
-                "time": (booking.created_at or datetime.utcnow()).isoformat(),
+                "time": _to_vn_iso(booking.created_at, fallback_now=True),
                 "gross": gross,
                 "commission": round(gross * commission_rate, 2),
                 "ownerPayout": round(gross * (1 - commission_rate), 2),
