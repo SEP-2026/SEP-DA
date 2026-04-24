@@ -74,6 +74,37 @@
   font-weight: 700;
 }
 
+.payment-review-section {
+  margin-top: 14px;
+}
+
+.booking-review-result {
+  border: 1px solid rgba(20, 57, 93, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.countdown-widget {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #e8f3ff;
+  color: #1b4d72;
+  font-weight: 700;
+}
+
+.countdown-widget.is-overstay {
+  background: #ffe9e9;
+  color: #9f1239;
+  animation: pulseOverstay 1.3s ease-in-out infinite;
+}
+
+@keyframes pulseOverstay {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+
 @media (max-width: 760px) {
   .payment-success-shell {
     padding: 12px;

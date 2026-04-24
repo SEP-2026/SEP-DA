@@ -232,6 +232,45 @@ export default function OwnerLayout({ auth, onLogout }) {
         return false;
       }
     },
+    async createEmployee(payload) {
+      try {
+        const res = await API.post("/api/owner/create-employee", payload);
+        await refreshOwnerData();
+        return res.data?.employee || null;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể tạo tài khoản nhân viên");
+        return null;
+      }
+    },
+    async listEmployees() {
+      try {
+        const res = await API.get("/api/owner/employees");
+        return Array.isArray(res.data?.employees) ? res.data.employees : [];
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể tải danh sách nhân viên");
+        return [];
+      }
+    },
+    async updateEmployee(employeeId, payload) {
+      try {
+        const res = await API.patch(`/api/owner/employees/${employeeId}`, payload);
+        await refreshOwnerData();
+        return res.data?.employee || null;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể cập nhật tài khoản nhân viên");
+        return null;
+      }
+    },
+    async deleteEmployee(employeeId) {
+      try {
+        await API.delete(`/api/owner/employees/${employeeId}`);
+        await refreshOwnerData();
+        return true;
+      } catch (error) {
+        window.alert(error?.response?.data?.detail || "Không thể xóa tài khoản nhân viên");
+        return false;
+      }
+    },
   };
 
   return (

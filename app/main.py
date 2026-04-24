@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.init_db import init_db
-from app.routes import admin, auth, booking, gate, owner, payment, vehicle
+from app.routes import admin, auth, booking, employee, gate, owner, payment, review, vehicle
 from app.security.gateway import SecurityGatewayMiddleware
 
 app = FastAPI()
@@ -32,6 +32,9 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(owner.router)
 app.include_router(vehicle.router)
+app.include_router(employee.router)
+app.include_router(employee.owner_employee_router)
+app.include_router(review.router)
 
 
 @app.on_event("startup")

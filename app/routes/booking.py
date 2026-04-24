@@ -1,12 +1,12 @@
 import math
 import re
-import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 import unicodedata
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 import json
+import logging
 
 import qrcode
 
@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
-from app.utils.timezone import ensure_vn_local_naive, isoformat_vn, vn_now
+from app.services.qr_service import invalidate_booking_qr_code
+from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 router = APIRouter()
+VN_TZ = timezone(timedelta(hours=7))
 
 
 class BookingCreateRequest(BaseModel):
@@ -184,6 +186,8 @@ def get_parking_lots_slots_overview(db: Session = Depends(get_db)):
                 "parking_id": lot.id,
                 "parking_name": lot.name,
                 "parking_address": lot.address,
+                "avg_rating": float(lot.avg_rating or 0),
+                "review_count": int(lot.review_count or 0),
                 "district": lot.district.name if lot.district else None,
                 "available_slots": available_count,
                 "occupied_or_reserved_slots": occupied_count,
@@ -225,6 +229,8 @@ def search_parking(
             p.latitude,
             p.longitude,
             p.has_roof,
+            p.avg_rating,
+            p.review_count,
             pr.price_per_hour,
             pr.price_per_day,
             pr.price_per_month,
@@ -291,6 +297,8 @@ def search_parking_by_coords(
             p.latitude,
             p.longitude,
             p.has_roof,
+            p.avg_rating,
+            p.review_count,
             pr.price_per_hour,
             pr.price_per_day,
             pr.price_per_month,
@@ -488,8 +496,8 @@ def _create_booking_qr_content(booking: Booking, slot: ParkingSlot, user: User) 
         "parking_id": booking.parking_id,
         "slot_id": slot.id,
         "license_plate": user.vehicle_plate or "",
-        "checkin_time": isoformat_vn(booking.start_time),
-        "checkout_time": isoformat_vn(booking.expire_time),
+        "checkin_time": booking.start_time.isoformat() if booking.start_time else None,
+        "checkout_time": booking.expire_time.isoformat() if booking.expire_time else None,
     }
     return json.dumps(qr_payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -515,7 +523,7 @@ def _extract_vehicle_model(vehicle_type: str | None) -> str | None:
 def _format_vi_datetime(value: datetime | None) -> str:
     if value is None:
         return "N/A"
-    return ensure_vn_local_naive(value).strftime("%d/%m/%Y %H:%M")
+    return value.strftime("%d/%m/%Y %H:%M")
 
 
 def _build_overlap_error_message(
@@ -547,8 +555,8 @@ def _serialize_conflicting_booking(booking: Booking, db: Session) -> dict:
         "slot_id": booking.slot_id,
         "slot_code": slot.code if slot else None,
         "license_plate": user.vehicle_plate if user else None,
-        "checkin_time": isoformat_vn(booking.start_time),
-        "checkout_time": isoformat_vn(booking.expire_time),
+        "checkin_time": booking.start_time.isoformat() if booking.start_time else None,
+        "checkout_time": booking.expire_time.isoformat() if booking.expire_time else None,
         "status": booking.status,
     }
 
@@ -571,8 +579,8 @@ def _build_overlap_error_detail(
             "parking_id": payload.parking_id,
             "slot_id": payload.slot_id,
             "license_plate": license_plate,
-            "checkin_time": isoformat_vn(normalized_checkin_time),
-            "checkout_time": isoformat_vn(normalized_checkout_time),
+            "checkin_time": normalized_checkin_time.isoformat(),
+            "checkout_time": normalized_checkout_time.isoformat(),
             "booking_mode": billing["resolved_mode"],
             "estimated_total_amount": billing["total_amount"],
         },
@@ -620,6 +628,69 @@ def _serialize_booking_response(
     }
 
 
+def _to_vn_aware(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    normalized = ensure_vn_local_naive(dt)
+    return normalized.replace(tzinfo=VN_TZ)
+
+
+def calculate_checkout_fee(booking: Booking, checkout_time: datetime, price_per_hour: float) -> dict:
+    actual_checkin = _to_vn_aware(booking.actual_checkin)
+    expected_checkout = _to_vn_aware(booking.expire_time)
+    checkout_at = _to_vn_aware(checkout_time)
+    if actual_checkin is None or expected_checkout is None or checkout_at is None:
+        raise HTTPException(status_code=400, detail="Thiếu dữ liệu check-in hoặc checkout dự kiến để tính phí")
+
+    actual_minutes = max((checkout_at - actual_checkin).total_seconds() / 60, 0)
+    expected_minutes = max((expected_checkout - actual_checkin).total_seconds() / 60, 0)
+    overstay_minutes = max(0, actual_minutes - expected_minutes)
+    overstay_hours_billed = math.ceil(overstay_minutes / 60) if overstay_minutes > 0 else 0
+
+    original_fee = float(booking.total_amount or 0)
+    hourly_price = float(price_per_hour or 0)
+    overstay_fee = round(overstay_hours_billed * hourly_price, 2)
+    total_actual_fee = round(original_fee + overstay_fee, 2)
+    is_early = checkout_at < expected_checkout
+
+    return {
+        "actual_duration_minutes": int(round(actual_minutes)),
+        "expected_duration_minutes": int(round(expected_minutes)),
+        "overstay_minutes": int(round(overstay_minutes)),
+        "overstay_hours_billed": overstay_hours_billed,
+        "original_fee": round(original_fee, 2),
+        "price_per_hour": round(hourly_price, 2),
+        "overstay_fee": overstay_fee,
+        "total_actual_fee": total_actual_fee,
+        "is_overstay": overstay_minutes > 0,
+        "is_early": is_early,
+        "refund_amount": 0,
+    }
+
+
+def _build_checkout_breakdown(fee: dict) -> list[dict]:
+    rows = [{"label": "Phí đặt chỗ gốc", "amount": fee["original_fee"]}]
+    if fee["overstay_fee"] > 0:
+        rows.append(
+            {
+                "label": f"Phí quá giờ ({fee['overstay_hours_billed']} giờ x {int(fee['price_per_hour']):,}đ)",
+                "amount": fee["overstay_fee"],
+            }
+        )
+        rows.append({"label": "TỔNG CỘNG", "amount": fee["total_actual_fee"]})
+    return rows
+
+
+def _assert_checkout_allowed(booking: Booking) -> None:
+    if booking.status == "checked_in":
+        return
+    if booking.status in {"pending", "booked"}:
+        raise HTTPException(status_code=400, detail="Xe chưa check-in")
+    if booking.status in {"checked_out", "completed"}:
+        raise HTTPException(status_code=400, detail="Xe đã checkout rồi")
+    raise HTTPException(status_code=400, detail=f"Booking ở trạng thái {booking.status}, không thể checkout")
+
+
 @router.get("/booking/my/{booking_id}")
 def get_my_booking_detail(
     booking_id: int,
@@ -642,11 +713,18 @@ def get_my_booking_detail(
     return {
         "booking_id": booking.id,
         "booking_status": booking.status,
+        "checkin_status": "checked_out" if booking.status in {"completed", "checked_out"} else booking.status,
         "checkin_time": booking.start_time,
         "checkout_time": booking.expire_time,
+        "actual_checkin": booking.actual_checkin,
+        "actual_checkout": booking.actual_checkout,
         "booking_mode": booking.booking_mode,
         "billed_units": booking.billed_units,
         "total_amount": booking.total_amount,
+        "overstay_minutes": int(booking.overstay_minutes or 0),
+        "overstay_fee": float(booking.overstay_fee or 0),
+        "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
+        "is_reviewed": bool(booking.is_reviewed),
         "qr_code": booking.qr_code,
         "payment_required": payment_required,
         "parking": {
@@ -737,10 +815,18 @@ def get_my_bookings(
             {
                 "booking_id": booking.id,
                 "status": booking.status,
+                "checkin_status": "checked_out" if booking.status in {"completed", "checked_out"} else booking.status,
                 "booking_mode": booking.booking_mode,
                 "checkin_time": booking.start_time,
                 "checkout_time": booking.expire_time,
+                "actual_checkin": booking.actual_checkin,
+                "actual_checkout": booking.actual_checkout,
                 "total_amount": booking.total_amount,
+                "overstay_minutes": int(booking.overstay_minutes or 0),
+                "overstay_fee": float(booking.overstay_fee or 0),
+                "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
+                "is_reviewed": bool(booking.is_reviewed),
+                "has_review": bool(booking.is_reviewed),
                 "created_at": booking.created_at,
                 "parking": {
                     "id": parking_lot.id if parking_lot else None,
@@ -1216,39 +1302,159 @@ def check_out(
     if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
 
-    if booking.status != "checked_in":
-        raise HTTPException(status_code=400, detail="Chưa check-in")
-
+    _assert_checkout_allowed(booking)
     actual_checkout = vn_now()
-    overtime_fee = 0.0
-
-    if booking.expire_time and actual_checkout > booking.expire_time:
-        extra_hours = (actual_checkout - booking.expire_time).total_seconds() / 3600
-        price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first()
-        if price:
-            overtime_fee = round(max(0, extra_hours) * float(price.price_per_hour), 2)
-
+    parking_price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first()
+    fee = calculate_checkout_fee(booking, actual_checkout, float(parking_price.price_per_hour if parking_price else 0))
     payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
-    if payment and overtime_fee > 0:
-        payment.overtime_fee = overtime_fee
+    if payment:
+        payment.overtime_fee = fee["overstay_fee"]
 
     booking.actual_checkout = actual_checkout
+    booking.overstay_minutes = fee["overstay_minutes"]
+    booking.overstay_fee = fee["overstay_fee"]
+    booking.total_actual_fee = fee["total_actual_fee"]
     booking.status = "completed"
     booking.last_gate_action = "check_out"
     booking.last_gate_action_at = actual_checkout
     if booking.slot:
         booking.slot.status = "available"
 
+    invalidate_booking_qr_code(booking, db)
     db.commit()
 
     return {
-        "message": "Check-out thành công",
+        "success": True,
+        "message": "Checkout thành công. Xe đã ra khỏi bãi.",
         "booking_id": booking.id,
+        "booking_status": "checked_out",
+        "checkin_status": "checked_out",
+        "actual_checkout": booking.actual_checkout,
+        "overstay_minutes": fee["overstay_minutes"],
+        "overstay_fee": fee["overstay_fee"],
+        "original_fee": fee["original_fee"],
+        "total_actual_fee": fee["total_actual_fee"],
+        "qr_url": None,
+    }
+
+
+@router.get("/bookings/{booking_id}/checkout-preview")
+def checkout_preview(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
+
+    _assert_checkout_allowed(booking)
+    now = vn_now()
+    parking = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
+    slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
+    user = db.query(User).filter(User.id == booking.user_id).first()
+    parking_price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first()
+    fee = calculate_checkout_fee(booking, now, float(parking_price.price_per_hour if parking_price else 0))
+
+    response = {
+        "booking_id": booking.id,
+        "license_plate": user.vehicle_plate if user else None,
+        "parking_name": parking.name if parking else None,
+        "slot_info": {
+            "slot_number": (slot.slot_number or slot.code) if slot else None,
+            "floor": slot.level if slot else None,
+        },
+        "actual_checkin": _to_vn_aware(booking.actual_checkin).isoformat() if booking.actual_checkin else None,
+        "expected_checkout": _to_vn_aware(booking.expire_time).isoformat() if booking.expire_time else None,
+        "current_time": _to_vn_aware(now).isoformat(),
+        **fee,
+        "fee_breakdown": _build_checkout_breakdown(fee),
+    }
+    if fee["is_early"]:
+        response["note"] = "Checkout sớm không được hoàn tiền"
+    return response
+
+
+@router.post("/bookings/{booking_id}/checkout")
+def checkout_booking(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update().first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thao tác tại cổng")
+
+    _assert_checkout_allowed(booking)
+    now = vn_now()
+    parking_price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first()
+    fee = calculate_checkout_fee(booking, now, float(parking_price.price_per_hour if parking_price else 0))
+    payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
+    if payment:
+        payment.overtime_fee = fee["overstay_fee"]
+
+    booking.actual_checkout = now
+    booking.status = "completed"
+    booking.overstay_minutes = fee["overstay_minutes"]
+    booking.overstay_fee = fee["overstay_fee"]
+    booking.total_actual_fee = fee["total_actual_fee"]
+    booking.last_gate_action = "check_out"
+    booking.last_gate_action_at = now
+    if booking.slot:
+        booking.slot.status = "available"
+    invalidate_booking_qr_code(booking, db)
+    db.commit()
+    return {
+        "success": True,
+        "booking_id": booking.id,
+        "actual_checkout": now,
+        "checkin_status": "checked_out",
+        "overstay_minutes": fee["overstay_minutes"],
+        "overstay_fee": fee["overstay_fee"],
+        "original_fee": fee["original_fee"],
+        "total_actual_fee": fee["total_actual_fee"],
+        "message": "Checkout thành công. Xe đã ra khỏi bãi.",
+        "qr_url": None,
+    }
+
+
+@router.get("/bookings/{booking_id}/status")
+def booking_status(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if current_user.role not in {"owner", "admin"} and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem booking này")
+
+    parking = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first() if booking.parking_id else None
+    slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first() if booking.slot_id else None
+    parking_price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first() if booking.parking_id else None
+    return {
+        "booking_id": booking.id,
+        "checkin_status": "checked_out" if booking.status in {"completed", "checked_out"} else booking.status,
         "booking_status": booking.status,
         "actual_checkin": booking.actual_checkin,
         "actual_checkout": booking.actual_checkout,
-        "overtime_fee": overtime_fee,
-        "total_paid": round(float(payment.amount + payment.overtime_fee), 2) if payment else None,
+        "checkin_time": booking.start_time,
+        "checkout_time": booking.expire_time,
+        "total_amount": float(booking.total_amount or 0),
+        "overstay_minutes": int(booking.overstay_minutes or 0),
+        "overstay_fee": float(booking.overstay_fee or 0),
+        "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
+        "is_reviewed": bool(booking.is_reviewed),
+        "price_per_hour": float(parking_price.price_per_hour or 0) if parking_price else 0,
+        "parking": {"id": parking.id, "name": parking.name} if parking else None,
+        "slot": {"id": slot.id, "code": (slot.slot_number or slot.code) if slot else None} if slot else None,
     }
 
 

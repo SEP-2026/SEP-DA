@@ -94,6 +94,13 @@ export default function OwnerOverview() {
     const series = buildRevenueSeries(overviewData.transactions || [], dateFrom, dateTo, activeRange);
     return series.length > 0 ? series : [{ label: "Không có dữ liệu", amount: 0 }];
   }, [overviewData.transactions, dateFrom, dateTo, activeRange]);
+  const reviewSummary = useMemo(() => {
+    const allReviews = ownerData.reviews || [];
+    const total = allReviews.length;
+    const avg = total ? (allReviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / total) : 0;
+    const unreplied = allReviews.filter((item) => !item.ownerReply).length;
+    return { avg, unreplied };
+  }, [ownerData.reviews]);
 
   return (
     <div className="owner-page-grid">
@@ -148,6 +155,10 @@ export default function OwnerOverview() {
             <Link to="/scan" className="owner-quick-action">
               <strong>Quét QR</strong>
               <span>Hỗ trợ xe vào hoặc ra bãi.</span>
+            </Link>
+            <Link to="/owner/reviews" className="owner-quick-action">
+              <strong>⭐ Đánh giá gần đây</strong>
+              <span>Rating TB: {reviewSummary.avg.toFixed(1)}/5 · {reviewSummary.unreplied} đánh giá chưa phản hồi.</span>
             </Link>
           </div>
         </SectionCard>

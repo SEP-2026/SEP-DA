@@ -1,7 +1,19 @@
+import { useCallback, useEffect, useRef } from "react";
+import {
+  BarcodeFormat,
+  BinaryBitmap,
+  DecodeHintType,
+  HybridBinarizer,
+  QRCodeReader,
+  RGBLuminanceSource,
+} from "@zxing/library";
+import jsQR from "jsqr";
+
 export default function ScanZone({
   scanValue,
   setScanValue,
   onSubmitQr,
+  onQrDecoded,
   manualBookingId,
   setManualBookingId,
   onResolveManual,
@@ -10,20 +22,213 @@ export default function ScanZone({
   uiState,
   qrPreviewError,
   inputRef,
+  scanMode,
+  setScanMode,
+  cameraActive,
+  setCameraActive,
+  scanning,
+  setScanning,
+  scanError,
+  setScanError,
+  scanSuccess,
+  setScanSuccess,
+  imagePreview,
+  setImagePreview,
 }) {
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const scanIntervalRef = useRef(null);
+  const frameBusyRef = useRef(false);
+
+  const stopCamera = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  }, [setCameraActive]);
+
+  const decodeWithZxing = (imageData) => {
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+    const reader = new QRCodeReader();
+    const luminance = new RGBLuminanceSource(imageData.data, imageData.width, imageData.height);
+    const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminance));
+    const result = reader.decode(binaryBitmap, hints);
+    return result.getText();
+  };
+
+  const decodeImageData = (imageData) => {
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "dontInvert",
+    });
+    if (code?.data) return code.data;
+
+    const codeInvert = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "onlyInvert",
+    });
+    if (codeInvert?.data) return codeInvert.data;
+
+    return decodeWithZxing(imageData);
+  };
+
+  const startCamera = async () => {
+    setScanError("");
+    setScanSuccess("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      streamRef.current = stream;
+    } catch {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+        });
+        streamRef.current = stream;
+      } catch {
+        setScanError("Không thể truy cập camera. Kiểm tra quyền truy cập.");
+        return;
+      }
+    }
+
+    if (!videoRef.current || !streamRef.current) return;
+
+    videoRef.current.srcObject = streamRef.current;
+    await videoRef.current.play();
+    setCameraActive(true);
+
+    scanIntervalRef.current = setInterval(async () => {
+      if (!videoRef.current || !canvasRef.current || frameBusyRef.current) return;
+      if (videoRef.current.readyState !== 4) return;
+
+      frameBusyRef.current = true;
+      try {
+        const canvas = canvasRef.current;
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        const decodedText = decodeImageData(imageData);
+        if (decodedText) {
+          stopCamera();
+          await onQrDecoded(decodedText);
+        }
+      } catch {
+        // Keep scanning when a frame cannot be decoded.
+      } finally {
+        frameBusyRef.current = false;
+      }
+    }, 500);
+  };
+
+  const onSelectMode = (mode) => {
+    setScanMode(mode);
+    setScanError("");
+    setScanSuccess("");
+    if (mode !== "upload") {
+      setImagePreview(null);
+    }
+  };
+
+  const handleImageUpload = async (file) => {
+    if (!file) return;
+    setScanError("");
+    setScanSuccess("");
+    setScanning(true);
+
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview((previousPreview) => {
+      if (previousPreview) {
+        URL.revokeObjectURL(previousPreview);
+      }
+      return previewUrl;
+    });
+
+    try {
+      const imageBitmap = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = imageBitmap.width;
+      canvas.height = imageBitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error("NO_CONTEXT");
+      }
+      context.drawImage(imageBitmap, 0, 0);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const decodedText = decodeImageData(imageData);
+      if (!decodedText) {
+        throw new Error("NO_QR");
+      }
+      await onQrDecoded(decodedText);
+    } catch {
+      setScanError("Không đọc được QR từ ảnh. Vui lòng thử ảnh khác.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  useEffect(() => {
+    if (scanMode !== "camera") {
+      stopCamera();
+    }
+  }, [scanMode, stopCamera]);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  useEffect(
+    () => () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    },
+    [imagePreview],
+  );
+
   return (
     <section className="scan-panel scan-panel--primary">
       <div className={`scan-frame scan-frame--${uiState}`}>
-        <div className="scan-frame-corners" />
-        <div className="scan-line" />
         <div className="scan-frame-content">
-          <strong>Vùng scan cổng</strong>
-          <span>
-            Quét QR để tải thông tin booking. Sau đó nhân viên bấm nút để chọn vào bãi hoặc ra bãi.
-          </span>
-          <span className="scan-live-indicator">
-            {uiState === "scanning" ? "Đang quét..." : uiState === "processing" || uiState === "action_submitting" ? "Đang xử lý..." : "Sẵn sàng nhận dữ liệu"}
-          </span>
+          <strong>Vùng quét QR</strong>
+          <div className="scan-mode-tabs">
+            <button
+              type="button"
+              className={`scan-tab-btn ${scanMode === "camera" ? "active" : ""}`}
+              onClick={() => onSelectMode("camera")}
+            >
+              📷 Camera thiết bị
+            </button>
+            <button
+              type="button"
+              className={`scan-tab-btn ${scanMode === "upload" ? "active" : ""}`}
+              onClick={() => onSelectMode("upload")}
+            >
+              🖼️ Upload ảnh QR
+            </button>
+            <button
+              type="button"
+              className={`scan-tab-btn ${scanMode === "manual" ? "active" : ""}`}
+              onClick={() => onSelectMode("manual")}
+            >
+              ⌨️ Nhập thủ công
+            </button>
+          </div>
         </div>
       </div>
 
@@ -60,31 +265,97 @@ export default function ScanZone({
         </label>
       </div>
 
-      <label className="scan-field">
-        <span>Nội dung QR / máy scan</span>
-        <textarea
-          ref={inputRef}
-          className="scan-input scan-textarea"
-          rows={5}
-          value={scanValue}
-          onChange={(event) => setScanValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              onSubmitQr();
-            }
+      {scanMode === "camera" ? (
+        <div className="camera-container">
+          <video ref={videoRef} className="camera-video" playsInline muted />
+          <canvas ref={canvasRef} className="camera-canvas-hidden" />
+          <div className="camera-overlay">
+            <div className="qr-frame" />
+          </div>
+          <div className="scan-actions scan-actions--single">
+            {cameraActive ? (
+              <button type="button" className="scan-secondary-btn" onClick={stopCamera}>
+                Tắt camera
+              </button>
+            ) : (
+              <button type="button" className="scan-primary-btn" onClick={startCamera}>
+                Bật camera
+              </button>
+            )}
+          </div>
+          {cameraActive ? <p className="scan-hint">Đang quét...</p> : null}
+        </div>
+      ) : null}
+
+      {scanMode === "upload" ? (
+        <div
+          className="upload-dropzone"
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            const file = event.dataTransfer.files?.[0];
+            if (file) handleImageUpload(file);
           }}
-          placeholder='Ví dụ: {"booking_id":12} hoặc payload QR đầy đủ'
-        />
-      </label>
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="scan-file-input"
+            onChange={(event) => handleImageUpload(event.target.files?.[0])}
+          />
+          <p>Chọn ảnh hoặc kéo thả ảnh QR vào đây</p>
+          {scanning ? <p className="scan-hint">Đang đọc QR...</p> : null}
+          {imagePreview ? <img className="scan-image-preview" src={imagePreview} alt="QR preview" /> : null}
+        </div>
+      ) : null}
+
+      {scanMode === "manual" ? (
+        <label className="scan-field">
+          <span>Nội dung QR / máy scan</span>
+          <textarea
+            ref={inputRef}
+            className="scan-input scan-textarea"
+            rows={5}
+            value={scanValue}
+            onChange={(event) => setScanValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                onSubmitQr();
+              }
+            }}
+            placeholder='Ví dụ: {"booking_id":12} hoặc payload QR đầy đủ'
+          />
+        </label>
+      ) : (
+        <label className="scan-field">
+          <span>Nội dung QR sau khi quét</span>
+          <textarea
+            ref={inputRef}
+            className="scan-input scan-textarea"
+            rows={5}
+            value={scanValue}
+            onChange={(event) => setScanValue(event.target.value)}
+            placeholder="Kết quả quét sẽ hiển thị tại đây"
+          />
+        </label>
+      )}
 
       <div className="scan-actions scan-actions--single">
         <button type="button" className="scan-primary-btn" onClick={onSubmitQr} disabled={!scanValue.trim()}>
-          Quét QR
+          Quét QR và lấy thông tin
         </button>
       </div>
 
-      {qrPreviewError ? <p className="scan-inline-error">{qrPreviewError}</p> : null}
+      <p className="scan-hint">
+        Sau khi quét/xem booking, nhân viên chủ động bấm nút cho xe vào bãi hoặc ra bãi.
+      </p>
+
+      {scanSuccess ? <p className="scan-inline-success">{scanSuccess}</p> : null}
+      {scanError ? <p className="scan-inline-error">{scanError}</p> : null}
+      {qrPreviewError && !scanError ? <p className="scan-inline-error">{qrPreviewError}</p> : null}
     </section>
   );
 }

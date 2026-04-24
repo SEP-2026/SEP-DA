@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import ReviewForm from "../components/ReviewForm";
 import API from "../services/api";
 import { formatDateTimeVN, parseVietnamDate, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import "./BookingHistory.css";
 
-const ACTIVE_STATUSES = ["pending", "booked", "checked_in"];
+const ACTIVE_STATUSES = ["pending", "booked", "checked_in", "checked_out", "completed"];
+const BOOKING_TABS = [
+  { key: "all", label: "Tất cả" },
+  { key: "not_checked_in", label: "Chưa check in" },
+  { key: "checked_in", label: "Đang check in" },
+  { key: "checked_out", label: "Đã check out" },
+  { key: "review", label: "Đánh giá" },
+];
 
 const fmtDateTime = (value) => {
   return formatDateTimeVN(value, "N/A");
@@ -14,11 +22,22 @@ const toDatetimeLocal = (value) => {
   return toDatetimeLocalValue(value);
 };
 
+const formatDuration = (start, end) => {
+  const startDate = parseVietnamDate(start);
+  const endDate = parseVietnamDate(end);
+  if (!startDate || !endDate) return "N/A";
+  const totalMinutes = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours} giờ ${minutes} phút`;
+};
+
 const statusText = (status) => {
   const map = {
     pending: "Chờ thanh toán",
     booked: "Đã đặt",
     checked_in: "Đang gửi xe",
+    checked_out: "Đã check-out",
     completed: "Hoàn tất",
     cancelled: "Đã hủy",
   };
@@ -30,6 +49,7 @@ const statusClass = (status) => {
     pending: "is-pending",
     booked: "is-booked",
     checked_in: "is-checked-in",
+    checked_out: "is-completed",
     completed: "is-completed",
     cancelled: "is-cancelled",
   };
@@ -110,12 +130,14 @@ export default function BookingHistory() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [qrModal, setQrModal] = useState({ isOpen: false, bookingId: null, qrUrl: null, loading: false });
+  const [reviewModal, setReviewModal] = useState({ isOpen: false, booking: null, review: null, loading: false, error: "" });
 
   const initialConflict = location.state?.conflictContext || null;
   const [conflictContext, setConflictContext] = useState(initialConflict);
   const [editMode, setEditMode] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [slotOptions, setSlotOptions] = useState([]);
+  const [activeTab, setActiveTab] = useState("all");
 
   const conflictingBooking = conflictContext?.conflicting_booking || null;
   const requestedBooking = conflictContext?.requested_booking_view || conflictContext?.requested_booking || null;
@@ -174,10 +196,64 @@ export default function BookingHistory() {
     loadSlots();
   }, [conflictingBooking?.parking_id, conflictingBooking?.slot_id, editMode]);
 
+  useEffect(() => {
+    const checkedIn = bookings.filter((item) => (item.checkin_status || item.status) === "checked_in");
+    if (!checkedIn.length) return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        const updates = await Promise.all(
+          checkedIn.map(async (item) => {
+            const res = await API.get(`/bookings/${item.booking_id}/status`);
+            return { booking_id: item.booking_id, payload: res.data };
+          }),
+        );
+        setBookings((prev) =>
+          prev.map((item) => {
+            const found = updates.find((u) => u.booking_id === item.booking_id);
+            if (!found) return item;
+            return {
+              ...item,
+              checkin_status: found.payload.checkin_status,
+              actual_checkin: found.payload.actual_checkin || item.actual_checkin,
+              actual_checkout: found.payload.actual_checkout || item.actual_checkout,
+              overstay_fee: found.payload.overstay_fee,
+              total_actual_fee: found.payload.total_actual_fee,
+            };
+          }),
+        );
+      } catch {
+        // Ignore a failed poll cycle.
+      }
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [bookings]);
+
   const activeBookings = useMemo(
     () => bookings.filter((item) => ACTIVE_STATUSES.includes(item.status)),
     [bookings],
   );
+
+  const filteredBookings = useMemo(() => {
+    const normalizedStatus = (item) => `${item.checkin_status || item.status || ""}`.toLowerCase();
+    if (activeTab === "all") return activeBookings;
+    if (activeTab === "not_checked_in") {
+      return activeBookings.filter((item) => ["pending", "booked"].includes(normalizedStatus(item)));
+    }
+    if (activeTab === "checked_in") {
+      return activeBookings.filter((item) => normalizedStatus(item) === "checked_in");
+    }
+    if (activeTab === "checked_out" || activeTab === "review") {
+      return activeBookings.filter((item) => {
+        const status = normalizedStatus(item);
+        const isCheckedOut = status === "checked_out" || status === "completed";
+        if (activeTab === "review") {
+          return isCheckedOut && Boolean(item.has_review);
+        }
+        return isCheckedOut;
+      });
+    }
+    return activeBookings;
+  }, [activeBookings, activeTab]);
 
   const segments = useMemo(() => {
     if (!conflictingBooking || !requestedBooking) {
@@ -241,6 +317,29 @@ export default function BookingHistory() {
 
   const closeQrModal = () => {
     setQrModal({ isOpen: false, bookingId: null, qrUrl: null, loading: false });
+  };
+
+  const openReviewModal = async (booking, mode = "view") => {
+    setReviewModal({ isOpen: true, booking, review: null, loading: mode === "view", error: "" });
+    if (mode !== "view") {
+      return;
+    }
+    try {
+      const res = await API.get(`/reviews/booking/${booking.booking_id}`);
+      setReviewModal({ isOpen: true, booking, review: res.data, loading: false, error: "" });
+    } catch (err) {
+      setReviewModal({
+        isOpen: true,
+        booking,
+        review: null,
+        loading: false,
+        error: err?.response?.data?.detail || "Không tải được đánh giá",
+      });
+    }
+  };
+
+  const closeReviewModal = () => {
+    setReviewModal({ isOpen: false, booking: null, review: null, loading: false, error: "" });
   };
 
   const handleKeepOldBooking = () => {
@@ -444,14 +543,32 @@ export default function BookingHistory() {
 
         <section className="history-panel">
           <h2>Thông tin booking hiện tại</h2>
+          <div className="history-tabs" role="tablist" aria-label="Bộ lọc lịch sử booking">
+            {BOOKING_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                className={`history-tab ${activeTab === tab.key ? "active" : ""}`}
+                aria-selected={activeTab === tab.key}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
           {loading ? <p>Đang tải danh sách booking...</p> : null}
 
-          {!loading && activeBookings.length === 0 && (
-            <p className="empty-state">Bạn chưa có booking đang hoạt động.</p>
+          {!loading && filteredBookings.length === 0 && (
+            <p className="empty-state">
+              {activeTab === "review"
+                ? "Chưa có booking nào đã được đánh giá."
+                : "Không có booking trong tab này."}
+            </p>
           )}
 
           <div className="history-list">
-            {activeBookings.map((item) => (
+            {filteredBookings.map((item) => (
               <article key={item.booking_id} className="history-item">
                 {(() => {
                   const { directionsUrl, mapUrl } = buildGoogleMapsLinks(item.parking);
@@ -468,6 +585,17 @@ export default function BookingHistory() {
                 <p><strong>Check-in:</strong> {fmtDateTime(item.checkin_time)}</p>
                 <p><strong>Check-out:</strong> {fmtDateTime(item.checkout_time)}</p>
                 <p><strong>Tổng tiền:</strong> {Number(item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                {((item.checkin_status || item.status) === "checked_out" || item.status === "completed") ? (
+                  <>
+                    <p><strong>✅ Trạng thái:</strong> Đã check-out</p>
+                    <p><strong>Check-in thực tế:</strong> {fmtDateTime(item.actual_checkin)}</p>
+                    <p><strong>Check-out thực tế:</strong> {fmtDateTime(item.actual_checkout)}</p>
+                    <p><strong>Thời gian:</strong> {formatDuration(item.actual_checkin || item.checkin_time, item.actual_checkout || item.checkout_time)}</p>
+                    <p><strong>Phí đặt chỗ gốc:</strong> {Number(item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                    <p><strong>Phí quá giờ:</strong> {Number(item.overstay_fee || 0).toLocaleString("vi-VN")}đ</p>
+                    <p><strong>Tổng cộng:</strong> {Number(item.total_actual_fee || item.total_amount || 0).toLocaleString("vi-VN")}đ</p>
+                  </>
+                ) : null}
                 {directionsUrl && mapUrl && (
                   <div className="history-item-actions">
                     {item.status !== "pending" && (
@@ -498,6 +626,17 @@ export default function BookingHistory() {
                     >
                       <span>Xem Bản Đồ</span>
                     </a>
+                    {((item.checkin_status || item.status) === "checked_out" || item.status === "completed") ? (
+                      item.is_reviewed ? (
+                        <button type="button" className="btn-qr" onClick={() => openReviewModal(item, "view")}>
+                          <span>Xem đánh giá</span>
+                        </button>
+                      ) : (
+                        <button type="button" className="btn-qr" onClick={() => openReviewModal(item, "create")}>
+                          <span>⭐ Đánh giá</span>
+                        </button>
+                      )
+                    ) : null}
                   </div>
                 )}
                     </>
@@ -527,6 +666,57 @@ export default function BookingHistory() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {reviewModal.isOpen && (
+        <div className="qr-modal-overlay" onClick={closeReviewModal}>
+          <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="qr-modal-close" onClick={closeReviewModal}>×</button>
+            {reviewModal.loading ? <p>Đang tải đánh giá...</p> : null}
+            {reviewModal.error ? <p className="qr-modal-error">{reviewModal.error}</p> : null}
+
+            {!reviewModal.loading && !reviewModal.review && reviewModal.booking && !reviewModal.booking.is_reviewed ? (
+              <ReviewForm
+                bookingId={reviewModal.booking.booking_id}
+                parkingName={reviewModal.booking.parking?.name}
+                onSkip={closeReviewModal}
+                onSubmit={(result) => {
+                  setReviewModal((prev) => ({
+                    ...prev,
+                    review: {
+                      review_id: result.review_id,
+                      booking_id: result.booking_id,
+                      rating: result.rating,
+                      comment: result.comment,
+                      owner_reply: null,
+                      owner_replied_at: null,
+                      created_at: result.created_at,
+                    },
+                  }));
+                  setBookings((prev) =>
+                    prev.map((item) =>
+                      item.booking_id === result.booking_id ? { ...item, is_reviewed: true, has_review: true } : item,
+                    ),
+                  );
+                }}
+              />
+            ) : null}
+
+            {reviewModal.review ? (
+              <div className="booking-review-result">
+                <h3>✅ Đánh giá của bạn</h3>
+                <p className="owner-review-rating">{"★".repeat(reviewModal.review.rating)}{"☆".repeat(5 - reviewModal.review.rating)} ({reviewModal.review.rating}/5)</p>
+                <p>"{reviewModal.review.comment || "Không có nhận xét."}"</p>
+                <p>Gửi lúc: {fmtDateTime(reviewModal.review.created_at)}</p>
+                <p><strong>Phản hồi từ chủ bãi:</strong></p>
+                {reviewModal.review.owner_reply ? (
+                  <p>💬 "{reviewModal.review.owner_reply}"</p>
+                ) : (
+                  <p>⏳ Chưa có phản hồi từ chủ bãi</p>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       )}

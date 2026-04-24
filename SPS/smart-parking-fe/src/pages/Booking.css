@@ -325,6 +325,19 @@
   color: #294d6b;
 }
 
+.lot-detail-box {
+  margin-top: 8px;
+  border: 1px dashed rgba(20, 57, 93, 0.28);
+  border-radius: 10px;
+  background: #f3faff;
+  padding: 8px 10px;
+}
+
+.lot-detail-box p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
 .booking-result {
   width: min(520px, 100%);
   margin: 18px auto 0;

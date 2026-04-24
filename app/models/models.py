@@ -1,7 +1,8 @@
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
-from app.utils.timezone import vn_now
 
 
 class District(Base):
@@ -48,8 +49,8 @@ class UserVehicle(Base):
     vehicle_model = Column(String(100), nullable=True)
     seat_count = Column(Integer, nullable=True)
     vehicle_color = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=vn_now)
-    updated_at = Column(DateTime, default=vn_now, onupdate=vn_now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="vehicle_profile")
 
@@ -65,8 +66,8 @@ class ParkingSlot(Base):
     level = Column(String(50), nullable=True)
     code = Column(String(50), unique=True)
     status = Column(String(50), default="available")
-    created_at = Column(DateTime, default=vn_now)
-    updated_at = Column(DateTime, default=vn_now, onupdate=vn_now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Booking(Base):
@@ -79,11 +80,14 @@ class Booking(Base):
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=True)
     slot_id = Column(Integer, ForeignKey("parking_slots.id"))
 
-    start_time = Column("checkin_time", DateTime, default=vn_now)
+    start_time = Column("checkin_time", DateTime, default=datetime.utcnow)
     expire_time = Column("checkout_time", DateTime)
     actual_checkin = Column(DateTime, nullable=True)
     actual_checkout = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=vn_now)
+    overstay_minutes = Column(Integer, default=0, nullable=True)
+    overstay_fee = Column(Float, default=0, nullable=True)
+    total_actual_fee = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     booking_mode = Column(String(20), default="hourly")
     billed_units = Column(Float, default=0)
@@ -97,6 +101,7 @@ class Booking(Base):
     last_gate_action_at = Column(DateTime, nullable=True)
     qr_token_expires_at = Column(DateTime, nullable=True)
     cancel_reason = Column(String(255), nullable=True)
+    is_reviewed = Column(Integer, default=0, nullable=False)
 
     user = relationship("User")
     slot = relationship("ParkingSlot")
@@ -123,7 +128,7 @@ class Transaction(Base):
     image_url = Column(String(500), nullable=True)
     license_plate = Column(String(30), nullable=True)
 
-    created_at = Column(DateTime, default=vn_now)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Payment(Base):
@@ -139,7 +144,7 @@ class Payment(Base):
     paid_at = Column(DateTime, nullable=True)
     vnpay_url = Column(String(500), nullable=True)
     qr_code = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=vn_now)
+    created_at = Column(DateTime, default=datetime.utcnow)
     deposit_amount = Column(Float, default=0)
     remaining_amount = Column(Float, default=0)
 
@@ -163,6 +168,8 @@ class ParkingLot(Base):
     longitude = Column(Float, nullable=False)
     has_roof = Column(Integer, default=0)
     is_active = Column(Integer, default=1)
+    avg_rating = Column(Float, default=0)
+    review_count = Column(Integer, default=0)
 
     district = relationship("District", foreign_keys=[district_id])
 
@@ -183,13 +190,60 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False)
-    rating = Column(Integer, nullable=False)
-    comment = Column(String, nullable=True)
-    owner_reply = Column(String, nullable=True)
+    rating = Column(SmallInteger, nullable=False)
+    comment = Column(Text, nullable=True)
+    owner_reply = Column(Text, nullable=True)
     owner_replied_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=vn_now)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User")
     parking = relationship("ParkingLot")
+
+
+class EmployeeAccount(Base):
+    __tablename__ = "employee_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
+    role = Column(String(50), default="employee", nullable=False)
+    status = Column(String(20), default="active", nullable=False)
+    is_active = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    owner = relationship("User")
+    parking_lot = relationship("ParkingLot")
+
+
+class ParkingOperationalState(Base):
+    __tablename__ = "parking_operational_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, unique=True, index=True)
+    status = Column(String(20), default="open", nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    parking_lot = relationship("ParkingLot")
+
+
+class EmployeeActivity(Base):
+    __tablename__ = "employee_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    employee_id = Column(Integer, ForeignKey("employee_accounts.id"), nullable=False, index=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
+    action = Column(String(50), nullable=False)
+    detail = Column(String(500), nullable=True)
+    amount = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    employee = relationship("EmployeeAccount")
+    parking_lot = relationship("ParkingLot")
+    booking = relationship("Booking")

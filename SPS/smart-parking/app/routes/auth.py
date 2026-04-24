@@ -49,6 +49,10 @@ def _create_access_token(user: User) -> tuple[str, datetime, str]:
     return token, expires_at, jti
 
 
+def create_access_token(user: User) -> tuple[str, datetime, str]:
+    return _create_access_token(user)
+
+
 def _decode_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -115,6 +119,20 @@ def get_current_user(
         )
 
     return user
+
+
+def authorize(*roles: str):
+    allowed_roles = {role.strip().lower() for role in roles if role}
+
+    def _dependency(current_user: User = Depends(get_current_user)) -> User:
+        if allowed_roles and current_user.role.lower() not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p tÃ i nguyÃªn nÃ y",
+            )
+        return current_user
+
+    return _dependency
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -240,6 +258,9 @@ def update_me(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role == "employee":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee chá»‰ cÃ³ quyá»n xem há»“ sÆ¡")
+
     user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Người dùng không tồn tại")
@@ -285,6 +306,9 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role == "employee":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee khÃ´ng Ä‘Æ°á»£c Ä‘á»•i máº­t kháº©u táº¡i mÃ n hÃ¬nh nÃ y")
+
     user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Người dùng không tồn tại")
