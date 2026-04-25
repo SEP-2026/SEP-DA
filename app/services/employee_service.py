@@ -17,6 +17,7 @@ from app.models.models import (
     User,
 )
 from app.routes.auth import create_access_token_for_subject
+from app.routes.booking import _overview_slot_status
 from app.routes.gate import (
     _execute_check_in,
     _execute_check_out,
@@ -81,6 +82,15 @@ def _resolve_status(parking_id: int, db: Session) -> str:
     if state.status == "full" or (total_slots > 0 and occupied_slots >= total_slots):
         return "full"
     return "open"
+
+
+def _assert_employee_can_check_in(parking_id: int, db: Session) -> None:
+    total_slots, occupied_slots, _ = _compute_slot_metrics(parking_id, db)
+    state = _get_operational_state(parking_id, db)
+    if state.status == "closed":
+        raise HTTPException(status_code=409, detail="Bãi đang đóng, không thể check-in")
+    if state.status == "full" or (total_slots > 0 and occupied_slots >= total_slots):
+        raise HTTPException(status_code=409, detail="Bãi đang đầy, không thể check-in")
 
 
 def _serialize_employee(employee: EmployeeAccount) -> dict:
@@ -233,6 +243,18 @@ def create_employee_for_owner(
         "full_name": user.name,
         "phone": user.phone,
     }
+
+
+def _display_slot_code(slot: ParkingSlot) -> str:
+    slot_number = (slot.slot_number or "").strip()
+    code = (slot.code or "").strip()
+    if slot_number and code == f"{slot.parking_id}-{slot_number}":
+        return slot_number
+    if code:
+        return code
+    if slot_number:
+        return slot_number
+    return f"Slot-{slot.id}"
 
 
 def get_owner_employees(owner: User, db: Session) -> dict:
@@ -437,6 +459,7 @@ def get_employee_dashboard(employee: EmployeeAccount, db: Session) -> dict:
 
 
 def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     rows = db.execute(
         text(
             """
@@ -454,7 +477,7 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
             ORDER BY COALESCE(b.actual_checkin, b.checkin_time) DESC, b.id DESC
             """
         ),
-        {"parking_id": employee.parking_id},
+        {"parking_id": parking_lot.id},
     ).mappings().all()
     vehicles = [
         {
@@ -469,7 +492,64 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
     return {"vehicles": vehicles, "total_count": len(vehicles)}
 
 
+def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
+    slots = (
+        db.query(ParkingSlot)
+        .filter(ParkingSlot.parking_id == parking_lot.id)
+        .order_by(ParkingSlot.level.asc(), ParkingSlot.zone.asc(), ParkingSlot.slot_number.asc(), ParkingSlot.code.asc())
+        .all()
+    )
+    active_bookings = db.query(Booking).filter(
+        Booking.parking_id == parking_lot.id,
+        Booking.status.in_(["pending", "booked", "checked_in"]),
+    ).all()
+
+    booking_statuses_by_slot: dict[int, set[str]] = {}
+    latest_booking_by_slot: dict[int, Booking] = {}
+    for booking in active_bookings:
+        if not booking.slot_id:
+            continue
+        slot_id = int(booking.slot_id)
+        booking_statuses_by_slot.setdefault(slot_id, set()).add((booking.status or "").lower())
+        if slot_id not in latest_booking_by_slot:
+            latest_booking_by_slot[slot_id] = booking
+
+    slot_rows = []
+    for slot in slots:
+        status = _overview_slot_status(slot.status, booking_statuses_by_slot.get(int(slot.id), set()))
+        active_booking = latest_booking_by_slot.get(int(slot.id))
+        slot_rows.append(
+            {
+                "id": int(slot.id),
+                "code": _display_slot_code(slot),
+                "zone": slot.zone or "Chưa phân khu",
+                "level": slot.level or "Chưa gán tầng",
+                "status": status,
+                "vehicle_plate": active_booking.user.vehicle_plate if active_booking and active_booking.user else None,
+                "booking_code": f"BK-{active_booking.id}" if active_booking else None,
+            }
+        )
+
+    available_slots = [item for item in slot_rows if item["status"] == "available"]
+    maintenance_slots = [item for item in slot_rows if item["status"] == "maintenance"]
+    occupied_slots = [item for item in slot_rows if item["status"] == "occupied"]
+
+    return {
+        "parking_id": int(parking_lot.id),
+        "parking_name": parking_lot.name,
+        "total_slots": len(slot_rows),
+        "available_slots": len(available_slots),
+        "reserved_slots": 0,
+        "in_use_slots": len(occupied_slots),
+        "maintenance_slots": len(maintenance_slots),
+        "occupied_or_reserved_slots": len(slot_rows) - len(available_slots),
+        "slots": slot_rows,
+    }
+
+
 def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     today = datetime.now(APP_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     month_start = today.replace(day=1)
     week_start = today - timedelta(days=6)
@@ -497,7 +577,7 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
               AND p.payment_status = 'paid'
             """
         ),
-        {"parking_id": employee.parking_id},
+        {"parking_id": parking_lot.id},
     ).mappings().all()
 
     for row in rows:
@@ -529,7 +609,7 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
             """
         ),
         {
-            "parking_id": employee.parking_id,
+            "parking_id": parking_lot.id,
             "today_start": today,
             "tomorrow_start": today + timedelta(days=1),
         },
@@ -557,7 +637,7 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
         elif row["action"] == "check_out":
             bucket["check_outs"] += 1
 
-    total_slots, occupied_slots, _ = _compute_slot_metrics(employee.parking_id, db)
+    total_slots, occupied_slots, _ = _compute_slot_metrics(parking_lot.id, db)
     occupancy_ratio = round((occupied_slots / total_slots) * 100, 2) if total_slots > 0 else 0
 
     return {
@@ -584,10 +664,14 @@ def update_employee_parking_status(employee: EmployeeAccount, status_value: str,
 
 
 def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
+    _assert_employee_can_check_in(parking_lot.id, db)
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if int(booking.parking_id or 0) != int(parking_lot.id):
+        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_in(
         booking=booking,
@@ -599,7 +683,7 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
     )
     _log_activity(
         employee,
-        employee.parking_id,
+        parking_lot.id,
         "check_in",
         f"Check-in booking BK-{booking.id}",
         db,
@@ -614,20 +698,33 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
 
 
 def employee_get_gate_booking(employee: EmployeeAccount, booking_id: int, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
-    if int(booking.parking_id or 0) != int(employee.parking_id):
+    if int(booking.parking_id or 0) != int(parking_lot.id):
         raise HTTPException(status_code=403, detail="Employee không có quyền thao tác tại bãi này")
     payment = _get_payment(booking.id, db, lock=False)
+    _log_activity(
+        employee,
+        parking_lot.id,
+        "resolve_booking",
+        f"Xem thông tin booking BK-{booking.id}",
+        db,
+        booking_id=booking.id,
+    )
+    db.commit()
     return _serialize_booking_detail(booking, payment, db, _local_now())
 
 
 def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: str, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if int(booking.parking_id or 0) != int(parking_lot.id):
+        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_out(
         booking=booking,
@@ -638,10 +735,10 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
         actor=employee,
         db=db,
     )
-    amount = float(detail.get("pricing_preview", {}).get("total_charge") or 0)
+    amount = float(detail.get("pricing_preview", {}).get("remaining_due") or 0)
     _log_activity(
         employee,
-        employee.parking_id,
+        parking_lot.id,
         "check_out",
         f"Check-out booking BK-{booking.id}",
         db,

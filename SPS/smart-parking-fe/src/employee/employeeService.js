@@ -20,6 +20,11 @@ export async function getEmployeeVehicles() {
   return response.data;
 }
 
+export async function getEmployeeSlotsOverview() {
+  const response = await API.get("/api/employee/slots-overview");
+  return response.data;
+}
+
 export async function getEmployeeRevenue() {
   const response = await API.get("/api/employee/revenue");
   return response.data;

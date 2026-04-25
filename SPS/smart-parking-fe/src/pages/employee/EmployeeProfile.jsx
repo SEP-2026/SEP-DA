@@ -10,7 +10,7 @@ const STATUS_LABEL = {
 };
 
 export default function EmployeeProfile() {
-  const { profile, refreshEmployee } = useEmployeeContext();
+  const { profile, slotsOverview, refreshEmployee } = useEmployeeContext();
   const [statusValue, setStatusValue] = useState(profile?.parking_lot?.status || "open");
   const [saving, setSaving] = useState(false);
 
@@ -55,9 +55,9 @@ export default function EmployeeProfile() {
         <div className="employee-profile-grid">
           <p><strong>Tên bãi:</strong> {profile?.parking_lot?.parking_name || "--"}</p>
           <p><strong>Địa chỉ:</strong> {profile?.parking_lot?.address || "--"}</p>
-          <p><strong>Tổng chỗ:</strong> {profile?.parking_lot?.totalSlots || 0}</p>
-          <p><strong>Đang sử dụng:</strong> {profile?.parking_lot?.occupiedSlots || 0}</p>
-          <p><strong>Chỗ trống:</strong> {profile?.parking_lot?.emptySlots || 0}</p>
+          <p><strong>Tổng chỗ:</strong> {slotsOverview?.total_slots || profile?.parking_lot?.totalSlots || 0}</p>
+          <p><strong>Đang sử dụng:</strong> {(slotsOverview?.in_use_slots || 0) + (slotsOverview?.reserved_slots || 0)}</p>
+          <p><strong>Chỗ trống:</strong> {slotsOverview?.available_slots || profile?.parking_lot?.emptySlots || 0}</p>
         </div>
 
         <div className="employee-action-row">
@@ -74,3 +74,4 @@ export default function EmployeeProfile() {
     </section>
   );
 }
+

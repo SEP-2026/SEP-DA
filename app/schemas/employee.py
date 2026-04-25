@@ -116,6 +116,27 @@ class EmployeeRevenueResponse(BaseModel):
     totalPaidBookings: int = 0
 
 
+class EmployeeSlotItem(BaseModel):
+    id: int
+    code: str
+    zone: str
+    level: str
+    status: str
+    vehicle_plate: str | None = None
+    booking_code: str | None = None
+
+
+class EmployeeSlotsOverviewResponse(BaseModel):
+    parking_id: int
+    parking_name: str
+    total_slots: int
+    available_slots: int
+    reserved_slots: int
+    in_use_slots: int
+    maintenance_slots: int
+    slots: list[EmployeeSlotItem] = Field(default_factory=list)
+
+
 class EmployeeParkingStatusRequest(BaseModel):
     status: str = Field(pattern="^(open|closed|full)$")
 

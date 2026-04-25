@@ -109,16 +109,16 @@ function OccupancyDonut({ occupied, total }) {
 }
 
 export default function EmployeeDashboard() {
-  const { parkingLot, revenue, loading } = useEmployeeContext();
+  const { parkingLot, revenue, slotsOverview, loading } = useEmployeeContext();
 
   const cards = useMemo(
     () => [
       { label: "Tổng số chỗ", value: parkingLot?.totalSlots || 0 },
-      { label: "Đang có xe", value: parkingLot?.occupiedSlots || 0 },
-      { label: "Chỗ trống", value: parkingLot?.emptySlots || 0 },
+      { label: "Đang có xe", value: (slotsOverview?.in_use_slots || 0) + (slotsOverview?.reserved_slots || 0) },
+      { label: "Chỗ trống", value: slotsOverview?.available_slots || 0 },
       { label: "Trạng thái bãi", value: STATUS_LABEL[parkingLot?.status] || parkingLot?.status || "Đang mở" },
     ],
-    [parkingLot],
+    [parkingLot, slotsOverview],
   );
 
   return (
@@ -176,3 +176,4 @@ export default function EmployeeDashboard() {
     </>
   );
 }
+

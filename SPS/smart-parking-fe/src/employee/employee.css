@@ -124,6 +124,7 @@
   flex-direction: column;
   gap: 16px;
   height: calc(100vh - 36px);
+  min-height: 0;
 }
 
 .employee-topbar {
@@ -202,8 +203,10 @@
   display: grid;
   gap: 16px;
   flex: 1 1 auto;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 2px;
+  min-height: 0;
 }
 
 .employee-grid {
@@ -357,7 +360,7 @@
 
 .employee-section-shell {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   padding: 22px;
 }
 
@@ -491,6 +494,71 @@
 
 .employee-note {
   color: #52738f;
+}
+
+.employee-parking-board {
+  margin-top: 10px;
+}
+
+.employee-parking-board-head {
+  cursor: default;
+}
+
+.employee-parking-board .parking-grid {
+  margin-top: 6px;
+}
+
+.employee-slot-section {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.employee-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.employee-slot-card {
+  border: 1px solid rgba(32, 91, 137, 0.18);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.86);
+  display: grid;
+  gap: 6px;
+}
+
+.employee-slot-card strong {
+  color: #113b5e;
+}
+
+.employee-slot-card p {
+  margin: 0;
+  color: #4e6f89;
+  font-size: 13px;
+}
+
+.employee-slot-card--available {
+  border-left: 4px solid rgba(35, 156, 108, 0.8);
+}
+
+.employee-slot-card--reserved {
+  border-left: 4px solid rgba(204, 129, 43, 0.85);
+}
+
+.employee-slot-card--in_use {
+  border-left: 4px solid rgba(199, 84, 84, 0.85);
+}
+
+.employee-slot-card--maintenance {
+  border-left: 4px solid rgba(116, 128, 145, 0.85);
+}
+
+.employee-inline-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .employee-chart-svg {

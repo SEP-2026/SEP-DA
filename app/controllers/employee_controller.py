@@ -13,6 +13,7 @@ from app.services.employee_service import (
     get_employee_history,
     get_employee_profile,
     get_employee_revenue,
+    get_employee_slots_overview,
     get_employee_vehicles,
     update_owner_employee,
     update_employee_parking_status,
@@ -90,6 +91,10 @@ def employee_vehicles_controller(employee: EmployeeAccount, db: Session) -> dict
 
 def employee_revenue_controller(employee: EmployeeAccount, db: Session) -> dict:
     return get_employee_revenue(employee, db)
+
+
+def employee_slots_overview_controller(employee: EmployeeAccount, db: Session) -> dict:
+    return get_employee_slots_overview(employee, db)
 
 
 def employee_parking_status_controller(employee: EmployeeAccount, status_value: str, db: Session) -> dict:

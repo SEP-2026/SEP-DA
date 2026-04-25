@@ -2,7 +2,7 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { OwnerIcon } from "../owner/OwnerIcons";
-import { getEmployeeParkingLot, getEmployeeProfile, getEmployeeRevenue } from "./employeeService";
+import { getEmployeeParkingLot, getEmployeeProfile, getEmployeeRevenue, getEmployeeSlotsOverview } from "./employeeService";
 import "./employee.css";
 
 const NAV_ITEMS = [
@@ -29,19 +29,29 @@ export default function EmployeeLayout({ auth, onLogout }) {
   const [parkingLot, setParkingLot] = useState(null);
   const [profile, setProfile] = useState(null);
   const [revenue, setRevenue] = useState({ revenueToday: 0, revenueMonth: 0 });
+  const [slotsOverview, setSlotsOverview] = useState({
+    total_slots: 0,
+    available_slots: 0,
+    reserved_slots: 0,
+    in_use_slots: 0,
+    maintenance_slots: 0,
+    slots: [],
+  });
   const [loading, setLoading] = useState(true);
 
   const refreshEmployee = async () => {
     setLoading(true);
     try {
-      const [parkingLotRes, profileRes, revenueRes] = await Promise.all([
+      const [parkingLotRes, profileRes, revenueRes, slotsOverviewRes] = await Promise.all([
         getEmployeeParkingLot(),
         getEmployeeProfile(),
         getEmployeeRevenue(),
+        getEmployeeSlotsOverview(),
       ]);
       setParkingLot(parkingLotRes);
       setProfile(profileRes);
       setRevenue(revenueRes);
+      setSlotsOverview(slotsOverviewRes);
     } finally {
       setLoading(false);
     }
@@ -49,6 +59,26 @@ export default function EmployeeLayout({ auth, onLogout }) {
 
   useEffect(() => {
     refreshEmployee();
+
+    const intervalId = window.setInterval(() => {
+      refreshEmployee();
+    }, 10000);
+
+    const handleFocus = () => refreshEmployee();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshEmployee();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   const displayName = auth?.user?.username || "nhân viên";
@@ -126,7 +156,7 @@ export default function EmployeeLayout({ auth, onLogout }) {
         </header>
 
         <main className="employee-content">
-          <Outlet context={{ auth, parkingLot, profile, revenue, refreshEmployee, loading }} />
+          <Outlet context={{ auth, parkingLot, profile, revenue, slotsOverview, refreshEmployee, loading }} />
         </main>
       </div>
     </div>

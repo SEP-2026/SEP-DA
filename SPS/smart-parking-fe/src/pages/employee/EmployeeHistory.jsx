@@ -7,6 +7,7 @@ const ACTION_LABEL = {
   parking_status_updated: "Cập nhật trạng thái bãi",
   check_in: "Check-in xe",
   check_out: "Check-out xe",
+  resolve_booking: "Xem thông tin booking",
 };
 
 function decodeMojibake(value) {
@@ -36,7 +37,6 @@ export default function EmployeeHistory() {
         <h2>Lịch sử hoạt động</h2>
         <span className="employee-chip">Tổng bản ghi: {data.total_count}</span>
       </div>
-
       <div className="employee-history-list">
         {data.history.length === 0 ? <p className="employee-note">Chưa có hoạt động nào được ghi nhận.</p> : null}
 
@@ -56,3 +56,4 @@ export default function EmployeeHistory() {
     </section>
   );
 }
+

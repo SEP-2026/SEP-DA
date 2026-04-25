@@ -14,6 +14,7 @@ from app.controllers.employee_controller import (
     employee_parking_status_controller,
     employee_profile_controller,
     employee_revenue_controller,
+    employee_slots_overview_controller,
     employee_vehicles_controller,
     owner_employees_controller,
     update_owner_employee_controller,
@@ -32,6 +33,7 @@ from app.schemas.employee import (
     EmployeeQrActionRequest,
     EmployeeQrActionResponse,
     EmployeeRevenueResponse,
+    EmployeeSlotsOverviewResponse,
     EmployeeVehicleResponse,
     OwnerCreateEmployeeRequest,
     OwnerEmployeeActionResponse,
@@ -192,6 +194,14 @@ def employee_revenue(
     db: Session = Depends(get_db),
 ):
     return EmployeeRevenueResponse(**employee_revenue_controller(current_employee, db))
+
+
+@router.get("/slots-overview", response_model=EmployeeSlotsOverviewResponse)
+def employee_slots_overview(
+    current_employee: EmployeeAccount = Depends(get_current_employee),
+    db: Session = Depends(get_db),
+):
+    return EmployeeSlotsOverviewResponse(**employee_slots_overview_controller(current_employee, db))
 
 
 @router.put("/parking-status", response_model=EmployeeParkingOverview)
