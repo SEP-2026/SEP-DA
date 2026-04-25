@@ -17,7 +17,14 @@ from app.models.models import (
     User,
 )
 from app.routes.auth import create_access_token_for_subject
-from app.routes.gate import _execute_check_in, _execute_check_out, _get_payment, _parse_scan_payload
+from app.routes.gate import (
+    _execute_check_in,
+    _execute_check_out,
+    _get_payment,
+    _local_now,
+    _parse_scan_payload,
+    _serialize_booking_detail,
+)
 
 APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 EMPLOYEE_PASSWORD_MIN_LENGTH = 6
@@ -604,6 +611,16 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
         "booking": detail,
         "payment_preview": detail.get("pricing_preview"),
     }
+
+
+def employee_get_gate_booking(employee: EmployeeAccount, booking_id: int, db: Session) -> dict:
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if int(booking.parking_id or 0) != int(employee.parking_id):
+        raise HTTPException(status_code=403, detail="Employee không có quyền thao tác tại bãi này")
+    payment = _get_payment(booking.id, db, lock=False)
+    return _serialize_booking_detail(booking, payment, db, _local_now())
 
 
 def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: str, db: Session) -> dict:

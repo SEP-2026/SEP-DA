@@ -8,6 +8,7 @@ from app.controllers.employee_controller import (
     employee_check_in_controller,
     employee_check_out_controller,
     employee_dashboard_controller,
+    employee_gate_booking_controller,
     employee_history_controller,
     employee_login_controller,
     employee_parking_status_controller,
@@ -238,3 +239,12 @@ def employee_check_out(
     db: Session = Depends(get_db),
 ):
     return EmployeeQrActionResponse(**employee_check_out_controller(current_employee, payload.qr_data, payload.payment_method, db))
+
+
+@router.get("/bookings/{booking_id}")
+def employee_gate_booking(
+    booking_id: int,
+    current_employee: EmployeeAccount = Depends(get_current_employee),
+    db: Session = Depends(get_db),
+):
+    return employee_gate_booking_controller(current_employee, booking_id, db)

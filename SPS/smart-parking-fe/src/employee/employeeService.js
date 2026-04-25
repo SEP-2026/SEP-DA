@@ -49,3 +49,8 @@ export async function employeeCheckOut(payload) {
   const response = await API.post("/api/employee/check-out", payload);
   return response.data;
 }
+
+export async function getEmployeeGateBooking(bookingId) {
+  const response = await API.get(`/api/employee/bookings/${bookingId}`);
+  return response.data;
+}

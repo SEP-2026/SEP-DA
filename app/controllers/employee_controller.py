@@ -6,6 +6,7 @@ from app.services.employee_service import (
     delete_owner_employee,
     employee_check_in,
     employee_check_out,
+    employee_get_gate_booking,
     employee_login,
     get_owner_employees,
     get_employee_dashboard,
@@ -101,6 +102,10 @@ def employee_check_in_controller(employee: EmployeeAccount, qr_data: str, db: Se
 
 def employee_check_out_controller(employee: EmployeeAccount, qr_data: str, payment_method: str, db: Session) -> dict:
     return employee_check_out(employee, qr_data, payment_method, db)
+
+
+def employee_gate_booking_controller(employee: EmployeeAccount, booking_id: int, db: Session) -> dict:
+    return employee_get_gate_booking(employee, booking_id, db)
 
 
 def employee_history_controller(employee: EmployeeAccount, db: Session) -> dict:
