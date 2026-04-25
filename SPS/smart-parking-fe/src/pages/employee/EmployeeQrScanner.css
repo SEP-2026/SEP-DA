@@ -1,0 +1,275 @@
+.employee-scan-page {
+  --employee-scan-navy: #0b2f4a;
+  --employee-scan-sky: #2d87c9;
+  --employee-scan-ice: #edf6ff;
+  --employee-scan-line: rgba(17, 67, 104, 0.2);
+  --employee-scan-shadow: 0 22px 48px rgba(7, 32, 56, 0.2);
+}
+
+.employee-scan-page .scan-page {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--employee-scan-line);
+  border-radius: 30px;
+  padding: clamp(18px, 2vw, 28px);
+  background:
+    radial-gradient(circle at 4% 8%, rgba(84, 178, 255, 0.2), rgba(84, 178, 255, 0)),
+    radial-gradient(circle at 92% 2%, rgba(54, 215, 192, 0.18), rgba(54, 215, 192, 0)),
+    linear-gradient(165deg, #f8fcff, #deefff 70%);
+  box-shadow: var(--employee-scan-shadow);
+}
+
+.employee-scan-page .scan-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(31, 111, 170, 0.04) 0,
+      rgba(31, 111, 170, 0.04) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+  pointer-events: none;
+}
+
+.employee-scan-page .scan-hero,
+.employee-scan-page .scan-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.employee-scan-page .scan-title {
+  margin-bottom: 10px;
+  font-size: clamp(32px, 2.6vw, 44px);
+  color: #0f3655;
+  letter-spacing: -0.02em;
+}
+
+.employee-scan-page .scan-subtitle {
+  color: #3d6485;
+  max-width: 760px;
+  font-size: 22px;
+}
+
+.employee-scan-page .scan-eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 101, 161, 0.2);
+  background: rgba(255, 255, 255, 0.78);
+  color: #1f6096;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.employee-scan-page .scan-hero-badge {
+  min-width: 280px;
+  border: 1px solid rgba(24, 92, 145, 0.25);
+  border-radius: 22px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 90% 8%, rgba(72, 166, 239, 0.24), rgba(72, 166, 239, 0)),
+    linear-gradient(170deg, rgba(255, 255, 255, 0.94), rgba(224, 241, 255, 0.88));
+  box-shadow: 0 14px 30px rgba(10, 47, 79, 0.16);
+}
+
+.employee-scan-page .scan-hero-badge strong {
+  color: #164667;
+  font-size: 18px;
+}
+
+.employee-scan-page .scan-hero-badge span {
+  padding: 8px 12px;
+  background: linear-gradient(140deg, rgba(17, 126, 166, 0.17), rgba(42, 126, 213, 0.16));
+  color: #0f597f;
+}
+
+.employee-scan-page .scan-grid {
+  gap: 24px;
+}
+
+.employee-scan-page .scan-panel {
+  border-radius: 26px;
+  border: 1px solid rgba(14, 69, 108, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(232, 244, 255, 0.92));
+  box-shadow: 0 14px 28px rgba(10, 47, 79, 0.14);
+}
+
+.employee-scan-page .scan-panel--primary {
+  border-width: 2px;
+}
+
+.employee-scan-page .scan-frame {
+  border: 1px solid rgba(86, 200, 255, 0.28);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 14% 14%, rgba(122, 202, 255, 0.22), transparent 28%),
+    radial-gradient(circle at 84% 16%, rgba(112, 255, 232, 0.2), transparent 30%),
+    linear-gradient(145deg, #082846 15%, #0f4f74 60%, #146189 100%);
+}
+
+.employee-scan-page .scan-frame-content strong {
+  font-size: clamp(32px, 2.5vw, 38px);
+  letter-spacing: -0.02em;
+}
+
+.employee-scan-page .scan-mode-tabs {
+  margin-top: 14px;
+}
+
+.employee-scan-page .scan-tab-btn {
+  border-radius: 12px;
+  padding: 10px 14px;
+  border-color: rgba(151, 224, 244, 0.55);
+}
+
+.employee-scan-page .scan-tab-btn.active {
+  border-color: transparent;
+  background: linear-gradient(140deg, #0f8fa6, #2f76df);
+  box-shadow: 0 8px 14px rgba(10, 57, 97, 0.28);
+}
+
+.employee-scan-page .scan-field span {
+  color: #184f78;
+  font-size: 13px;
+}
+
+.employee-scan-page .scan-input {
+  border-radius: 14px;
+  border-color: rgba(17, 75, 120, 0.18);
+}
+
+.employee-scan-page .scan-input:focus {
+  border-color: #2b82c6;
+  box-shadow: 0 0 0 4px rgba(43, 130, 198, 0.14);
+}
+
+.employee-scan-page .scan-primary-btn {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #0f8da3, #2e72d7);
+  box-shadow: 0 12px 22px rgba(13, 64, 108, 0.28);
+}
+
+.employee-scan-page .scan-secondary-btn {
+  border: 1px solid rgba(16, 78, 125, 0.2);
+  border-radius: 14px;
+  background: linear-gradient(170deg, rgba(255, 255, 255, 0.96), rgba(227, 241, 253, 0.88));
+}
+
+.employee-scan-page .btn-checkin {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #1a9a62, #38bf80);
+}
+
+.employee-scan-page .btn-checkout {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #d06b3f, #ed8a5a);
+}
+
+.employee-scan-page .camera-container {
+  border-radius: 16px;
+  border: 1px solid rgba(16, 72, 113, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(138, 223, 255, 0.22);
+}
+
+.employee-scan-page .camera-video,
+.employee-scan-page .scan-image-preview {
+  border-radius: 12px;
+}
+
+.employee-scan-page .qr-frame {
+  border-color: #7ff9e0;
+  box-shadow: 0 0 0 2px rgba(127, 249, 224, 0.16);
+}
+
+.employee-scan-page .upload-dropzone {
+  border-radius: 16px;
+  border-color: rgba(19, 89, 140, 0.24);
+  background: rgba(246, 252, 255, 0.84);
+}
+
+.employee-scan-page .upload-dropzone:hover {
+  border-color: #2b8ad0;
+  background: rgba(233, 245, 255, 0.9);
+}
+
+.employee-scan-page .scan-summary h2,
+.employee-scan-page .scan-payment-panel h3 {
+  font-size: 29px;
+  color: #11395a;
+  letter-spacing: -0.01em;
+}
+
+.employee-scan-page .scan-summary-list {
+  gap: 10px;
+}
+
+.employee-scan-page .scan-summary-list div {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(18, 76, 120, 0.14);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(234, 246, 255, 0.9));
+}
+
+.employee-scan-page .scan-summary-list span {
+  color: #4f7090;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.employee-scan-page .scan-summary-list strong {
+  color: #123d5f;
+  font-size: 15px;
+}
+
+.employee-scan-page .scan-feedback {
+  border-radius: 16px;
+  border-width: 2px;
+}
+
+.employee-scan-page .scan-feedback--neutral {
+  border-color: rgba(53, 126, 185, 0.2);
+  background: linear-gradient(170deg, rgba(236, 246, 255, 0.94), rgba(222, 240, 255, 0.92));
+}
+
+.employee-scan-page .scan-feedback--success {
+  border-color: rgba(31, 151, 98, 0.24);
+  background: linear-gradient(170deg, rgba(228, 248, 239, 0.95), rgba(210, 241, 224, 0.92));
+}
+
+.employee-scan-page .scan-feedback--error {
+  border-color: rgba(201, 71, 88, 0.24);
+  background: linear-gradient(170deg, rgba(255, 238, 240, 0.96), rgba(255, 227, 232, 0.93));
+}
+
+@media (max-width: 980px) {
+  .employee-scan-page .scan-page {
+    border-radius: 22px;
+    padding: 16px;
+  }
+
+  .employee-scan-page .scan-subtitle {
+    font-size: 18px;
+  }
+
+  .employee-scan-page .scan-hero-badge {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .employee-scan-page .scan-title {
+    font-size: clamp(26px, 7vw, 33px);
+  }
+
+  .employee-scan-page .scan-panel {
+    border-radius: 18px;
+    padding: 16px;
+  }
+}

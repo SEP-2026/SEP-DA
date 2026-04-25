@@ -10,6 +10,7 @@ import { getBannerTone } from "../../features/gate/statusLabel";
 import { employeeCheckIn, employeeCheckOut, getEmployeeGateBooking } from "../../employee/employeeService";
 import { useEmployeeContext } from "../../employee/useEmployeeContext";
 import "../Scan.css";
+import "./EmployeeQrScanner.css";
 
 function buildBannerFromError(error, fallbackTitle) {
   return {
@@ -229,7 +230,7 @@ export default function EmployeeQrScanner() {
   };
 
   return (
-    <section className="page-wrap">
+    <section className="page-wrap employee-scan-page">
       <div className="page-card scan-page">
         <div className="scan-hero">
           <div>
