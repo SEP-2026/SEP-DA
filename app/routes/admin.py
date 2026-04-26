@@ -305,7 +305,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
         logs.append({
             "id": f"booking-{booking.id}",
             "actor": booking.user.name if booking.user else "system",
-            "action": f"Booking #{booking.id} Ä‘Æ°á»£c táº¡o",
+            "action": f"Booking #{booking.id} được tạo",
             "time": booking.created_at.isoformat() if booking.created_at else datetime.utcnow().isoformat(),
             "type": "system",
         })
@@ -315,7 +315,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
             logs.append({
                 "id": f"user-{user.id}",
                 "actor": "system",
-                "action": f"TÃ i khoáº£n {user.email} Ä‘ang bá»‹ khÃ³a",
+                "action": f"Tài khoản {user.email} đang bị khóa",
                 "time": datetime.utcnow().isoformat(),
                 "type": "security",
             })
@@ -325,7 +325,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
             logs.append({
                 "id": f"lot-{lot.id}",
                 "actor": "system",
-                "action": f"BÃ£i {lot.name} Ä‘ang bá»‹ khÃ³a",
+                "action": f"Bãi {lot.name} đang bị khóa",
                 "time": datetime.utcnow().isoformat(),
                 "type": "warning",
             })
@@ -339,8 +339,8 @@ def _build_login_history(db: Session) -> list[dict]:
         {
             "id": f"token-{token.id}",
             "email": "admin-session",
-            "ip": "KhÃ´ng lÆ°u trong CSDL",
-            "device": "KhÃ´ng lÆ°u trong CSDL",
+            "ip": "Không lưu trong CSDL",
+            "device": "Không lưu trong CSDL",
             "time": token.expires_at.isoformat(),
             "status": "blocked",
         }
