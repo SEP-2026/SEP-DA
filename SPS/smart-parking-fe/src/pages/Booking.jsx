@@ -3,10 +3,8 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import API, { getAuth, saveAuth } from "../services/api";
 import { formatDateOnlyVN, toDateInputValue, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import ParkingMap from "../components/ParkingMap";
+import NearbyParkingMap from "../components/NearbyParkingMap";
 import "./Booking.css";
-
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-const GOOGLE_MAP_SCRIPT_ID = "google-maps-script";
 
 const formatDisplayDate = (date) => {
   return formatDateOnlyVN(date, "");
@@ -215,33 +213,6 @@ const formatSeats = (seatCount) => {
   return `${seatCount} chỗ`;
 };
 
-const loadGoogleMapsScript = () => {
-  if (!GOOGLE_MAPS_API_KEY) {
-    return Promise.reject(new Error("Thiếu VITE_GOOGLE_MAPS_API_KEY"));
-  }
-
-  if (window.google?.maps) {
-    return Promise.resolve(window.google.maps);
-  }
-
-  return new Promise((resolve, reject) => {
-    const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(window.google.maps));
-      existingScript.addEventListener("error", () => reject(new Error("Không tải được Google Maps")));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = GOOGLE_MAP_SCRIPT_ID;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(window.google.maps);
-    script.onerror = () => reject(new Error("Không tải được Google Maps"));
-    document.head.appendChild(script);
-  });
-};
 
 export default function Booking() {
   const location = useLocation();
@@ -254,7 +225,6 @@ export default function Booking() {
   const [nearby, setNearby] = useState([]);
   const [searchMeta, setSearchMeta] = useState(null);
   const [searching, setSearching] = useState(false);
-  const [mapError, setMapError] = useState("");
   const [error, setError] = useState("");
   const [bookingError, setBookingError] = useState("");
   const [selectedLot, setSelectedLot] = useState(location.state?.selectedLot || null);
@@ -268,9 +238,6 @@ export default function Booking() {
   const [profile, setProfile] = useState(() => auth?.user || null);
   const [expandedLotId, setExpandedLotId] = useState(null);
   const [prefilledSlotName, setPrefilledSlotName] = useState("");
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markersRef = useRef([]);
   const bookingSectionRef = useRef(null);
   const bookingSubmitLockRef = useRef(false);
   const bookingWindow = useMemo(() => buildBookingWindow(bookingForm), [bookingForm]);
@@ -711,92 +678,6 @@ export default function Booking() {
     }
   };
 
-  useEffect(() => {
-    const renderMap = async () => {
-      if (!mapRef.current || !searchMeta || nearby.length === 0) {
-        return;
-      }
-
-      try {
-        setMapError("");
-        await loadGoogleMapsScript();
-
-        const center = {
-          lat: Number(searchMeta.lat),
-          lng: Number(searchMeta.lng),
-        };
-
-        if (!mapInstanceRef.current) {
-          mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-            zoom: 14,
-            center,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: true,
-          });
-        }
-
-        const map = mapInstanceRef.current;
-        map.setCenter(center);
-
-        markersRef.current.forEach((marker) => marker.setMap(null));
-        markersRef.current = [];
-
-        const bounds = new window.google.maps.LatLngBounds();
-        bounds.extend(center);
-
-        const userMarker = new window.google.maps.Marker({
-          position: center,
-          map,
-          title: "Vị trí tìm kiếm",
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: "#1976d2",
-            fillOpacity: 1,
-            strokeWeight: 2,
-            strokeColor: "#ffffff",
-          },
-        });
-        markersRef.current.push(userMarker);
-
-        nearby.forEach((lot) => {
-          const position = {
-            lat: Number(lot.latitude),
-            lng: Number(lot.longitude),
-          };
-          bounds.extend(position);
-
-          const marker = new window.google.maps.Marker({
-            position,
-            map,
-            title: lot.name,
-          });
-
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div style="min-width:180px">
-                <strong>${lot.name}</strong><br/>
-                <span>${lot.address}</span><br/>
-                <span>Khoảng cách: ${lot.distance} km</span><br/>
-                <span>Giá: ${Number(lot.price_per_hour).toLocaleString("vi-VN")}đ/giờ</span>
-              </div>
-            `,
-          });
-
-          marker.addListener("click", () => infoWindow.open({ anchor: marker, map }));
-          markersRef.current.push(marker);
-        });
-
-        map.fitBounds(bounds);
-      } catch {
-        setMapError("Không tải được Google Maps. Hãy kiểm tra VITE_GOOGLE_MAPS_API_KEY.");
-      }
-    };
-
-    renderMap();
-  }, [nearby, searchMeta]);
-
   return (
     <section className="page-wrap">
       <div className="page-card booking-shell">
@@ -846,8 +727,11 @@ export default function Booking() {
 
           {nearby.length > 0 && (
             <>
-              <div className="nearby-map" ref={mapRef} />
-              {mapError && <p className="booking-error">{mapError}</p>}
+              <NearbyParkingMap
+                searchMeta={searchMeta}
+                nearbyLots={nearby}
+                onSelectLot={handleSelectLot}
+              />
 
               <div className="nearby-list">
                 {nearby.map((lot) => (
