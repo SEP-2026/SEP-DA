@@ -57,7 +57,7 @@ export default function EmployeeParkingBoard({ slotsOverview, title = "Sơ đồ
       <div className="parking-grid">
         {normalizedSlots.map((slot) => {
           const isAvailable = slot.status === "available";
-          const cardClass = `slot-card${slot.clickable ? " slot-card--interactive employee-slot-card--interactive" : " employee-slot-card--static"}`;
+          const cardClass = `slot-card${slot.clickable ? " employee-slot-card--interactive" : " employee-slot-card--static"}`;
           return (
             <article
               key={slot.id}

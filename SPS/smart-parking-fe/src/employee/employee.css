@@ -501,15 +501,23 @@
   margin-top: 6px;
 }
 
+.employee-parking-board .employee-slot-card--interactive {
+  cursor: pointer;
+  transform: none !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
 .employee-parking-board .employee-slot-card--interactive:hover,
 .employee-parking-board .employee-slot-card--interactive:focus-visible {
   transform: none;
-  box-shadow: 0 0 0 1px rgba(20, 154, 143, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-  border-color: rgba(20, 154, 143, 0.32);
+  border-color: rgba(188, 38, 55, 0.62);
+  box-shadow: 0 0 0 1px rgba(188, 38, 55, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  outline: none;
 }
 
-.employee-parking-board .employee-slot-card--interactive {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+.employee-parking-board .employee-slot-card--interactive:hover .slot-occupied,
+.employee-parking-board .employee-slot-card--interactive:focus-visible .slot-occupied {
+  background: linear-gradient(180deg, #ef9aa5 0%, #cf4d5d 100%);
 }
 
 .employee-parking-board .employee-slot-card--static {
