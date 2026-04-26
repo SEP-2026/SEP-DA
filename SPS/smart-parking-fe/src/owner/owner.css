@@ -1192,6 +1192,34 @@
   border-color: transparent;
 }
 
+.owner-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.owner-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(20, 57, 93, 0.08);
+}
+
+.owner-pagination-info {
+  color: #5d7d97;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.owner-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1180px) {
   .owner-stats-grid--wide,
   .owner-stats-grid,

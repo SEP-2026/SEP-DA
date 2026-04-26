@@ -7,10 +7,27 @@ export default function OwnerBookings() {
   const { ownerData, actions, isSyncing } = useOwnerContext();
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filteredBookings = useMemo(() => ownerData.bookings.filter((booking) => (
     statusFilter === "all" ? true : booking.status === statusFilter
   )), [ownerData.bookings, statusFilter]);
+
+  const totalPages = Math.ceil(filteredBookings.length / itemsPerPage);
+  const paginatedBookings = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredBookings.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredBookings, currentPage, itemsPerPage]);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (value) => {
+    setItemsPerPage(Number(value));
+    setCurrentPage(1);
+  };
 
   return (
     <div className="owner-page-grid">
@@ -18,14 +35,21 @@ export default function OwnerBookings() {
         title="Danh sách đơn đặt chỗ"
         subtitle="Theo dõi booking của bãi và hỗ trợ khách khi phát sinh sự cố như quên điện thoại."
         actions={
-          <select className="owner-input owner-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">Tất cả trạng thái</option>
-            <option value="pending">Chờ xác nhận</option>
-            <option value="confirmed">Đã xác nhận</option>
-            <option value="in_progress">Đang hoạt động</option>
-            <option value="completed">Hoàn tất</option>
-            <option value="cancelled">Đã hủy</option>
-          </select>
+          <div className="owner-actions-row">
+            <select className="owner-input owner-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="pending">Chờ xác nhận</option>
+              <option value="confirmed">Đã xác nhận</option>
+              <option value="in_progress">Đang hoạt động</option>
+              <option value="completed">Hoàn tất</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+            <select className="owner-input owner-select" value={itemsPerPage} onChange={(event) => handleItemsPerPageChange(event.target.value)}>
+              <option value={5}>5 / trang</option>
+              <option value={10}>10 / trang</option>
+              <option value={25}>25 / trang</option>
+            </select>
+          </div>
         }
       >
         {isSyncing ? <p className="owner-empty">Đang đồng bộ booking từ CSDL...</p> : null}
@@ -51,7 +75,7 @@ export default function OwnerBookings() {
                   <td colSpan={10} className="owner-empty-cell">Chưa có booking nào khớp bộ lọc hiện tại.</td>
                 </tr>
               ) : null}
-              {filteredBookings.map((booking) => (
+              {paginatedBookings.map((booking) => (
                 <tr key={booking.id}>
                   <td>{booking.code}</td>
                   <td>{booking.parkingLotName || "Chưa có bãi"}</td>
@@ -83,6 +107,29 @@ export default function OwnerBookings() {
             </tbody>
           </table>
         </div>
+        {filteredBookings.length > 0 && (
+          <div className="owner-pagination">
+            <button
+              type="button"
+              className="btn-secondary owner-btn owner-btn--small"
+              disabled={currentPage === 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+            >
+              ← Trang trước
+            </button>
+            <div className="owner-pagination-info">
+              Trang {currentPage} / {totalPages} ({filteredBookings.length} kết quả)
+            </div>
+            <button
+              type="button"
+              className="btn-secondary owner-btn owner-btn--small"
+              disabled={currentPage === totalPages}
+              onClick={() => handlePageChange(currentPage + 1)}
+            >
+              Trang sau →
+            </button>
+          </div>
+        )}
       </SectionCard>
 
       {selectedBooking ? createPortal(
