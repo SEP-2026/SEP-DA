@@ -489,7 +489,7 @@ export default function Home({ role = "" }) {
                       className="action-btn action-btn--primary"
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.location.href = `/booking?lot_id=${lot.parking_id}`;
+                        window.location.assign(`/booking?lot_id=${lot.parking_id}`);
                       }}
                       disabled={lot.available_slots === 0}
                     >

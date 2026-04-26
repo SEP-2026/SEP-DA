@@ -118,20 +118,6 @@ function AppBody({ auth, role, onLogin, onLogout }) {
   const isOwnerScanPage = location.pathname.startsWith("/scan");
   const displayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.username || auth?.user?.email || "";
 
-  const navigateWithFallback = (to) => {
-    navigate(to);
-
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.setTimeout(() => {
-      const targetPath = to.startsWith("/") ? to : `/${to}`;
-      if (window.location.pathname !== targetPath) {
-        window.location.assign(targetPath);
-      }
-    }, 120);
-  };
 
   const links = useMemo(() => {
     if (!auth) {
@@ -165,9 +151,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
     return [{ to: "/", label: "Trang bãi xe" }, ...(roleLinks[role] || [])];
   }, [auth, role]);
 
-  const userInfo = [displayName, auth?.user?.email, auth?.user?.phone, auth?.user?.vehicle_plate]
-    .filter(Boolean)
-    .join(" • ");
+  const userInfo = displayName;
 
   const defaultAuthedRoute = getDefaultRouteByRole(role);
 
@@ -182,10 +166,6 @@ function AppBody({ auth, role, onLogin, onLogout }) {
                 to={link.to}
                 end={link.to === "/"}
                 className={({ isActive }) => `app-link${isActive ? " active" : ""}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigateWithFallback(link.to);
-                }}
               >
                 {link.label}
               </NavLink>
@@ -202,7 +182,8 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         </nav>
       ) : null}
 
-      <Routes>
+      <div className="page-transition">
+        <Routes>
         <Route
           path="/login"
           element={auth ? <Navigate to={defaultAuthedRoute} replace /> : <Login onLogin={onLogin} />}
@@ -277,6 +258,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         </Route>
         <Route path="*" element={<Navigate to={auth ? defaultAuthedRoute : "/login"} replace />} />
       </Routes>
+      </div>
     </div>
   );
 }
