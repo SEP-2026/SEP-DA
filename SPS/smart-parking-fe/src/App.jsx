@@ -37,6 +37,13 @@ import EmployeeVehicles from "./pages/employee/EmployeeVehicles";
 import API, { clearAuth, getAuth, saveAuth } from "./services/api";
 import "./styles/layout.css";
 
+function getDefaultRouteByRole(role) {
+  if (role === "admin") return "/admin";
+  if (role === "employee") return "/employee";
+  if (role === "owner") return "/owner";
+  return "/";
+}
+
 function App() {
   const [auth, setAuth] = useState(() => getAuth());
   const [checkingSession, setCheckingSession] = useState(() => Boolean(getAuth()?.token));
@@ -162,6 +169,8 @@ function AppBody({ auth, role, onLogin, onLogout }) {
     .filter(Boolean)
     .join(" • ");
 
+  const defaultAuthedRoute = getDefaultRouteByRole(role);
+
   return (
     <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}${isEmployeeWorkspace ? " app-shell--employee" : ""}`}>
       {auth && !isOwnerWorkspace && !isAdminWorkspace && !isEmployeeWorkspace && !isOwnerScanPage ? (
@@ -196,11 +205,11 @@ function AppBody({ auth, role, onLogin, onLogout }) {
       <Routes>
         <Route
           path="/login"
-          element={auth ? <Navigate to="/" replace /> : <Login onLogin={onLogin} />}
+          element={auth ? <Navigate to={defaultAuthedRoute} replace /> : <Login onLogin={onLogin} />}
         />
         <Route
           path="/"
-          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : role === "employee" ? <Navigate to="/employee" replace /> : <Home role={role} />) : <Navigate to="/login" replace />}
+          element={auth ? (role === "user" ? <Home role={role} /> : <Navigate to={defaultAuthedRoute} replace />) : <Navigate to="/login" replace />}
         />
         <Route
           path="/booking"
@@ -266,10 +275,11 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
-        <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={auth ? defaultAuthedRoute : "/login"} replace />} />
       </Routes>
     </div>
   );
 }
 
 export default App;
+
