@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -227,10 +227,12 @@ def employee_profile(
 
 @router.get("/history", response_model=EmployeeHistoryResponse)
 def employee_history(
+    limit: int = Query(default=200, ge=1, le=500),
+    action: str | None = Query(default=None),
     current_employee: EmployeeAccount = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
-    return EmployeeHistoryResponse(**employee_history_controller(current_employee, db))
+    return EmployeeHistoryResponse(**employee_history_controller(current_employee, db, limit=limit, action=action))
 
 
 @router.post("/check-in", response_model=EmployeeQrActionResponse)

@@ -122,7 +122,12 @@ class EmployeeSlotItem(BaseModel):
     zone: str
     level: str
     status: str
+    owner_name: str | None = None
+    owner_phone: str | None = None
     vehicle_plate: str | None = None
+    booking_mode: str | None = None
+    check_in_time: datetime | None = None
+    check_out_time: datetime | None = None
     booking_code: str | None = None
 
 

@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { OwnerIcon } from "../owner/OwnerIcons";
 import { getEmployeeParkingLot, getEmployeeProfile, getEmployeeRevenue, getEmployeeSlotsOverview } from "./employeeService";
@@ -38,24 +38,26 @@ export default function EmployeeLayout({ auth, onLogout }) {
     slots: [],
   });
   const [loading, setLoading] = useState(true);
+  const [syncNote, setSyncNote] = useState("Đang đồng bộ...");
 
-  const refreshEmployee = async () => {
+  const refreshEmployee = useCallback(async () => {
     setLoading(true);
-    try {
-      const [parkingLotRes, profileRes, revenueRes, slotsOverviewRes] = await Promise.all([
-        getEmployeeParkingLot(),
-        getEmployeeProfile(),
-        getEmployeeRevenue(),
-        getEmployeeSlotsOverview(),
-      ]);
-      setParkingLot(parkingLotRes);
-      setProfile(profileRes);
-      setRevenue(revenueRes);
-      setSlotsOverview(slotsOverviewRes);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const [parkingLotRes, profileRes, revenueRes, slotsOverviewRes] = await Promise.allSettled([
+      getEmployeeParkingLot(),
+      getEmployeeProfile(),
+      getEmployeeRevenue(),
+      getEmployeeSlotsOverview(),
+    ]);
+
+    if (parkingLotRes.status === "fulfilled") setParkingLot(parkingLotRes.value);
+    if (profileRes.status === "fulfilled") setProfile(profileRes.value);
+    if (revenueRes.status === "fulfilled") setRevenue(revenueRes.value);
+    if (slotsOverviewRes.status === "fulfilled") setSlotsOverview(slotsOverviewRes.value);
+
+    const failedCount = [parkingLotRes, profileRes, revenueRes, slotsOverviewRes].filter((item) => item.status === "rejected").length;
+    setSyncNote(failedCount > 0 ? `Đồng bộ thiếu ${failedCount} mục dữ liệu` : "Đồng bộ thành công");
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     refreshEmployee();
@@ -79,7 +81,7 @@ export default function EmployeeLayout({ auth, onLogout }) {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [refreshEmployee]);
 
   const displayName = auth?.user?.username || "nhân viên";
   const routeHint = ROUTE_HINT[location.pathname] || "Không gian vận hành dành cho tài khoản nhân viên.";
@@ -114,12 +116,6 @@ export default function EmployeeLayout({ auth, onLogout }) {
           </nav>
         </div>
 
-        <div className="employee-sidebar-panel employee-sidebar-panel--compact">
-          <p className="employee-sidebar-title">Lối tắt</p>
-          <Link to="/" className="employee-shortcut">Trang bãi xe</Link>
-          <Link to="/scan" className="employee-shortcut">Quét cổng owner/admin</Link>
-        </div>
-
         <button type="button" className="employee-logout" onClick={onLogout}>
           <OwnerIcon name="logout" className="owner-menu-icon" />
           <span>Đăng xuất</span>
@@ -149,14 +145,14 @@ export default function EmployeeLayout({ auth, onLogout }) {
               <div className="employee-avatar-mark">{displayName.slice(0, 1).toUpperCase()}</div>
               <div>
                 <strong>{displayName}</strong>
-                <span>{loading ? "Đang đồng bộ..." : `Hôm nay ${Number(revenue.revenueToday || 0).toLocaleString("vi-VN")}đ`}</span>
+                <span>{loading ? "Đang đồng bộ..." : `${syncNote} · Hôm nay ${Number(revenue.revenueToday || 0).toLocaleString("vi-VN")}đ`}</span>
               </div>
             </div>
           </div>
         </header>
 
         <main className="employee-content">
-          <Outlet context={{ auth, parkingLot, profile, revenue, slotsOverview, refreshEmployee, loading }} />
+          <Outlet context={{ auth, parkingLot, profile, revenue, slotsOverview, refreshEmployee, loading, syncNote }} />
         </main>
       </div>
     </div>

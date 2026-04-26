@@ -35,8 +35,8 @@ export async function getEmployeeProfile() {
   return response.data;
 }
 
-export async function getEmployeeHistory() {
-  const response = await API.get("/api/employee/history");
+export async function getEmployeeHistory(params = {}) {
+  const response = await API.get("/api/employee/history", { params });
   return response.data;
 }
 

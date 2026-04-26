@@ -473,7 +473,7 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
             LEFT JOIN users u ON u.id = b.user_id
             LEFT JOIN parking_slots ps ON ps.id = b.slot_id
             WHERE b.parking_id = :parking_id
-              AND b.status = 'checked_in'
+              AND b.status IN ('checked_in', 'in_progress')
             ORDER BY COALESCE(b.actual_checkin, b.checkin_time) DESC, b.id DESC
             """
         ),
@@ -526,7 +526,12 @@ def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
                 "zone": slot.zone or "Chưa phân khu",
                 "level": slot.level or "Chưa gán tầng",
                 "status": status,
+                "owner_name": active_booking.user.name if active_booking and active_booking.user else None,
+                "owner_phone": active_booking.user.phone if active_booking and active_booking.user else None,
                 "vehicle_plate": active_booking.user.vehicle_plate if active_booking and active_booking.user else None,
+                "booking_mode": active_booking.booking_mode if active_booking else None,
+                "check_in_time": (active_booking.actual_checkin or active_booking.start_time) if active_booking else None,
+                "check_out_time": (active_booking.actual_checkout or active_booking.expire_time) if active_booking else None,
                 "booking_code": f"BK-{active_booking.id}" if active_booking else None,
             }
         )
@@ -753,12 +758,21 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
     }
 
 
-def get_employee_history(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_history(
+    employee: EmployeeAccount,
+    db: Session,
+    *,
+    limit: int = 200,
+    action: str | None = None,
+) -> dict:
+    safe_limit = max(1, min(int(limit or 200), 500))
+    query = db.query(EmployeeActivity).filter(EmployeeActivity.employee_id == employee.id)
+    if action:
+        query = query.filter(EmployeeActivity.action == action.strip())
     rows = (
-        db.query(EmployeeActivity)
-        .filter(EmployeeActivity.employee_id == employee.id)
+        query
         .order_by(EmployeeActivity.created_at.desc(), EmployeeActivity.id.desc())
-        .limit(200)
+        .limit(safe_limit)
         .all()
     )
     history = [

@@ -113,5 +113,11 @@ def employee_gate_booking_controller(employee: EmployeeAccount, booking_id: int,
     return employee_get_gate_booking(employee, booking_id, db)
 
 
-def employee_history_controller(employee: EmployeeAccount, db: Session) -> dict:
-    return get_employee_history(employee, db)
+def employee_history_controller(
+    employee: EmployeeAccount,
+    db: Session,
+    *,
+    limit: int = 200,
+    action: str | None = None,
+) -> dict:
+    return get_employee_history(employee, db, limit=limit, action=action)
