@@ -7,10 +7,10 @@ export default function AdminDashboard() {
   return (
     <div className="owner-page-grid">
       <div className="owner-stats-grid owner-stats-grid--wide">
-        <StatCard title="Tổng người dùng" value={stats.totalUsers} note="Người dùng toàn hệ thống" trend="+12 tháng này" icon="users" />
-        <StatCard title="Tổng chủ bãi" value={stats.totalOwners} note="Tài khoản đối tác" trend="+1 chủ bãi mới" icon="owners" />
-        <StatCard title="Tổng bãi đỗ" value={stats.totalParkingLots} note="Bãi đang được quản lý" trend="1 bãi chờ duyệt" icon="parking" />
-        <StatCard title="Tổng đặt chỗ" value={stats.totalBookings} note="Đặt chỗ toàn hệ thống" trend="153 hôm nay" icon="booking" />
+        <StatCard title="Tổng người dùng" value={stats.totalUsers} note="Người dùng toàn hệ thống" trend={`${adminData.users.filter((u) => u.status === "active").length} đang hoạt động`} icon="users" />
+        <StatCard title="Tổng chủ bãi" value={stats.totalOwners} note="Tài khoản đối tác" trend={`${adminData.owners.filter((o) => o.status === "active").length} hoạt động`} icon="owners" />
+        <StatCard title="Tổng bãi đỗ" value={stats.totalParkingLots} note="Bãi đang được quản lý" trend={`${adminData.parkingLots.filter((p) => p.status === "pending").length} chờ duyệt`} icon="parking" />
+        <StatCard title="Tổng đặt chỗ" value={stats.totalBookings} note="Đặt chỗ toàn hệ thống" trend={`${adminData.bookings.filter((b) => b.status === "in_progress").length} đang diễn ra`} icon="booking" />
         <StatCard title="Doanh thu hệ thống" value={formatCurrency(stats.totalRevenue)} note="Doanh thu gộp" trend={formatCurrency(stats.totalCommission)} icon="revenue" />
       </div>
 
@@ -19,7 +19,7 @@ export default function AdminDashboard() {
           <LineChart data={adminData.systemRevenue.revenue} />
         </SectionCard>
         <SectionCard title="Số lượng đặt chỗ" subtitle="Khối lượng giao dịch theo ngày.">
-          <BarChart data={adminData.systemRevenue.bookings} />
+          <BarChart data={adminData.systemRevenue.bookings} formatValue={(value) => `${value}`} />
         </SectionCard>
       </div>
 

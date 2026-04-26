@@ -63,6 +63,17 @@ class OwnerStatusUpdateRequest(BaseModel):
     status: str = Field(pattern="^(active|suspended)$")
 
 
+class OwnerUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
+    status: str | None = Field(default=None, pattern="^(active|suspended)$")
+    parking_lot: str | None = Field(default=None, max_length=255, alias="parkingLot")
+
+    class Config:
+        allow_population_by_field_name = True
+
+
 class ParkingLotCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     address: str = Field(min_length=1, max_length=255)
@@ -299,6 +310,115 @@ def _build_user_growth_series(bookings: list[Booking], months: int = 4) -> list[
     return series
 
 
+def _build_monthly_revenue_series(
+    payments: list[Payment],
+    bookings: list[Booking] | None = None,
+    months: int = 6,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    now = datetime.utcnow()
+    commission_rate = float(ADMIN_RUNTIME_SETTINGS["commissionRate"]) / 100
+    target_months: list[tuple[int, int]] = []
+    year = now.year
+    month = now.month
+    for _ in range(max(months, 1)):
+        target_months.append((year, month))
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    target_months.reverse()
+
+    revenue: list[dict] = []
+    commission: list[dict] = []
+    bookings_series: list[dict] = []
+    for year, month in target_months:
+        label = f"{month:02d}/{str(year)[-2:]}"
+        gross = 0.0
+        booking_count = 0
+        if payments:
+            month_payments = [
+                payment for payment in payments
+                if (payment.paid_at or payment.created_at)
+                and (payment.paid_at or payment.created_at).year == year
+                and (payment.paid_at or payment.created_at).month == month
+                and payment.payment_status == "paid"
+            ]
+            gross = round(sum(float(payment.amount or 0) + float(payment.overtime_fee or 0) for payment in month_payments), 2)
+
+        if bookings:
+            month_bookings = [
+                booking for booking in bookings
+                if booking.created_at and booking.created_at.year == year and booking.created_at.month == month
+            ]
+            booking_count = len(month_bookings)
+            if gross <= 0 and not payments:
+                gross = round(
+                    sum(
+                        float(booking.total_amount or 0)
+                        for booking in month_bookings
+                        if booking.status in {"booked", "checked_in", "in_progress", "completed"}
+                    ),
+                    2,
+                )
+
+        revenue.append({"label": label, "amount": gross})
+        commission.append({"label": label, "amount": round(gross * commission_rate, 2)})
+        bookings_series.append({"label": label, "amount": booking_count})
+
+    return revenue, commission, bookings_series
+
+
+def _evaluate_user_spam(users: list[User], bookings: list[Booking]) -> tuple[dict[int, dict], list[dict]]:
+    now = datetime.utcnow()
+    user_meta: dict[int, dict] = {}
+    auto_lock_events: list[dict] = []
+
+    bookings_by_user: dict[int, list[Booking]] = defaultdict(list)
+    for booking in bookings:
+        if booking.user_id:
+            bookings_by_user[int(booking.user_id)].append(booking)
+
+    for user in users:
+        if user.role != "user":
+            continue
+        user_bookings = bookings_by_user.get(int(user.id), [])
+        recent_14d = [
+            booking for booking in user_bookings
+            if booking.created_at and booking.created_at >= now - timedelta(days=14)
+        ]
+        total_recent = len(recent_14d)
+        cancelled_recent = sum(1 for booking in recent_14d if booking.status == "cancelled")
+        invalid_recent = sum(
+            1 for booking in recent_14d
+            if booking.total_amount is None or float(booking.total_amount or 0) <= 0
+        )
+        cancel_ratio = (cancelled_recent / total_recent) if total_recent > 0 else 0.0
+        score = int(round((cancel_ratio * 70) + min(invalid_recent * 10, 30)))
+        is_spam = total_recent >= 4 and (cancel_ratio >= 0.65 or invalid_recent >= 3)
+
+        user_meta[int(user.id)] = {
+            "score": score,
+            "status": "spam" if is_spam else ("risk" if score >= 45 else "normal"),
+            "cancelRatio": round(cancel_ratio, 2),
+            "cancelledRecent": cancelled_recent,
+            "totalRecent": total_recent,
+            "invalidRecent": invalid_recent,
+        }
+
+        if is_spam and user.is_active == 1 and (not user.status or user.status.lower() != "banned"):
+            user.status = "banned"
+            user.is_active = 0
+            auto_lock_events.append({
+                "id": f"spam-{user.id}-{int(now.timestamp())}",
+                "actor": "system",
+                "action": f"Tu dong khoa user {user.email} do hanh vi spam",
+                "time": now.isoformat(),
+                "type": "security",
+            })
+
+    return user_meta, auto_lock_events
+
+
 def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lots: list[ParkingLot]) -> list[dict]:
     logs = []
     for booking in sorted(bookings, key=lambda item: item.created_at or datetime.min, reverse=True)[:4]:
@@ -354,6 +474,10 @@ def _serialize_bootstrap(db: Session) -> dict:
     bookings = db.query(Booking).all()
     slots = db.query(ParkingSlot).all()
     payments = db.query(Payment).all()
+    spam_meta, spam_events = _evaluate_user_spam(users, bookings)
+    if spam_events:
+        db.commit()
+        users = db.query(User).all()
 
     booking_counts_by_user: dict[int, int] = defaultdict(int)
     booking_counts_by_lot: dict[int, int] = defaultdict(int)
@@ -383,6 +507,11 @@ def _serialize_bootstrap(db: Session) -> dict:
             "bookingCount": booking_counts_by_user.get(int(user.id), 0),
             "lastActive": last_booking_by_user.get(int(user.id)).isoformat() if last_booking_by_user.get(int(user.id)) else None,
             "phone": user.phone,
+            "spamScore": spam_meta.get(int(user.id), {}).get("score", 0),
+            "spamStatus": spam_meta.get(int(user.id), {}).get("status", "normal"),
+            "cancelRatio14d": spam_meta.get(int(user.id), {}).get("cancelRatio", 0),
+            "cancelled14d": spam_meta.get(int(user.id), {}).get("cancelledRecent", 0),
+            "bookings14d": spam_meta.get(int(user.id), {}).get("totalRecent", 0),
         }
         for user in users if user.role == "user"
     ]
@@ -405,6 +534,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": owner.id,
             "name": owner.name,
             "email": owner.email,
+            "phone": owner.phone,
             "parkingLots": lot_by_owner.get(int(owner.id)) if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else [],
             # legacy single-string field for backward compatibility (first lot name or placeholder)
             "parkingLot": (lot_by_owner.get(int(owner.id))[0]["name"] if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "ChÆ°a gÃ¡n trong CSDL"),
@@ -483,6 +613,27 @@ def _serialize_bootstrap(db: Session) -> dict:
             })
 
     revenue_series, commission_series = _build_revenue_series(payments, bookings)
+    revenue_monthly, commission_monthly, bookings_monthly = _build_monthly_revenue_series(payments, bookings)
+    avg_occupancy = int(round(sum(item["occupancy"] for item in parking_rows) / len(parking_rows))) if parking_rows else 0
+    active_parking = sum(1 for item in parking_rows if item["status"] == "active")
+    top_parking = max(parking_rows, key=lambda item: item["occupancy"], default=None)
+    growth_values = _build_user_growth_series(bookings)
+    prev_growth = growth_values[-2]["amount"] if len(growth_values) > 1 else 0
+    current_growth = growth_values[-1]["amount"] if growth_values else 0
+    growth_percent = int(round(((current_growth - prev_growth) / prev_growth) * 100)) if prev_growth > 0 else (100 if current_growth > 0 else 0)
+    activity_logs = _build_activity_logs(bookings, users, parking_lots)
+    combined_logs = (spam_events + activity_logs)[:12]
+
+    notifications = [
+        {
+            "id": item["id"],
+            "title": item["action"],
+            "time": item["time"],
+            "level": item["type"],
+        }
+        for item in combined_logs
+    ]
+
     return {
         "commissionRate": int(float(ADMIN_RUNTIME_SETTINGS["commissionRate"])),
         "users": user_rows,
@@ -493,11 +644,22 @@ def _serialize_bootstrap(db: Session) -> dict:
         "systemRevenue": {
             "revenue": revenue_series,
             "commission": commission_series,
+            "revenueMonthly": revenue_monthly,
+            "commissionMonthly": commission_monthly,
             "bookings": _build_booking_series(bookings),
+            "bookingsMonthly": bookings_monthly,
             "userGrowth": _build_user_growth_series(bookings),
             "occupancy": [{"label": lot["name"], "amount": lot["occupancy"]} for lot in parking_rows[:6]],
         },
-        "logs": _build_activity_logs(bookings, users, parking_lots),
+        "analyticsSummary": {
+            "userGrowthPercent": growth_percent,
+            "averageOccupancy": avg_occupancy,
+            "activeParkingLots": active_parking,
+            "topParking": top_parking["name"] if top_parking else "Chua co",
+            "topParkingOccupancy": top_parking["occupancy"] if top_parking else 0,
+        },
+        "notifications": notifications,
+        "logs": combined_logs,
         "loginHistory": _build_login_history(db),
         "settings": ADMIN_RUNTIME_SETTINGS,
     }
@@ -605,6 +767,7 @@ def create_owner(
         "id": owner.id,
         "name": owner.name,
         "email": owner.email,
+        "phone": owner.phone,
         "parkingLots": assigned,
         "parkingLot": assigned[0]["name"] if assigned else "ChÆ°a gÃ¡n trong CSDL",
         "status": payload.status,
@@ -613,6 +776,49 @@ def create_owner(
     }
 
     return {"message": "Táº¡o tÃ i khoáº£n owner thÃ nh cÃ´ng", "default_password": temporary_password, "owner": owner_info}
+
+
+@router.patch("/owners/{owner_id}")
+def update_owner(
+    owner_id: int,
+    payload: OwnerUpdateRequest,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
+    if not owner:
+        raise HTTPException(status_code=404, detail="Khong tim thay owner")
+
+    if payload.name is not None:
+        owner.name = payload.name.strip()
+
+    if payload.email is not None:
+        normalized_email = payload.email.lower().strip()
+        duplicate = db.query(User.id).filter(User.email == normalized_email, User.id != owner_id).first()
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Email da ton tai")
+        owner.email = normalized_email
+
+    if payload.phone is not None:
+        owner.phone = payload.phone.strip() or None
+
+    if payload.status is not None:
+        owner.status = "active" if payload.status == "active" else "banned"
+        owner.is_active = 1 if payload.status == "active" else 0
+
+    if payload.parking_lot is not None:
+        db.query(OwnerParking).filter(OwnerParking.owner_id == owner_id).delete()
+        if payload.parking_lot.strip():
+            lot = _find_parking_lot_by_reference(db, payload.parking_lot)
+            if not lot:
+                raise HTTPException(status_code=404, detail="Khong tim thay bai do")
+            existing_assignment = db.query(OwnerParking).filter(OwnerParking.parking_id == lot.id).first()
+            if existing_assignment and int(existing_assignment.owner_id) != int(owner_id):
+                raise HTTPException(status_code=409, detail="Bai do da gan cho owner khac")
+            db.add(OwnerParking(owner_id=owner_id, parking_id=lot.id))
+
+    db.commit()
+    return {"message": "Da cap nhat thong tin owner"}
 
 
 @router.patch("/owners/{owner_id}/status")

@@ -13,7 +13,7 @@ export default function AdminLayout({ auth, onLogout }) {
   const [syncNote, setSyncNote] = useState("Đang tải dữ liệu admin");
   const [loading, setLoading] = useState(true);
   const meta = ADMIN_ROUTE_META[location.pathname] || ADMIN_ROUTE_META["/admin"];
-  const notificationsCount = adminData?.logs?.length || 0;
+  const notificationsCount = adminData?.notifications?.length || adminData?.logs?.length || 0;
   const adminDisplayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "Admin";
 
   const refreshAdminData = useCallback(async () => {
@@ -64,6 +64,10 @@ export default function AdminLayout({ auth, onLogout }) {
     },
     async toggleOwnerStatus(id, status) {
       await API.patch(`/admin/owners/${id}/status`, { status });
+      await refreshAdminData();
+    },
+    async updateOwner(id, payload) {
+      await API.patch(`/admin/owners/${id}`, payload);
       await refreshAdminData();
     },
     async resetOwnerPassword(id) {
