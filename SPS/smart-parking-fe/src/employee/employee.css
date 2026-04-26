@@ -504,20 +504,35 @@
 .employee-parking-board .employee-slot-card--interactive {
   cursor: pointer;
   transform: none !important;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  transition: none !important;
 }
 
 .employee-parking-board .employee-slot-card--interactive:hover,
 .employee-parking-board .employee-slot-card--interactive:focus-visible {
-  transform: none;
-  border-color: rgba(188, 38, 55, 0.62);
-  box-shadow: 0 0 0 1px rgba(188, 38, 55, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transform: none !important;
+  border-color: rgba(33, 56, 83, 0.24);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
   outline: none;
 }
 
 .employee-parking-board .employee-slot-card--interactive:hover .slot-occupied,
 .employee-parking-board .employee-slot-card--interactive:focus-visible .slot-occupied {
-  background: linear-gradient(180deg, #ef9aa5 0%, #cf4d5d 100%);
+  background: linear-gradient(180deg, #e88b98 0%, #ba2f40 100%);
+}
+
+.employee-parking-board .employee-slot-card--interactive .slot-car,
+.employee-parking-board .employee-slot-card--interactive .car-image {
+  transition: none !important;
+}
+
+.employee-parking-board .employee-slot-card--interactive .slot-car {
+  left: 50%;
+  transform: translateX(-50%) !important;
+  box-shadow: 0 10px 20px rgba(10, 21, 38, 0.12);
+}
+
+.employee-parking-board .employee-slot-card--interactive .car-image {
+  transform: none !important;
 }
 
 .employee-parking-board .employee-slot-card--static {

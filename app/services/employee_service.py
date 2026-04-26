@@ -466,15 +466,27 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
             SELECT
                 b.id AS booking_id,
                 u.vehicle_plate AS license_plate,
+                u.full_name AS owner_name,
+                u.phone AS owner_phone,
                 COALESCE(b.actual_checkin, b.checkin_time) AS check_in_time,
                 b.status AS status,
-                COALESCE(ps.slot_number, ps.code) AS slot_code
+                COALESCE(ps.slot_number, ps.code) AS slot_code,
+                b.booking_mode AS booking_mode
             FROM bookings b
             LEFT JOIN users u ON u.id = b.user_id
             LEFT JOIN parking_slots ps ON ps.id = b.slot_id
             WHERE b.parking_id = :parking_id
-              AND b.status IN ('checked_in', 'in_progress')
-            ORDER BY COALESCE(b.actual_checkin, b.checkin_time) DESC, b.id DESC
+              AND b.status IN ('pending', 'booked', 'checked_in', 'in_progress')
+            ORDER BY
+              CASE b.status
+                WHEN 'checked_in' THEN 1
+                WHEN 'in_progress' THEN 2
+                WHEN 'booked' THEN 3
+                WHEN 'pending' THEN 4
+                ELSE 5
+              END,
+              COALESCE(b.actual_checkin, b.checkin_time) DESC,
+              b.id DESC
             """
         ),
         {"parking_id": parking_lot.id},
@@ -483,9 +495,12 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
         {
             "booking_id": row["booking_id"],
             "license_plate": row["license_plate"],
+            "owner_name": row["owner_name"],
+            "owner_phone": row["owner_phone"],
             "check_in_time": row["check_in_time"],
             "status": row["status"],
             "slot_code": row["slot_code"],
+            "booking_mode": row["booking_mode"],
         }
         for row in rows
     ]

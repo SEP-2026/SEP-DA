@@ -85,10 +85,13 @@ class EmployeeProfileResponse(BaseModel):
 
 class EmployeeVehicleItem(BaseModel):
     booking_id: int
+    owner_name: str | None = None
+    owner_phone: str | None = None
     license_plate: str | None = None
     check_in_time: datetime | None = None
     status: str
     slot_code: str | None = None
+    booking_mode: str | None = None
 
 
 class EmployeeVehicleResponse(BaseModel):

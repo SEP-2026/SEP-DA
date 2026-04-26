@@ -36,7 +36,11 @@ export default function EmployeeParkingBoard({ slotsOverview, title = "Sơ đồ
   const occupied = Number(slotsOverview?.in_use_slots || 0) + Number(slotsOverview?.reserved_slots || 0);
 
   const normalizedSlots = useMemo(
-    () => slots.map((slot) => ({ ...slot, clickable: slot.status === "occupied" || slot.status === "in_use" || slot.status === "reserved" })),
+    () =>
+      slots.map((slot) => ({
+        ...slot,
+        clickable: slot.status === "occupied" || slot.status === "in_use" || slot.status === "reserved",
+      })),
     [slots],
   );
 
@@ -84,7 +88,9 @@ export default function EmployeeParkingBoard({ slotsOverview, title = "Sơ đồ
                   className="car-image"
                 />
               </div>
-              <div className="slot-badge">{slot.code} - {formatStatusLabel(slot.status)}</div>
+              <div className="slot-badge">
+                {slot.code} - {formatStatusLabel(slot.status)}
+              </div>
             </article>
           );
         })}
@@ -95,15 +101,29 @@ export default function EmployeeParkingBoard({ slotsOverview, title = "Sơ đồ
           <div className="employee-vehicle-modal" onClick={(event) => event.stopPropagation()}>
             <div className="employee-vehicle-modal-head">
               <h3>Thông tin xe tại ô {selectedVehicleSlot.code}</h3>
-              <button type="button" className="employee-vehicle-modal-close" onClick={() => setSelectedVehicleSlot(null)}>×</button>
+              <button type="button" className="employee-vehicle-modal-close" onClick={() => setSelectedVehicleSlot(null)}>
+                ×
+              </button>
             </div>
             <div className="employee-vehicle-modal-body">
-              <p><strong>Tên chủ xe:</strong> {selectedVehicleSlot.owner_name || "--"}</p>
-              <p><strong>Biển số xe:</strong> {selectedVehicleSlot.vehicle_plate || "--"}</p>
-              <p><strong>Số điện thoại:</strong> {selectedVehicleSlot.owner_phone || "--"}</p>
-              <p><strong>Dịch vụ khách chọn:</strong> {formatServiceLabel(selectedVehicleSlot.booking_mode)}</p>
-              <p><strong>Giờ vào:</strong> {formatDateTime(selectedVehicleSlot.check_in_time)}</p>
-              <p><strong>Giờ ra dự kiến:</strong> {formatDateTime(selectedVehicleSlot.check_out_time)}</p>
+              <p>
+                <strong>Tên chủ xe:</strong> {selectedVehicleSlot.owner_name || "--"}
+              </p>
+              <p>
+                <strong>Biển số xe:</strong> {selectedVehicleSlot.vehicle_plate || "--"}
+              </p>
+              <p>
+                <strong>Số điện thoại:</strong> {selectedVehicleSlot.owner_phone || "--"}
+              </p>
+              <p>
+                <strong>Dịch vụ khách chọn:</strong> {formatServiceLabel(selectedVehicleSlot.booking_mode)}
+              </p>
+              <p>
+                <strong>Giờ vào:</strong> {formatDateTime(selectedVehicleSlot.check_in_time)}
+              </p>
+              <p>
+                <strong>Giờ ra dự kiến:</strong> {formatDateTime(selectedVehicleSlot.check_out_time)}
+              </p>
             </div>
           </div>
         </div>

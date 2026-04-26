@@ -16,6 +16,7 @@ export default function EmployeeVehicles() {
   const [data, setData] = useState({ vehicles: [], total_count: 0 });
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const occupiedOrReserved = (slotsOverview?.in_use_slots || 0) + (slotsOverview?.reserved_slots || 0);
 
   const refreshVehicles = async () => {
     const res = await getEmployeeVehicles();
@@ -64,14 +65,14 @@ export default function EmployeeVehicles() {
             <option value="in_progress">Đang vận hành</option>
             <option value="booked">Đã đặt chỗ</option>
           </select>
-          <span className="employee-chip">Tổng xe hiện tại: {data.total_count}</span>
+          <span className="employee-chip">Tổng xe hiện tại: {occupiedOrReserved}</span>
         </div>
       </div>
 
       <div className="employee-traffic-summary">
         <div className="employee-traffic-chip">
-          <span>Số xe đang đỗ</span>
-          <strong>{data.total_count}</strong>
+          <span>Số xe giữ/đang đỗ</span>
+          <strong>{occupiedOrReserved}</strong>
         </div>
         <div className="employee-traffic-chip">
           <span>Vị trí trống</span>
