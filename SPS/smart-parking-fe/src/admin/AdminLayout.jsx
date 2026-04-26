@@ -190,6 +190,10 @@ export default function AdminLayout({ auth, onLogout }) {
               <span>{notificationsCount}</span>
             </div>
             <div className="admin-role-pill">Trung tâm vận hành</div>
+            <button type="button" className="admin-topbar-logout" onClick={onLogout}>
+              <AdminIcon name="logout" className="admin-menu-icon" />
+              <span>Đăng xuất</span>
+            </button>
             <div className="admin-avatar">
               <div className="admin-avatar-mark">{adminDisplayName.slice(0, 1).toUpperCase()}</div>
               <div>
