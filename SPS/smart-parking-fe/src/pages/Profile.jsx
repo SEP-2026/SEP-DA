@@ -20,6 +20,21 @@ const normalizeError = (err, fallback) => {
   return fallback;
 };
 
+const normalizeText = (value) => String(value || "").trim();
+
+const isEqualByKeys = (current, initial, keys) => keys.every((key) => normalizeText(current[key]) === normalizeText(initial[key]));
+
+const getNoticeTone = (notice) => {
+  const normalizedNotice = normalizeText(notice).toLowerCase();
+  if (!normalizedNotice) {
+    return "";
+  }
+  if (normalizedNotice.includes("thành công") || normalizedNotice.includes("đồng bộ")) {
+    return "success";
+  }
+  return "error";
+};
+
 export default function Profile({ onAuthUpdated }) {
   const auth = getAuth();
   const role = auth?.user?.role || "user";
@@ -44,8 +59,20 @@ export default function Profile({ onAuthUpdated }) {
     email: "",
     phone: "",
   });
+  const [initialPersonalForm, setInitialPersonalForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
 
   const [vehicleForm, setVehicleForm] = useState({
+    licensePlate: "",
+    brand: "",
+    vehicleModel: "",
+    seatCount: "",
+    vehicleColor: "",
+  });
+  const [initialVehicleForm, setInitialVehicleForm] = useState({
     licensePlate: "",
     brand: "",
     vehicleModel: "",
@@ -57,6 +84,11 @@ export default function Profile({ onAuthUpdated }) {
     oldPassword: "",
     newPassword: "",
     confirmPassword: "",
+  });
+  const [passwordVisibility, setPasswordVisibility] = useState({
+    oldPassword: false,
+    newPassword: false,
+    confirmPassword: false,
   });
   const [managerInfo, setManagerInfo] = useState({
     managedDistrict: "",
@@ -78,6 +110,31 @@ export default function Profile({ onAuthUpdated }) {
     }
     return "Thông tin cá nhân";
   }, [activeSection]);
+
+  const isPersonalDirty = useMemo(
+    () => !isEqualByKeys(personalForm, initialPersonalForm, ["name", "email", "phone"]),
+    [personalForm, initialPersonalForm],
+  );
+
+  const isVehicleDirty = useMemo(
+    () => !isEqualByKeys(vehicleForm, initialVehicleForm, ["licensePlate", "brand", "vehicleModel", "seatCount", "vehicleColor"]),
+    [vehicleForm, initialVehicleForm],
+  );
+
+  const passwordChecklist = useMemo(() => {
+    const password = passwordForm.newPassword || "";
+    return {
+      minLength: password.length >= 8,
+      hasUpperLower: /[A-Z]/.test(password) && /[a-z]/.test(password),
+      hasDigit: /\d/.test(password),
+      hasSpecial: /[^A-Za-z0-9]/.test(password),
+    };
+  }, [passwordForm.newPassword]);
+
+  const isPasswordReady = useMemo(
+    () => Object.values(passwordChecklist).every(Boolean) && passwordForm.newPassword === passwordForm.confirmPassword,
+    [passwordChecklist, passwordForm.newPassword, passwordForm.confirmPassword],
+  );
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -105,14 +162,22 @@ export default function Profile({ onAuthUpdated }) {
           email: me.email || "",
           phone: me.phone || "",
         });
+        setInitialPersonalForm({
+          name: me.name || "",
+          email: me.email || "",
+          phone: me.phone || "",
+        });
 
-        setVehicleForm({
+        const nextVehicleForm = {
           licensePlate: vehicle.license_plate || me.vehicle_plate || "",
           brand: vehicle.brand || "",
           vehicleModel: vehicle.vehicle_model || "",
           seatCount: vehicle.seat_count ? String(vehicle.seat_count) : "",
           vehicleColor: vehicle.vehicle_color || me.vehicle_color || "",
-        });
+        };
+
+        setVehicleForm(nextVehicleForm);
+        setInitialVehicleForm(nextVehicleForm);
 
         if (isOwner) {
           const totalSlots = ownerLots.reduce((sum, lot) => sum + Number(lot.total_slots || 0), 0);
@@ -199,6 +264,12 @@ export default function Profile({ onAuthUpdated }) {
         email: updatedUser.email || prev.email,
         phone: updatedUser.phone || "",
       }));
+      setInitialPersonalForm((prev) => ({
+        ...prev,
+        name: updatedUser.name || prev.name,
+        email: updatedUser.email || prev.email,
+        phone: updatedUser.phone || "",
+      }));
       setPersonalNotice("Cập nhật hồ sơ thành công");
     } catch (err) {
       setPersonalNotice(normalizeError(err, "Cập nhật hồ sơ thất bại"));
@@ -233,13 +304,15 @@ export default function Profile({ onAuthUpdated }) {
       });
 
       const vehicle = saveRes.data?.vehicle || {};
-      setVehicleForm({
+      const nextVehicleForm = {
         licensePlate: vehicle.license_plate || "",
         brand: vehicle.brand || "",
         vehicleModel: vehicle.vehicle_model || "",
         seatCount: vehicle.seat_count ? String(vehicle.seat_count) : "",
         vehicleColor: vehicle.vehicle_color || "",
-      });
+      };
+      setVehicleForm(nextVehicleForm);
+      setInitialVehicleForm(nextVehicleForm);
 
       const currentAuth = getAuth();
       if (currentAuth?.token) {
@@ -296,6 +369,11 @@ export default function Profile({ onAuthUpdated }) {
         newPassword: "",
         confirmPassword: "",
       });
+      setPasswordVisibility({
+        oldPassword: false,
+        newPassword: false,
+        confirmPassword: false,
+      });
       setPasswordNotice("Đổi mật khẩu thành công");
     } catch (err) {
       setPasswordNotice(normalizeError(err, "Đổi mật khẩu thất bại"));
@@ -340,6 +418,11 @@ export default function Profile({ onAuthUpdated }) {
           <h1 className="page-title">Hồ sơ tài khoản</h1>
           <p className="page-subtitle profile-subtitle">👤 Xin chào, <strong>{greetingName}</strong></p>
           <div className="profile-divider" aria-hidden="true">────◆────</div>
+          <div className="profile-summary" role="list" aria-label="Tóm tắt tài khoản">
+            <span className="profile-summary-chip" role="listitem">Vai trò: {role}</span>
+            <span className="profile-summary-chip" role="listitem">Email: {personalForm.email || "Chưa cập nhật"}</span>
+            <span className="profile-summary-chip" role="listitem">SĐT: {personalForm.phone || "Chưa cập nhật"}</span>
+          </div>
         </header>
 
         <div className="profile-layout">
@@ -351,6 +434,7 @@ export default function Profile({ onAuthUpdated }) {
             >
               <span aria-hidden="true">🪪</span>
               Thông tin cá nhân
+              {isPersonalDirty ? <span className="profile-pill">Chưa lưu</span> : null}
             </button>
             {isVehicleProfileAvailable ? (
               <button
@@ -360,6 +444,7 @@ export default function Profile({ onAuthUpdated }) {
               >
                 <span aria-hidden="true">🚗</span>
                 Thông tin xe
+                {isVehicleDirty ? <span className="profile-pill">Chưa lưu</span> : null}
               </button>
             ) : (
               <button
@@ -391,6 +476,8 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">👤</span>
                   <input
                     className="booking-input profile-input"
+                    autoComplete="name"
+                    placeholder="Nhập họ tên đầy đủ"
                     value={personalForm.name}
                     onChange={(e) => setPersonalForm((prev) => ({ ...prev, name: e.target.value }))}
                   />
@@ -402,6 +489,8 @@ export default function Profile({ onAuthUpdated }) {
                   <input
                     className="booking-input profile-input"
                     type="email"
+                    autoComplete="email"
+                    placeholder="example@email.com"
                     value={personalForm.email}
                     onChange={(e) => setPersonalForm((prev) => ({ ...prev, email: e.target.value }))}
                   />
@@ -412,15 +501,18 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">📞</span>
                   <input
                     className="booking-input profile-input"
+                    autoComplete="tel"
+                    placeholder="Ví dụ: 0901 234 567"
                     value={personalForm.phone}
                     onChange={(e) => setPersonalForm((prev) => ({ ...prev, phone: e.target.value }))}
                   />
                 </div>
 
-                <button className="profile-action-btn" type="submit" disabled={personalLoading}>
+                <button className="profile-action-btn" type="submit" disabled={personalLoading || !isPersonalDirty}>
                   {personalLoading ? "Đang lưu..." : "→ Lưu hồ sơ"}
                 </button>
-                {personalNotice ? <p className="profile-notice">{personalNotice}</p> : null}
+                <p className="profile-hint">{isPersonalDirty ? "Bạn có thay đổi chưa lưu." : "Thông tin đã được đồng bộ."}</p>
+                {personalNotice ? <p className={`profile-notice ${getNoticeTone(personalNotice)}`} aria-live="polite">{personalNotice}</p> : null}
               </form>
             )}
 
@@ -478,7 +570,7 @@ export default function Profile({ onAuthUpdated }) {
                 <button className="profile-action-btn" type="submit" disabled={managerLoading}>
                   {managerLoading ? "Đang đồng bộ..." : "→ Đồng bộ thông tin quản lý"}
                 </button>
-                {managerNotice ? <p className="profile-notice">{managerNotice}</p> : null}
+                {managerNotice ? <p className={`profile-notice ${getNoticeTone(managerNotice)}`} aria-live="polite">{managerNotice}</p> : null}
               </form>
             )}
 
@@ -489,6 +581,7 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🪪</span>
                   <input
                     className="booking-input profile-input"
+                    placeholder="Ví dụ: 30A-123.45"
                     value={vehicleForm.licensePlate}
                     onChange={(e) => setVehicleForm((prev) => ({ ...prev, licensePlate: e.target.value }))}
                   />
@@ -499,6 +592,7 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🚘</span>
                   <input
                     className="booking-input profile-input"
+                    placeholder="Toyota, Honda..."
                     value={vehicleForm.brand}
                     onChange={(e) => setVehicleForm((prev) => ({ ...prev, brand: e.target.value }))}
                   />
@@ -509,6 +603,7 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🚙</span>
                   <input
                     className="booking-input profile-input"
+                    placeholder="Vios, City..."
                     value={vehicleForm.vehicleModel}
                     onChange={(e) => setVehicleForm((prev) => ({ ...prev, vehicleModel: e.target.value }))}
                   />
@@ -521,6 +616,7 @@ export default function Profile({ onAuthUpdated }) {
                     className="booking-input profile-input"
                     type="number"
                     min={1}
+                    placeholder="4"
                     value={vehicleForm.seatCount}
                     onChange={(e) => setVehicleForm((prev) => ({ ...prev, seatCount: e.target.value }))}
                   />
@@ -531,15 +627,17 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🎨</span>
                   <input
                     className="booking-input profile-input"
+                    placeholder="Đen, trắng..."
                     value={vehicleForm.vehicleColor}
                     onChange={(e) => setVehicleForm((prev) => ({ ...prev, vehicleColor: e.target.value }))}
                   />
                 </div>
 
-                <button className="profile-action-btn" type="submit" disabled={vehicleLoading}>
+                <button className="profile-action-btn" type="submit" disabled={vehicleLoading || !isVehicleDirty}>
                   {vehicleLoading ? "Đang lưu..." : "→ Lưu thông tin xe"}
                 </button>
-                {vehicleNotice ? <p className="profile-notice">{vehicleNotice}</p> : null}
+                <p className="profile-hint">{isVehicleDirty ? "Bạn có thay đổi chưa lưu." : "Thông tin xe đã mới nhất."}</p>
+                {vehicleNotice ? <p className={`profile-notice ${getNoticeTone(vehicleNotice)}`} aria-live="polite">{vehicleNotice}</p> : null}
               </form>
             )}
 
@@ -550,11 +648,18 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🔒</span>
                   <input
                     className="booking-input profile-input"
-                    type="password"
+                    type={passwordVisibility.oldPassword ? "text" : "password"}
+                    autoComplete="current-password"
                     value={passwordForm.oldPassword}
                     onChange={(e) => setPasswordForm((prev) => ({ ...prev, oldPassword: e.target.value }))}
                   />
-                  <span className="profile-input-icon-right" aria-hidden="true">◌</span>
+                  <button
+                    type="button"
+                    className="profile-password-toggle"
+                    onClick={() => setPasswordVisibility((prev) => ({ ...prev, oldPassword: !prev.oldPassword }))}
+                  >
+                    {passwordVisibility.oldPassword ? "Ẩn" : "Hiện"}
+                  </button>
                 </div>
 
                 <label>Mật khẩu mới</label>
@@ -562,12 +667,19 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🔒</span>
                   <input
                     className="booking-input profile-input"
-                    type="password"
+                    type={passwordVisibility.newPassword ? "text" : "password"}
                     minLength={8}
+                    autoComplete="new-password"
                     value={passwordForm.newPassword}
                     onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
                   />
-                  <span className="profile-input-icon-right" aria-hidden="true">◌</span>
+                  <button
+                    type="button"
+                    className="profile-password-toggle"
+                    onClick={() => setPasswordVisibility((prev) => ({ ...prev, newPassword: !prev.newPassword }))}
+                  >
+                    {passwordVisibility.newPassword ? "Ẩn" : "Hiện"}
+                  </button>
                 </div>
 
                 <label>Xác nhận mật khẩu mới</label>
@@ -575,20 +687,34 @@ export default function Profile({ onAuthUpdated }) {
                   <span className="profile-input-icon" aria-hidden="true">🔒</span>
                   <input
                     className="booking-input profile-input"
-                    type="password"
+                    type={passwordVisibility.confirmPassword ? "text" : "password"}
                     minLength={8}
+                    autoComplete="new-password"
                     value={passwordForm.confirmPassword}
                     onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                   />
-                  <span className="profile-input-icon-right" aria-hidden="true">◌</span>
+                  <button
+                    type="button"
+                    className="profile-password-toggle"
+                    onClick={() => setPasswordVisibility((prev) => ({ ...prev, confirmPassword: !prev.confirmPassword }))}
+                  >
+                    {passwordVisibility.confirmPassword ? "Ẩn" : "Hiện"}
+                  </button>
                 </div>
 
-                <p className="profile-notice">{PASSWORD_POLICY_TEXT}</p>
+                <ul className="profile-password-checklist" aria-label="Kiểm tra mật khẩu">
+                  <li className={passwordChecklist.minLength ? "is-pass" : ""}>Tối thiểu 8 ký tự</li>
+                  <li className={passwordChecklist.hasUpperLower ? "is-pass" : ""}>Có chữ hoa và chữ thường</li>
+                  <li className={passwordChecklist.hasDigit ? "is-pass" : ""}>Có ít nhất 1 chữ số</li>
+                  <li className={passwordChecklist.hasSpecial ? "is-pass" : ""}>Có ít nhất 1 ký tự đặc biệt</li>
+                </ul>
 
-                <button className="profile-action-btn" type="submit" disabled={passwordLoading}>
+                <p className="profile-notice info">{PASSWORD_POLICY_TEXT}</p>
+
+                <button className="profile-action-btn" type="submit" disabled={passwordLoading || !isPasswordReady}>
                   {passwordLoading ? "Đang đổi mật khẩu..." : "→ Cập nhật mật khẩu"}
                 </button>
-                {passwordNotice ? <p className="profile-notice">{passwordNotice}</p> : null}
+                {passwordNotice ? <p className={`profile-notice ${getNoticeTone(passwordNotice)}`} aria-live="polite">{passwordNotice}</p> : null}
               </form>
             )}
           </section>

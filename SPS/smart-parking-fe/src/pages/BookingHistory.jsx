@@ -380,10 +380,41 @@ export default function BookingHistory() {
     setReviewModal({ isOpen: false, booking: null, review: null, loading: false, error: "" });
   };
 
-  const handleKeepOldBooking = () => {
-    setConflictContext(null);
-    setEditMode(false);
-    setNotice("Bạn đã chọn giữ booking cũ. Hệ thống đã hủy thao tác đặt mới.");
+  const clearConflictRouteState = () => {
+    navigate(location.pathname, { replace: true, state: {} });
+  };
+
+  const handleKeepOldBooking = async () => {
+    const duplicateBookingId =
+      conflictContext?.requested_booking?.booking_id ||
+      conflictContext?.requested_booking_view?.booking_id ||
+      conflictContext?.duplicate_booking_id ||
+      null;
+
+    try {
+      setProcessing(true);
+      setError("");
+      setNotice("");
+
+      if (duplicateBookingId) {
+        await API.post(`/booking/my/${duplicateBookingId}/cancel`);
+      }
+
+      await refreshBookings();
+      setConflictContext(null);
+      setEditMode(false);
+      clearConflictRouteState();
+      setNotice("Bạn đã chọn giữ booking cũ. Hệ thống đã hủy thao tác đặt mới.");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      setError(
+        (typeof detail === "string" && detail) ||
+          detail?.message ||
+          "Không thể xử lý lựa chọn giữ booking cũ",
+      );
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleUpdateOldBooking = async () => {
