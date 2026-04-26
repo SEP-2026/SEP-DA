@@ -26,7 +26,7 @@ export default function RevenuePage() {
           <LineChart data={adminData.systemRevenue[series]} />
         </SectionCard>
         <SectionCard title="Khối lượng đặt chỗ" subtitle="Khối lượng đặt chỗ hỗ trợ phân tích doanh thu.">
-          <BarChart data={adminData.systemRevenue.bookings} />
+          <BarChart data={adminData.systemRevenue.bookings} formatValue={(value) => `${value}`} />
         </SectionCard>
       </div>
       <SectionCard title="Lịch sử giao dịch" subtitle="Theo dõi gross, commission và payout.">

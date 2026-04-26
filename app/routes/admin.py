@@ -1,4 +1,4 @@
-from collections import defaultdict
+﻿from collections import defaultdict
 from datetime import datetime, timedelta
 import secrets
 import string
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 ADMIN_RUNTIME_SETTINGS = {
     "commissionRate": "10",
     "supportEmail": "admin@smartparking.vn",
-    "maintenanceWindow": "Chủ nhật 23:00 - 01:00",
+    "maintenanceWindow": "Chá»§ nháº­t 23:00 - 01:00",
     "alertThreshold": "85",
 }
 
@@ -79,7 +79,7 @@ class ParkingLotUpdateRequest(BaseModel):
 
 
 class BookingStatusUpdateRequest(BaseModel):
-    status: str = Field(pattern="^(cancelled|confirmed|completed|checked_in|booked|pending)$")
+    status: str = Field(pattern="^(cancelled|confirmed|completed|checked_in|in_progress|booked|pending)$")
 
 
 class AdminSettingsUpdateRequest(BaseModel):
@@ -91,7 +91,7 @@ class AdminSettingsUpdateRequest(BaseModel):
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ admin mới được truy cập")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chá»‰ admin má»›i Ä‘Æ°á»£c truy cáº­p")
     return current_user
 
 
@@ -194,11 +194,11 @@ def _find_owner_by_reference(db: Session, reference: str | None) -> User | None:
 def _assign_owner_parking(db: Session, owner_id: int, parking_id: int) -> None:
     existing_owner = db.query(OwnerParking).filter(OwnerParking.owner_id == owner_id).first()
     if existing_owner and int(existing_owner.parking_id) != int(parking_id):
-        raise HTTPException(status_code=409, detail="Owner đã được gán cho bãi khác")
+        raise HTTPException(status_code=409, detail="Owner Ä‘Ã£ Ä‘Æ°á»£c gÃ¡n cho bÃ£i khÃ¡c")
 
     existing_lot = db.query(OwnerParking).filter(OwnerParking.parking_id == parking_id).first()
     if existing_lot and int(existing_lot.owner_id) != int(owner_id):
-        raise HTTPException(status_code=409, detail="Bãi này đã có owner khác quản lý")
+        raise HTTPException(status_code=409, detail="BÃ£i nÃ y Ä‘Ã£ cÃ³ owner khÃ¡c quáº£n lÃ½")
 
     if not existing_owner and not existing_lot:
         db.add(OwnerParking(owner_id=owner_id, parking_id=parking_id))
@@ -226,7 +226,11 @@ def _slot_counts_by_lot(slots: list[ParkingSlot]) -> dict[int, dict[str, int]]:
     return counts
 
 
-def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[dict], list[dict]]:
+def _build_revenue_series(
+    payments: list[Payment],
+    bookings: list[Booking] | None = None,
+    days: int = 7,
+) -> tuple[list[dict], list[dict]]:
     today = datetime.utcnow().date()
     revenue = []
     commission = []
@@ -240,6 +244,18 @@ def _build_revenue_series(payments: list[Payment], days: int = 7) -> tuple[list[
             and payment.payment_status == "paid"
         ]
         gross = round(sum(float(payment.amount or 0) + float(payment.overtime_fee or 0) for payment in day_payments), 2)
+        if gross <= 0 and not payments and bookings:
+            # Fallback for systems that do not persist records in `payments` yet.
+            gross = round(
+                sum(
+                    float(booking.total_amount or 0)
+                    for booking in bookings
+                    if booking.created_at
+                    and booking.created_at.date() == current_day
+                    and booking.status in {"booked", "checked_in", "in_progress", "completed"}
+                ),
+                2,
+            )
         revenue.append({"label": _format_day_label(datetime.combine(current_day, datetime.min.time())), "amount": gross})
         commission.append({"label": _format_day_label(datetime.combine(current_day, datetime.min.time())), "amount": round(gross * commission_rate, 2)})
 
@@ -256,17 +272,31 @@ def _build_booking_series(bookings: list[Booking], days: int = 7) -> list[dict]:
     return result
 
 
-def _build_user_growth_series(bookings: list[Booking]) -> list[dict]:
+def _build_user_growth_series(bookings: list[Booking], months: int = 4) -> list[dict]:
     buckets: dict[tuple[int, int], set[int]] = defaultdict(set)
     for booking in bookings:
         if booking.created_at and booking.user_id:
             buckets[(booking.created_at.year, booking.created_at.month)].add(int(booking.user_id))
 
     series = []
-    for key in sorted(buckets.keys())[-4:]:
-        year, month = key
-        series.append({"label": _format_month_label(datetime(year, month, 1)), "amount": len(buckets[key])})
-    return series or [{"label": "T0", "amount": 0}]
+    now = datetime.utcnow()
+    target_months: list[tuple[int, int]] = []
+    year = now.year
+    month = now.month
+    for _ in range(max(months, 1)):
+        target_months.append((year, month))
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    target_months.reverse()
+
+    for year, month in target_months:
+        series.append({
+            "label": _format_month_label(datetime(year, month, 1)),
+            "amount": len(buckets.get((year, month), set())),
+        })
+    return series
 
 
 def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lots: list[ParkingLot]) -> list[dict]:
@@ -275,7 +305,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
         logs.append({
             "id": f"booking-{booking.id}",
             "actor": booking.user.name if booking.user else "system",
-            "action": f"Booking #{booking.id} được tạo",
+            "action": f"Booking #{booking.id} Ä‘Æ°á»£c táº¡o",
             "time": booking.created_at.isoformat() if booking.created_at else datetime.utcnow().isoformat(),
             "type": "system",
         })
@@ -285,7 +315,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
             logs.append({
                 "id": f"user-{user.id}",
                 "actor": "system",
-                "action": f"Tài khoản {user.email} đang bị khóa",
+                "action": f"TÃ i khoáº£n {user.email} Ä‘ang bá»‹ khÃ³a",
                 "time": datetime.utcnow().isoformat(),
                 "type": "security",
             })
@@ -295,7 +325,7 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
             logs.append({
                 "id": f"lot-{lot.id}",
                 "actor": "system",
-                "action": f"Bãi {lot.name} đang bị khóa",
+                "action": f"BÃ£i {lot.name} Ä‘ang bá»‹ khÃ³a",
                 "time": datetime.utcnow().isoformat(),
                 "type": "warning",
             })
@@ -309,8 +339,8 @@ def _build_login_history(db: Session) -> list[dict]:
         {
             "id": f"token-{token.id}",
             "email": "admin-session",
-            "ip": "Không lưu trong CSDL",
-            "device": "Không lưu trong CSDL",
+            "ip": "KhÃ´ng lÆ°u trong CSDL",
+            "device": "KhÃ´ng lÆ°u trong CSDL",
             "time": token.expires_at.isoformat(),
             "status": "blocked",
         }
@@ -326,6 +356,7 @@ def _serialize_bootstrap(db: Session) -> dict:
     payments = db.query(Payment).all()
 
     booking_counts_by_user: dict[int, int] = defaultdict(int)
+    booking_counts_by_lot: dict[int, int] = defaultdict(int)
     last_booking_by_user: dict[int, datetime] = {}
     for booking in bookings:
         if booking.user_id:
@@ -336,6 +367,8 @@ def _serialize_bootstrap(db: Session) -> dict:
                 or last_time > last_booking_by_user[int(booking.user_id)]
             ):
                 last_booking_by_user[int(booking.user_id)] = last_time
+        if booking.parking_id:
+            booking_counts_by_lot[int(booking.parking_id)] += 1
 
     slot_counts = _slot_counts_by_lot(slots)
     owners = [user for user in users if user.role == "owner"]
@@ -348,12 +381,25 @@ def _serialize_bootstrap(db: Session) -> dict:
             "email": user.email,
             "status": _to_status_label(user),
             "bookingCount": booking_counts_by_user.get(int(user.id), 0),
-            "lastActive": (last_booking_by_user.get(int(user.id)) or datetime.utcnow()).isoformat(),
+            "lastActive": last_booking_by_user.get(int(user.id)).isoformat() if last_booking_by_user.get(int(user.id)) else None,
             "phone": user.phone,
         }
         for user in users if user.role == "user"
     ]
-
+    owner_booking_counts: dict[int, int] = {}
+    owner_avg_occupancy: dict[int, int] = {}
+    for owner in owners:
+        owner_lots = lot_by_owner.get(int(owner.id)) if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else []
+        owner_lot_ids = [int(item["id"]) for item in owner_lots if item.get("id") is not None]
+        owner_booking_counts[int(owner.id)] = sum(booking_counts_by_lot.get(lot_id, 0) for lot_id in owner_lot_ids)
+        if owner_lot_ids:
+            occupancy_values = []
+            for lot_id in owner_lot_ids:
+                counts = slot_counts.get(lot_id, {"total": 0, "occupied": 0})
+                occupancy_values.append((counts["occupied"] / counts["total"]) * 100 if counts["total"] > 0 else 0.0)
+            owner_avg_occupancy[int(owner.id)] = int(round(sum(occupancy_values) / len(occupancy_values))) if occupancy_values else 0
+        else:
+            owner_avg_occupancy[int(owner.id)] = 0
     owner_rows = [
         {
             "id": owner.id,
@@ -361,10 +407,10 @@ def _serialize_bootstrap(db: Session) -> dict:
             "email": owner.email,
             "parkingLots": lot_by_owner.get(int(owner.id)) if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else [],
             # legacy single-string field for backward compatibility (first lot name or placeholder)
-            "parkingLot": (lot_by_owner.get(int(owner.id))[0]["name"] if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "Chưa gán trong CSDL"),
+            "parkingLot": (lot_by_owner.get(int(owner.id))[0]["name"] if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "ChÆ°a gÃ¡n trong CSDL"),
             "status": "active" if _to_status_label(owner) == "active" else "suspended",
-            "performance": f"{booking_counts_by_user.get(int(owner.id), 0)} booking",
-            "passwordHint": "Có thể reset từ admin",
+            "performance": f"{owner_booking_counts.get(int(owner.id), 0)} booking • {owner_avg_occupancy.get(int(owner.id), 0)}% occupancy",
+            "passwordHint": "CÃ³ thá»ƒ reset tá»« admin",
         }
         for owner in owners
     ]
@@ -379,7 +425,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": lot.id,
             "name": lot.name,
             "address": lot.address,
-            "owner": owner_by_lot[int(lot.id)].name if int(lot.id) in owner_by_lot else "Chưa gán trong CSDL",
+            "owner": owner_by_lot.get(int(lot.id)).name if owner_by_lot.get(int(lot.id)) else "Chua gan trong CSDL",
             "slotCount": total,
             "status": _lot_status(lot),
             "occupancy": occupancy,
@@ -393,8 +439,8 @@ def _serialize_bootstrap(db: Session) -> dict:
         booking_rows.append({
             "id": f"BK-{booking.id}",
             "user": user.name if user else "Unknown user",
-            "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
-            "parkingLot": lot.name if lot else "Chưa có bãi",
+            "plate": user.vehicle_plate if user and user.vehicle_plate else "ChÆ°a cÃ³ biá»ƒn sá»‘",
+            "parkingLot": lot.name if lot else "ChÆ°a cÃ³ bÃ£i",
             "checkIn": (booking.start_time or booking.created_at or datetime.utcnow()).isoformat(),
             "checkOut": (booking.expire_time or booking.created_at or datetime.utcnow()).isoformat(),
             "status": booking.status,
@@ -414,7 +460,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "id": f"TX-{payment.id}",
                 "bookingId": f"BK-{payment.booking_id}",
                 "user": user.name if user else "Unknown user",
-                "parkingLot": lot.name if lot else "Chưa có bãi",
+                "parkingLot": lot.name if lot else "ChÆ°a cÃ³ bÃ£i",
                 "time": (payment.paid_at or payment.created_at or datetime.utcnow()).isoformat(),
                 "gross": gross,
                 "commission": round(gross * commission_rate, 2),
@@ -428,7 +474,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "id": f"TX-BK-{booking.id}",
                 "bookingId": f"BK-{booking.id}",
                 "user": booking.user.name if booking.user else "Unknown user",
-                "parkingLot": booking.parking_lot.name if booking.parking_lot else "Chưa có bãi",
+                "parkingLot": booking.parking_lot.name if booking.parking_lot else "ChÆ°a cÃ³ bÃ£i",
                 "time": (booking.created_at or datetime.utcnow()).isoformat(),
                 "gross": gross,
                 "commission": round(gross * commission_rate, 2),
@@ -436,7 +482,7 @@ def _serialize_bootstrap(db: Session) -> dict:
                 "status": "paid" if booking.status in {"booked", "checked_in", "completed"} else booking.status,
             })
 
-    revenue_series, commission_series = _build_revenue_series(payments)
+    revenue_series, commission_series = _build_revenue_series(payments, bookings)
     return {
         "commissionRate": int(float(ADMIN_RUNTIME_SETTINGS["commissionRate"])),
         "users": user_rows,
@@ -474,12 +520,12 @@ def update_user_status(
 ):
     user = db.query(User).filter(User.id == user_id, User.role == "user").first()
     if not user:
-        raise HTTPException(status_code=404, detail="Không tìm thấy user")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y user")
 
     user.status = payload.status
     user.is_active = 1 if payload.status == "active" else 0
     db.commit()
-    return {"message": "Cập nhật trạng thái user thành công"}
+    return {"message": "Cáº­p nháº­t tráº¡ng thÃ¡i user thÃ nh cÃ´ng"}
 
 
 @router.post("/owners")
@@ -490,18 +536,21 @@ def create_owner(
 ):
     existing_user = db.query(User).filter(User.email == payload.email.lower().strip()).first()
     if existing_user:
-        raise HTTPException(status_code=409, detail="Email đã tồn tại")
+        raise HTTPException(status_code=409, detail="Email Ä‘Ã£ tá»“n táº¡i")
 
-    temporary_password = _generate_strong_password()
+    temporary_password = payload.temporary_password.strip() if payload.temporary_password else _generate_strong_password()
+    ensure_strong_password(temporary_password)
+    initial_status = "active" if payload.status == "active" else "banned"
+    initial_is_active = 1 if payload.status == "active" else 0
 
     owner = User(
         name=payload.name.strip(),
         email=payload.email.lower().strip(),
         role="owner",
-        phone=None,
+        phone=payload.phone.strip() if payload.phone else None,
         vehicle_plate=None,
-        status="active",
-        is_active=1,
+        status=initial_status,
+        is_active=initial_is_active,
         password="__legacy_disabled__",
         password_hash=generate_password_hash(temporary_password),
     )
@@ -509,11 +558,11 @@ def create_owner(
     db.flush()
     if payload.parking_lot:
         lot = _find_parking_lot_by_reference(db, payload.parking_lot)
-        # nếu không tìm thấy bãi theo tham chiếu, thử tìm tên gần đúng (case-insensitive)
+        # náº¿u khÃ´ng tÃ¬m tháº¥y bÃ£i theo tham chiáº¿u, thá»­ tÃ¬m tÃªn gáº§n Ä‘Ãºng (case-insensitive)
         if not lot:
             normalized = payload.parking_lot.strip()
             lot = db.query(ParkingLot).filter(ParkingLot.name.ilike(f"%{normalized}%")).first()
-        # nếu vẫn không có, tạo bãi mới tự động để gán (hành vi trước đó)
+        # náº¿u váº«n khÃ´ng cÃ³, táº¡o bÃ£i má»›i tá»± Ä‘á»™ng Ä‘á»ƒ gÃ¡n (hÃ nh vi trÆ°á»›c Ä‘Ã³)
         if not lot:
             lot = ParkingLot(
                 name=payload.parking_lot.strip(),
@@ -532,12 +581,13 @@ def create_owner(
                 price_per_month=1500000,
             )
             db.add(price)
-            # tạo 1 slot mặc định
+            # táº¡o 1 slot máº·c Ä‘á»‹nh
             db.add(ParkingSlot(code=f"P{lot.id}-1", slot_number="1", parking_id=lot.id, status="available"))
-        # Avoid raising conflict if lot is already assigned to another owner.
+        # A parking lot can only have one owner assignment.
         existing_assignment = db.query(OwnerParking).filter(OwnerParking.parking_id == lot.id).first()
-        if not existing_assignment:
-            db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
+        if existing_assignment:
+            raise HTTPException(status_code=409, detail="Bai nay da duoc gan cho owner khac")
+        db.add(OwnerParking(owner_id=owner.id, parking_id=lot.id))
     db.commit()
 
     # build response owner info including assigned parking lots (if any)
@@ -556,13 +606,13 @@ def create_owner(
         "name": owner.name,
         "email": owner.email,
         "parkingLots": assigned,
-        "parkingLot": assigned[0]["name"] if assigned else "Chưa gán trong CSDL",
-        "status": "active",
+        "parkingLot": assigned[0]["name"] if assigned else "ChÆ°a gÃ¡n trong CSDL",
+        "status": payload.status,
         "performance": "0 booking",
-        "passwordHint": "Có thể reset từ admin",
+        "passwordHint": "CÃ³ thá»ƒ reset tá»« admin",
     }
 
-    return {"message": "Tạo tài khoản owner thành công", "default_password": temporary_password, "owner": owner_info}
+    return {"message": "Táº¡o tÃ i khoáº£n owner thÃ nh cÃ´ng", "default_password": temporary_password, "owner": owner_info}
 
 
 @router.patch("/owners/{owner_id}/status")
@@ -574,12 +624,12 @@ def update_owner_status(
 ):
     owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
     if not owner:
-        raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
 
     owner.status = "active" if payload.status == "active" else "banned"
     owner.is_active = 1 if payload.status == "active" else 0
     db.commit()
-    return {"message": "Cập nhật trạng thái owner thành công"}
+    return {"message": "Cáº­p nháº­t tráº¡ng thÃ¡i owner thÃ nh cÃ´ng"}
 
 
 @router.post("/owners/{owner_id}/reset-password")
@@ -590,13 +640,13 @@ def reset_owner_password(
 ):
     owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
     if not owner:
-        raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
 
     temp_password = _generate_strong_password()
     owner.password = "__legacy_disabled__"
     owner.password_hash = generate_password_hash(temp_password)
     db.commit()
-    return {"message": "Đã reset mật khẩu owner", "temporary_password": temp_password}
+    return {"message": "ÄÃ£ reset máº­t kháº©u owner", "temporary_password": temp_password}
 
 
 @router.delete("/owners/{owner_id}")
@@ -607,12 +657,12 @@ def delete_owner(
 ):
     owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
     if not owner:
-        raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
 
     _remove_owner_assignments(db, owner.id)
     db.delete(owner)
     db.commit()
-    return {"message": "Đã xóa owner"}
+    return {"message": "ÄÃ£ xÃ³a owner"}
 
 
 @router.post("/parking-lots")
@@ -623,7 +673,10 @@ def create_parking_lot(
 ):
     owner = _find_owner_by_reference(db, payload.owner)
     if payload.owner and not owner:
-        raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
+    duplicate_name = db.query(ParkingLot.id).filter(ParkingLot.name == payload.name.strip()).first()
+    if duplicate_name:
+        raise HTTPException(status_code=409, detail="Ten bai do da ton tai")
 
     lot = ParkingLot(
         name=payload.name.strip(),
@@ -651,7 +704,7 @@ def create_parking_lot(
     if owner:
         _assign_owner_parking(db, owner.id, lot.id)
     db.commit()
-    return {"message": "Đã tạo bãi đỗ"}
+    return {"message": "ÄÃ£ táº¡o bÃ£i Ä‘á»—"}
 
 
 @router.patch("/parking-lots/{lot_id}")
@@ -663,7 +716,7 @@ def update_parking_lot(
 ):
     lot = db.query(ParkingLot).filter(ParkingLot.id == lot_id).first()
     if not lot:
-        raise HTTPException(status_code=404, detail="Không tìm thấy bãi đỗ")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y bÃ£i Ä‘á»—")
 
     if payload.name is not None:
         lot.name = payload.name.strip()
@@ -674,12 +727,12 @@ def update_parking_lot(
         owner = _find_owner_by_reference(db, payload.owner)
         if payload.owner.strip():
             if not owner:
-                raise HTTPException(status_code=404, detail="Không tìm thấy owner")
+                raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
             _assign_owner_parking(db, owner.id, lot.id)
     if payload.status is not None:
         lot.is_active = 1 if payload.status == "active" else 0
     db.commit()
-    return {"message": "Đã cập nhật bãi đỗ"}
+    return {"message": "ÄÃ£ cáº­p nháº­t bÃ£i Ä‘á»—"}
 
 
 @router.delete("/parking-lots/{lot_id}")
@@ -690,7 +743,10 @@ def delete_parking_lot(
 ):
     lot = db.query(ParkingLot).filter(ParkingLot.id == lot_id).first()
     if not lot:
-        raise HTTPException(status_code=404, detail="Không tìm thấy bãi đỗ")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y bÃ£i Ä‘á»—")
+    has_bookings = db.query(Booking.id).filter(Booking.parking_id == lot_id).first()
+    if has_bookings:
+        raise HTTPException(status_code=409, detail="Khong the xoa bai do da phat sinh booking")
     db.query(OwnerParking).filter(OwnerParking.parking_id == lot_id).delete()
     db.query(ParkingSlot).filter(ParkingSlot.parking_id == lot_id).delete()
     price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == lot_id).first()
@@ -698,7 +754,7 @@ def delete_parking_lot(
         db.delete(price)
     db.delete(lot)
     db.commit()
-    return {"message": "Đã xóa bãi đỗ"}
+    return {"message": "ÄÃ£ xÃ³a bÃ£i Ä‘á»—"}
 
 
 @router.patch("/bookings/{booking_id}/status")
@@ -710,13 +766,28 @@ def update_booking_status(
 ):
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
+
+    if booking.status == payload.status:
+        return {"message": "Booking da o trang thai yeu cau"}
+
+    if booking.status == "completed" and payload.status == "cancelled":
+        raise HTTPException(status_code=409, detail="Khong the huy booking da hoan tat")
 
     booking.status = payload.status
-    if payload.status == "cancelled" and booking.slot:
-        booking.slot.status = "available"
+    if booking.slot:
+        if payload.status == "cancelled":
+            booking.slot.status = "available"
+        elif payload.status in {"checked_in", "in_progress"}:
+            booking.slot.status = "occupied"
+            if payload.status == "checked_in" and booking.actual_checkin is None:
+                booking.actual_checkin = datetime.utcnow()
+        elif payload.status == "completed":
+            booking.slot.status = "available"
+            if booking.actual_checkout is None:
+                booking.actual_checkout = datetime.utcnow()
     db.commit()
-    return {"message": "Đã cập nhật booking"}
+    return {"message": "ÄÃ£ cáº­p nháº­t booking"}
 
 
 @router.patch("/settings")
@@ -724,8 +795,26 @@ def update_admin_settings(
     payload: AdminSettingsUpdateRequest,
     _: User = Depends(require_admin),
 ):
-    ADMIN_RUNTIME_SETTINGS.update(payload.dict())
-    return {"message": "Đã cập nhật cấu hình admin", "settings": ADMIN_RUNTIME_SETTINGS}
+    try:
+        commission_rate = float(payload.commissionRate)
+        alert_threshold = float(payload.alertThreshold)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Commission va nguong canh bao phai la so") from exc
+
+    if not 0 <= commission_rate <= 100:
+        raise HTTPException(status_code=422, detail="Commission rate phai nam trong khoang 0-100")
+    if not 0 <= alert_threshold <= 100:
+        raise HTTPException(status_code=422, detail="Nguong canh bao phai nam trong khoang 0-100")
+    if "@" not in payload.supportEmail or "." not in payload.supportEmail:
+        raise HTTPException(status_code=422, detail="Email ho tro khong hop le")
+
+    ADMIN_RUNTIME_SETTINGS.update({
+        "commissionRate": str(int(commission_rate) if commission_rate.is_integer() else commission_rate),
+        "supportEmail": payload.supportEmail.strip(),
+        "maintenanceWindow": payload.maintenanceWindow.strip(),
+        "alertThreshold": str(int(alert_threshold) if alert_threshold.is_integer() else alert_threshold),
+    })
+    return {"message": "ÄÃ£ cáº­p nháº­t cáº¥u hÃ¬nh admin", "settings": ADMIN_RUNTIME_SETTINGS}
 
 
 @router.post("/rebuild-owner-assignments")
@@ -758,7 +847,7 @@ def rebuild_owner_assignments(_ : User = Depends(require_admin), db: Session = D
             created += 1
 
     db.commit()
-    return {"message": "Đã rebuild owner_parking assignments", "removed": removed, "created": created}
+    return {"message": "ÄÃ£ rebuild owner_parking assignments", "removed": removed, "created": created}
 
 
 @router.get("/owner-assignments-debug")
@@ -782,7 +871,7 @@ def auto_assign_owners(_: User = Depends(require_admin), db: Session = Depends(g
     - Clear existing `owner_parking` rows.
     - For each owner:
       * If `managed_district_id` present -> assign all active lots in that district (round-robin among owners in that district).
-      * Else try to extract district number from `name` (e.g. 'Quan 1', 'Quận 3', 'quận 7').
+      * Else try to extract district number from `name` (e.g. 'Quan 1', 'Quáº­n 3', 'quáº­n 7').
       * If district found -> assign active lots in that district to the owner.
     """
     # New behavior: assign parking lots exclusively per district.
@@ -821,7 +910,7 @@ def auto_assign_owners(_: User = Depends(require_admin), db: Session = Depends(g
             for o in owners_no_did:
                 on = (o.name or "").lower()
                 # match 'quan X' or district name substring
-                m = re.search(r"quan\s*(\d+)|quận\s*(\d+)", on)
+                m = re.search(r"quan\s*(\d+)|quáº­n\s*(\d+)", on)
                 matched = False
                 if m:
                     num = m.group(1) or m.group(2)
@@ -850,3 +939,4 @@ def auto_assign_owners(_: User = Depends(require_admin), db: Session = Depends(g
 
     db.commit()
     return {"message": "Auto-assign completed (exclusive per-district)", "assigned": assigned, "conflicts": conflicts, "unassigned_districts": unassigned}
+

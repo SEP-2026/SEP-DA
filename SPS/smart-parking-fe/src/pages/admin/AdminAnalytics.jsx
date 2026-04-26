@@ -15,7 +15,7 @@ export default function AdminAnalytics() {
           <LineChart data={adminData.systemRevenue.userGrowth} formatValue={(value) => `${value}`} />
         </SectionCard>
         <SectionCard title="Tỷ lệ lấp đầy theo bãi" subtitle="Tỷ lệ lấp đầy từng bãi.">
-          <BarChart data={adminData.systemRevenue.occupancy} />
+          <BarChart data={adminData.systemRevenue.occupancy} formatValue={(value) => `${value}%`} />
         </SectionCard>
       </div>
     </div>
