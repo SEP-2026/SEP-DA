@@ -30,6 +30,13 @@ from app.routes.gate import (
 APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 EMPLOYEE_PASSWORD_MIN_LENGTH = 6
 
+BOOKING_STATUS_PRIORITY = {
+    "checked_in": 0,
+    "in_progress": 1,
+    "booked": 2,
+    "pending": 3,
+}
+
 
 def _get_owner_assignment(owner_id: int, parking_id: int, db: Session) -> OwnerParking | None:
     return (
@@ -255,6 +262,23 @@ def _display_slot_code(slot: ParkingSlot) -> str:
     if slot_number:
         return slot_number
     return f"Slot-{slot.id}"
+
+
+def _is_preferred_slot_booking(candidate: Booking, current: Booking) -> bool:
+    candidate_status = (candidate.status or "").lower()
+    current_status = (current.status or "").lower()
+    candidate_priority = BOOKING_STATUS_PRIORITY.get(candidate_status, 99)
+    current_priority = BOOKING_STATUS_PRIORITY.get(current_status, 99)
+    if candidate_priority != current_priority:
+        return candidate_priority < current_priority
+
+    candidate_time = candidate.actual_checkin or candidate.start_time or candidate.created_at
+    current_time = current.actual_checkin or current.start_time or current.created_at
+    if current_time is None:
+        return True
+    if candidate_time is None:
+        return False
+    return candidate_time > current_time
 
 
 def get_owner_employees(owner: User, db: Session) -> dict:
@@ -527,7 +551,7 @@ def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
             continue
         slot_id = int(booking.slot_id)
         booking_statuses_by_slot.setdefault(slot_id, set()).add((booking.status or "").lower())
-        if slot_id not in latest_booking_by_slot:
+        if slot_id not in latest_booking_by_slot or _is_preferred_slot_booking(booking, latest_booking_by_slot[slot_id]):
             latest_booking_by_slot[slot_id] = booking
 
     slot_rows = []
@@ -538,6 +562,8 @@ def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
             {
                 "id": int(slot.id),
                 "code": _display_slot_code(slot),
+                "booking_id": int(active_booking.id) if active_booking else None,
+                "booking_status": (active_booking.status if active_booking else None),
                 "zone": slot.zone or "Chưa phân khu",
                 "level": slot.level or "Chưa gán tầng",
                 "status": status,
@@ -745,6 +771,18 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
         raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
+
+    # Fallback for legacy/edge data where a vehicle is physically occupying a slot but booking was not transitioned to checked_in.
+    now = _local_now()
+    normalized_status = (booking.status or "").lower()
+    is_overdue = bool(booking.expire_time and booking.expire_time <= now)
+    if normalized_status in {"pending", "booked"} and is_overdue:
+        booking.status = "checked_in"
+        if booking.actual_checkin is None:
+            booking.actual_checkin = booking.start_time or now
+        if booking.slot:
+            booking.slot.status = "occupied"
+
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_out(
         booking=booking,

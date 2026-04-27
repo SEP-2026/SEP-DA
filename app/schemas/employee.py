@@ -122,6 +122,8 @@ class EmployeeRevenueResponse(BaseModel):
 class EmployeeSlotItem(BaseModel):
     id: int
     code: str
+    booking_id: int | None = None
+    booking_status: str | None = None
     zone: str
     level: str
     status: str

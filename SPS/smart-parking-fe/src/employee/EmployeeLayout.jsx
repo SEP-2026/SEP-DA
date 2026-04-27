@@ -18,7 +18,7 @@ const NAV_ITEMS = [
 const ROUTE_HINT = {
   "/employee": "Tổng quan luồng xe và trạng thái bãi theo thời gian thực.",
   "/employee/scanner": "Xử lý check-in/check-out bằng mã QR tại cổng.",
-  "/employee/vehicles": "Danh sách xe đang ở trong bãi và vị trí đỗ.",
+  "/employee/vehicles": "Theo dõi xe trong bãi và vị trí đỗ trực quan theo ô.",
   "/employee/revenue": "Theo dõi doanh thu theo ngày và theo tháng.",
   "/employee/history": "Nhật ký thao tác gần nhất của nhân viên.",
   "/employee/profile": "Thông tin bãi đỗ đang được phân công vận hành.",
@@ -86,6 +86,10 @@ export default function EmployeeLayout({ auth, onLogout }) {
     };
   }, [refreshEmployee]);
 
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
   const displayName = auth?.user?.username || "nhân viên";
   const routeHint = ROUTE_HINT[location.pathname] || "Không gian vận hành dành cho tài khoản nhân viên.";
   const notificationsCount = Math.max(0, Number(parkingLot?.occupiedSlots || 0));
@@ -125,6 +129,13 @@ export default function EmployeeLayout({ auth, onLogout }) {
         </button>
       </aside>
 
+      <button
+        type="button"
+        aria-label="Đóng menu"
+        className="employee-sidebar-backdrop"
+        onClick={() => setSidebarOpen(false)}
+      />
+
       <div className="employee-main">
         <header className="employee-topbar">
           <div className="employee-topbar-main">
@@ -139,7 +150,7 @@ export default function EmployeeLayout({ auth, onLogout }) {
           </div>
 
           <div className="employee-topbar-tools">
-            <div className="employee-notify-pill">
+            <div className="employee-notify-pill" title="Số xe đang sử dụng chỗ">
               <OwnerIcon name="bell" className="owner-menu-icon" />
               <span>{notificationsCount}</span>
             </div>

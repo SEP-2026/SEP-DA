@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import EmployeeParkingBoard from "../../employee/EmployeeParkingBoard";
-import { getEmployeeVehicles } from "../../employee/employeeService";
+import { employeeCheckOut, getEmployeeVehicles } from "../../employee/employeeService";
 import { useEmployeeContext } from "../../employee/useEmployeeContext";
 
 const STATUS_FILTER_OPTIONS = [
@@ -10,12 +10,18 @@ const STATUS_FILTER_OPTIONS = [
   { value: "available", label: "Trống" },
 ];
 
-const PARKED_VEHICLE_STATUSES = ["checked_in", "in_progress"];
 const PARKED_SLOT_STATUSES = ["occupied", "in_use", "reserved"];
-const AVAILABLE_SLOT_STATUSES = ["available"];
+const AVAILABLE_SLOT_STATUSES = ["available", "maintenance"];
 
 function createVehicleSearchText(vehicle) {
   return `${vehicle.license_plate || ""} ${vehicle.slot_code || ""} BK-${vehicle.booking_id}`.toLowerCase();
+}
+
+function resolveBookingIdFromSlot(slot) {
+  if (slot?.booking_id) return Number(slot.booking_id);
+  const bookingCode = String(slot?.booking_code || "");
+  const match = bookingCode.match(/BK-(\d+)/i);
+  return match ? Number(match[1]) : null;
 }
 
 export default function EmployeeVehicles() {
@@ -25,34 +31,48 @@ export default function EmployeeVehicles() {
   const [statusFilter, setStatusFilter] = useState("all");
   const occupiedOrReserved = (slotsOverview?.in_use_slots || 0) + (slotsOverview?.reserved_slots || 0);
 
-  const refreshVehicles = async () => {
+  const refreshVehicles = useCallback(async () => {
     const res = await getEmployeeVehicles();
     setData(res);
-  };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    getEmployeeVehicles()
-      .then((res) => {
-        if (mounted) {
-          setData(res);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setData({ vehicles: [], total_count: 0 });
-        }
-      });
+
+    refreshVehicles().catch(() => {
+      if (mounted) {
+        setData({ vehicles: [], total_count: 0 });
+      }
+    });
 
     const timerId = window.setInterval(() => {
       refreshVehicles().catch(() => null);
-      refreshEmployee();
-    }, 10000);
+    }, 20000);
+
     return () => {
       mounted = false;
       window.clearInterval(timerId);
     };
-  }, [refreshEmployee]);
+  }, [refreshVehicles]);
+
+  const handleManualCheckout = useCallback(
+    async (slot, paymentMethod = "cash") => {
+      const bookingId = resolveBookingIdFromSlot(slot);
+      if (!bookingId) {
+        throw new Error("Không xác định được mã booking của ô này.");
+      }
+
+      const res = await employeeCheckOut({
+        qr_data: String(bookingId),
+        payment_method: paymentMethod,
+      });
+
+      await Promise.all([refreshVehicles(), refreshEmployee()]);
+
+      return res;
+    },
+    [refreshEmployee, refreshVehicles],
+  );
 
   const latestCheckIn = useMemo(() => {
     const first = data.vehicles?.[0];
@@ -60,21 +80,6 @@ export default function EmployeeVehicles() {
   }, [data.vehicles]);
 
   const normalizedQuery = query.trim().toLowerCase();
-
-  const filteredVehicles = useMemo(
-    () => (data.vehicles || []).filter((vehicle) => {
-      const normalizedStatus = String(vehicle.status || "").toLowerCase();
-      if (statusFilter === "parked" && !PARKED_VEHICLE_STATUSES.includes(normalizedStatus)) {
-        return false;
-      }
-      if (statusFilter === "available") {
-        return false;
-      }
-      if (!normalizedQuery) return true;
-      return createVehicleSearchText(vehicle).includes(normalizedQuery);
-    }),
-    [data.vehicles, normalizedQuery, statusFilter],
-  );
 
   const boardSlotsOverview = useMemo(() => {
     const slots = Array.isArray(slotsOverview?.slots) ? slotsOverview.slots : [];
@@ -105,12 +110,9 @@ export default function EmployeeVehicles() {
 
     const filteredSlots = slots.filter((slot) => getStatusOk(slot) && getQueryOk(slot));
 
-    const availableCount = filteredSlots.filter((slot) => slot.status === "available").length;
+    const availableCount = filteredSlots.filter((slot) => slot.status === "available" || slot.status === "maintenance").length;
     const reservedCount = filteredSlots.filter((slot) => slot.status === "reserved").length;
-    const inUseCount = filteredSlots.filter(
-      (slot) => slot.status === "in_use" || slot.status === "occupied",
-    ).length;
-    const maintenanceCount = filteredSlots.filter((slot) => slot.status === "maintenance").length;
+    const inUseCount = filteredSlots.filter((slot) => slot.status === "in_use" || slot.status === "occupied").length;
 
     return {
       ...slotsOverview,
@@ -119,12 +121,12 @@ export default function EmployeeVehicles() {
       available_slots: availableCount,
       reserved_slots: reservedCount,
       in_use_slots: inUseCount,
-      maintenance_slots: maintenanceCount,
+      maintenance_slots: filteredSlots.filter((slot) => slot.status === "maintenance").length,
     };
   }, [data.vehicles, normalizedQuery, slotsOverview, statusFilter]);
 
   return (
-    <section className="employee-card employee-section-shell">
+    <section className="employee-card employee-section-shell employee-vehicles-page">
       <div className="employee-section-headline">
         <h2>Xe trong bãi</h2>
       </div>
@@ -166,8 +168,18 @@ export default function EmployeeVehicles() {
         </div>
       </div>
 
-      <EmployeeParkingBoard slotsOverview={boardSlotsOverview} title="Sơ đồ bãi đồng bộ với trang user" />
-
+      {boardSlotsOverview?.slots?.length ? (
+        <EmployeeParkingBoard
+          slotsOverview={boardSlotsOverview}
+          title="Sơ đồ bãi đồng bộ với trang user"
+          onManualCheckout={handleManualCheckout}
+        />
+      ) : (
+        <div className="employee-empty-state">
+          <h3>Không có ô phù hợp bộ lọc</h3>
+          <p>Hãy thử đổi trạng thái lọc hoặc từ khóa tìm kiếm để xem dữ liệu.</p>
+        </div>
+      )}
     </section>
   );
 }

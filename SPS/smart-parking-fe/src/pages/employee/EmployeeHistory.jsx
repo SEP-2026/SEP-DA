@@ -14,7 +14,7 @@ function decodeMojibake(value) {
   if (!value || typeof value !== "string") {
     return value || "";
   }
-  if (!/[ÃÂ]/.test(value)) {
+  if (!/[ÃƒÃ‚]/.test(value)) {
     return value;
   }
   try {
@@ -65,6 +65,7 @@ export default function EmployeeHistory() {
           <span className="employee-chip">Tổng bản ghi: {data.total_count}</span>
         </div>
       </div>
+
       <div className="employee-history-list">
         {data.history.length === 0 ? <p className="employee-note">Chưa có hoạt động nào được ghi nhận.</p> : null}
 
