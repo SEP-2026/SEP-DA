@@ -129,6 +129,8 @@ export default function Home({ role = "" }) {
   const [expandedLots, setExpandedLots] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [pendingConfirmations, setPendingConfirmations] = useState([]);
+  const [showNotification, setShowNotification] = useState(false);
   const popoverRef = useRef(null);
 
   const isOwner = role === "owner";
@@ -196,6 +198,22 @@ export default function Home({ role = "" }) {
       active = false;
     };
   }, [isOwner]);
+
+  useEffect(() => {
+    if (role === "user") {
+      loadPendingConfirmations();
+    }
+  }, [role]);
+
+  const loadPendingConfirmations = async () => {
+    try {
+      const response = await API.get("/booking/pending-owner-confirmations");
+      setPendingConfirmations(response.data);
+      setShowNotification(response.data.length > 0);
+    } catch (error) {
+      console.error("Error loading pending confirmations:", error);
+    }
+  };
 
   useEffect(() => {
     if (!selectedSlot) {
@@ -333,6 +351,17 @@ export default function Home({ role = "" }) {
       ...prev,
       [parkingId]: !prev[parkingId],
     }));
+  };
+
+  const handleBookingAction = async (bookingId, action) => {
+    try {
+      await API.post(`/booking/owner-confirm/${bookingId}`, { action });
+      // Reload pending confirmations
+      loadPendingConfirmations();
+      alert(`Đã ${action === 'confirm' ? 'xác nhận' : 'từ chối'} booking thành công`);
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Có lỗi xảy ra');
+    }
   };
 
   return (
@@ -675,6 +704,40 @@ export default function Home({ role = "" }) {
         </div>
       , document.body) : null}
       {pageSpacerHeight > 0 ? <div aria-hidden="true" style={{ height: `${pageSpacerHeight}px` }} /> : null}
+
+      {/* Owner Booking Confirmation Notification */}
+      {showNotification && pendingConfirmations.length > 0 && (
+        <div className="owner-booking-notification">
+          <div className="notification-header">
+            <h3>Yêu cầu đặt chỗ từ Owner</h3>
+            <button onClick={() => setShowNotification(false)}>×</button>
+          </div>
+          <div className="notification-content">
+            {pendingConfirmations.map(booking => (
+              <div key={booking.id} className="booking-item">
+                <p><strong>Bãi đỗ:</strong> {booking.parking_name}</p>
+                <p><strong>Chỗ:</strong> {booking.slot_code}</p>
+                <p><strong>Thời gian:</strong> {formatDateTime(booking.start_time)} - {formatDateTime(booking.expire_time)}</p>
+                <p><strong>Tổng tiền:</strong> {booking.total_amount.toLocaleString()} VND</p>
+                <div className="booking-actions">
+                  <button 
+                    className="confirm-btn"
+                    onClick={() => handleBookingAction(booking.id, 'confirm')}
+                  >
+                    Xác nhận
+                  </button>
+                  <button 
+                    className="cancel-btn"
+                    onClick={() => handleBookingAction(booking.id, 'cancel')}
+                  >
+                    Từ chối
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

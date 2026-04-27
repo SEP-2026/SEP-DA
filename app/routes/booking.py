@@ -1521,3 +1521,103 @@ def get_booking_qr(
             status_code=500,
             detail="Không thể lấy mã QR. Vui lòng thử lại sau."
         )
+
+
+class ConfirmOwnerBookingRequest(BaseModel):
+    action: str = Field(pattern="^(confirm|cancel)$")
+
+
+@router.post("/booking/owner-confirm/{booking_id}")
+def confirm_owner_booking(
+    booking_id: int,
+    request: ConfirmOwnerBookingRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """User xác nhận hoặc hủy booking được tạo bởi owner"""
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking không tồn tại")
+    
+    if booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Không có quyền truy cập booking này")
+    
+    if booking.status != "pending_owner_confirmation":
+        raise HTTPException(status_code=400, detail="Booking không ở trạng thái chờ xác nhận")
+    
+    # Kiểm tra thời gian hết hạn
+    if booking.confirmation_expires_at and datetime.utcnow() > booking.confirmation_expires_at:
+        booking.status = "cancelled"
+        booking.cancel_reason = "Hết thời gian xác nhận"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Đã hết thời gian xác nhận booking")
+    
+    if request.action == "confirm":
+        booking.status = "booked"
+        # Tạo QR code
+        import qrcode
+        qr_data = f"booking:{booking.id}"
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        img = qr.make_image(fill='black', back_color='white')
+        
+        qr_filename = f"booking_{booking.id}.png"
+        qr_path = f"qrcodes/{qr_filename}"
+        img.save(qr_path)
+        
+        booking.qr_code = qr_data
+        booking.qr_code_path = qr_path
+        booking.qr_generated_at = datetime.utcnow()
+    else:
+        booking.status = "cancelled"
+        booking.cancel_reason = "Khách hàng từ chối"
+    
+    db.commit()
+    
+    return {
+        "message": f"Đã {request.action} booking thành công",
+        "booking_id": booking.id
+    }
+
+
+@router.get("/booking/pending-owner-confirmations")
+def get_pending_owner_confirmations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Lấy danh sách booking chờ xác nhận từ owner"""
+    # Auto cancel expired bookings
+    expired_bookings = db.query(Booking).filter(
+        Booking.status == "pending_owner_confirmation",
+        Booking.confirmation_expires_at < datetime.utcnow()
+    ).all()
+    
+    for booking in expired_bookings:
+        booking.status = "cancelled"
+        booking.cancel_reason = "Hết thời gian xác nhận"
+    
+    if expired_bookings:
+        db.commit()
+    
+    bookings = db.query(Booking).filter(
+        Booking.user_id == current_user.id,
+        Booking.status == "pending_owner_confirmation",
+        Booking.owner_created == 1
+    ).all()
+    
+    result = []
+    for booking in bookings:
+        slot = db.query(ParkingSlot).filter(ParkingSlot.id == booking.slot_id).first()
+        parking = db.query(ParkingLot).filter(ParkingLot.id == booking.parking_id).first()
+        result.append({
+            "id": booking.id,
+            "parking_name": parking.name if parking else "Unknown",
+            "slot_code": slot.code if slot else "Unknown",
+            "start_time": booking.start_time.isoformat(),
+            "expire_time": booking.expire_time.isoformat(),
+            "total_amount": booking.total_amount,
+            "confirmation_expires_at": booking.confirmation_expires_at.isoformat() if booking.confirmation_expires_at else None
+        })
+    
+    return result
