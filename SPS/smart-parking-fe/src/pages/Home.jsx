@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import API from "../services/api";
 import { formatDateTimeVN } from "../utils/dateTime";
@@ -123,6 +124,7 @@ function getStatusTone(status) {
 }
 
 export default function Home({ role = "" }) {
+  const navigate = useNavigate();
   const [parkingLots, setParkingLots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -297,7 +299,13 @@ export default function Home({ role = "" }) {
   }, [selectedSlot?.slot?.id, isOwner]);
 
   const handleSlotClick = (lot, slot, slotIndex, event) => {
+    // If user (not owner) clicks a slot, navigate to booking with prefilled lot and slot
     if (!isOwner) {
+      // prevent any parent handlers
+      if (event && typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+      navigate(`/booking?lotId=${lot.parking_id}&slotId=${slot.id}&slotName=${encodeURIComponent(slot.code || slot.slot_number || "")}`);
       return;
     }
 
@@ -489,7 +497,7 @@ export default function Home({ role = "" }) {
                       className="action-btn action-btn--primary"
                       onClick={(e) => {
                         e.stopPropagation();
-                        window.location.assign(`/booking?lot_id=${lot.parking_id}`);
+                        navigate(`/booking?lotId=${lot.parking_id}`);
                       }}
                       disabled={lot.available_slots === 0}
                     >

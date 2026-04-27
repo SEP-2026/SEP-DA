@@ -132,6 +132,42 @@
   align-items: center;
   padding-top: 15px;
   border-top: 1px solid #ddd;
+  position: relative;
+  z-index: 12;
+}
+
+.parking-map-action-buttons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.svg-book-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: white;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+  z-index: 13;
+  pointer-events: auto;
+}
+
+.svg-book-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+}
+
+.slot-icon {
+  width: 28px;
+  height: 28px;
+  color: #1976d2;
 }
 
 .selected-slot-info {

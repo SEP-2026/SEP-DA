@@ -49,6 +49,7 @@ export default function ParkingMap({ lotId, lotName, onSelectSlot }) {
     if (!selectedSlot) {
       return;
     }
+    console.log("ParkingMap: booking slot", selectedSlot);
     // Navigate to booking page with pre-filled slot information
     navigate(`/booking?lotId=${lotId}&slotId=${selectedSlot.id}&slotName=${selectedSlot.code || selectedSlot.slot_number}`);
   };
@@ -126,13 +127,27 @@ export default function ParkingMap({ lotId, lotName, onSelectSlot }) {
             <strong>Vị trí đã chọn:</strong> {selectedSlot.code || selectedSlot.slot_number}
             {selectedSlot.zone && ` - Khu vực: ${selectedSlot.zone}`}
           </div>
-          <button
-            type="button"
-            className="btn-primary btn-primary-wide"
-            onClick={handleBookNow}
-          >
-            Đặt chỗ ngay
-          </button>
+          <div className="parking-map-action-buttons">
+            <button
+              type="button"
+              className="btn-primary btn-primary-wide"
+              onClick={handleBookNow}
+            >
+              Đặt chỗ ngay
+            </button>
+
+            <button
+              type="button"
+              className="svg-book-btn"
+              onClick={handleBookNow}
+              aria-label="Đặt chỗ bằng icon"
+            >
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="slot-icon" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 6v6l4 2"></path>
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>
