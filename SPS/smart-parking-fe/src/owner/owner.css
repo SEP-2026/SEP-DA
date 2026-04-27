@@ -684,6 +684,122 @@
   box-shadow: 0 0 0 4px rgba(45, 135, 164, 0.18);
 }
 
+.owner-segment-button {
+  border: 1px solid rgba(20, 57, 93, 0.12);
+  border-radius: 14px;
+  background: #ffffff;
+  color: #214764;
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.owner-segment-button:hover {
+  background: rgba(16, 128, 145, 0.08);
+  border-color: rgba(16, 128, 145, 0.24);
+}
+
+.owner-segment-button.active {
+  background: rgba(16, 128, 145, 0.16);
+  border-color: rgba(16, 128, 145, 0.35);
+  color: #0f4f65;
+}
+
+.owner-segment--limits,
+.owner-segment--view-mode {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.owner-booking-card-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.owner-booking-card {
+  border: 1px solid rgba(20, 57, 93, 0.08);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.owner-booking-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.owner-booking-card-body p {
+  margin: 0;
+  color: #3c5d76;
+  font-size: 14px;
+}
+
+.owner-booking-card-body span {
+  color: #5d7d97;
+  font-size: 12px;
+  display: inline-block;
+  width: 110px;
+}
+
+.owner-booking-card-body p span {
+  font-weight: 700;
+}
+
+.owner-booking-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.owner-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.owner-pagination-button {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid rgba(20, 57, 93, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #214764;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.owner-pagination-button:hover:not(:disabled) {
+  background: rgba(16, 128, 145, 0.08);
+  border-color: rgba(16, 128, 145, 0.24);
+}
+
+.owner-pagination-button.active {
+  background: #0d6efd;
+  border-color: #0d6efd;
+  color: #ffffff;
+}
+
+.owner-pagination-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.owner-pagination-button--arrow {
+  width: 44px;
+}
+
 /* Hide browser built-in password reveal controls (Edge/IE) */
 .owner-input[type="password"]::-ms-reveal,
 .owner-input[type="password"]::-ms-clear {
