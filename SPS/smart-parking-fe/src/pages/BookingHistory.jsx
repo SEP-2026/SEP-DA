@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ReviewForm from "../components/ReviewForm";
 import API from "../services/api";
+import useRealtimeRefresh from "../services/useRealtimeRefresh";
 import { formatDateTimeVN, parseVietnamDate, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
 import "./BookingHistory.css";
 
@@ -158,22 +159,30 @@ export default function BookingHistory() {
     slot_id: conflictingBooking?.slot_id || "",
   }));
 
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
+  const refreshBookings = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) {
         setLoading(true);
         setError("");
-        const res = await API.get("/booking/my");
-        setBookings(res.data || []);
-      } catch (err) {
-        setError(err?.response?.data?.detail || "Không tải được lịch sử booking");
-      } finally {
+      }
+      const res = await API.get("/booking/my");
+      setBookings(res.data || []);
+    } catch (err) {
+      if (!silent) {
+        setError(err?.response?.data?.detail || "Khong tai duoc lich su booking");
+      }
+    } finally {
+      if (!silent) {
         setLoading(false);
       }
-    };
-
-    loadHistory();
+    }
   }, []);
+
+  useRealtimeRefresh(() => refreshBookings({ silent: true }), { minRefreshIntervalMs: 2000 });
+
+  useEffect(() => {
+    refreshBookings();
+  }, [refreshBookings]);
 
   useEffect(() => {
     setEditForm({
@@ -316,10 +325,6 @@ export default function BookingHistory() {
     });
   };
 
-  const refreshBookings = async () => {
-    const res = await API.get("/booking/my");
-    setBookings(res.data || []);
-  };
 
   const handleViewQr = async (bookingId) => {
     setQrModal({ isOpen: true, bookingId, qrUrl: null, loading: true });
@@ -922,3 +927,4 @@ export default function BookingHistory() {
     </section>
   );
 }
+

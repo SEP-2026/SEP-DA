@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import API from "../services/api";
+import useRealtimeRefresh from "../services/useRealtimeRefresh";
 import { OwnerIcon } from "./OwnerIcons";
 import { OWNER_NAV_ITEMS, OWNER_ROUTE_META } from "./ownerData";
 import { parseVietnamDate } from "../utils/dateTime";
@@ -88,6 +89,8 @@ export default function OwnerLayout({ auth, onLogout }) {
       setIsSyncing(false);
     }
   }, []);
+
+  useRealtimeRefresh(refreshOwnerData, { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2000 });
 
   useEffect(() => {
     refreshOwnerData();

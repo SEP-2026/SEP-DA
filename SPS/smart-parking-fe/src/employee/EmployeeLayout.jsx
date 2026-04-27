@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { OwnerIcon } from "../owner/OwnerIcons";
 import { getEmployeeParkingLot, getEmployeeProfile, getEmployeeRevenue, getEmployeeSlotsOverview } from "./employeeService";
+import useRealtimeRefresh from "../services/useRealtimeRefresh";
 import "./employee.css";
 
 const NAV_ITEMS = [
@@ -58,6 +59,8 @@ export default function EmployeeLayout({ auth, onLogout }) {
     setSyncNote(failedCount > 0 ? `Đồng bộ thiếu ${failedCount} mục dữ liệu` : "Đồng bộ thành công");
     setLoading(false);
   }, []);
+
+  useRealtimeRefresh(refreshEmployee, { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2000 });
 
   useEffect(() => {
     refreshEmployee();

@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { ADMIN_NAV_ITEMS, ADMIN_ROUTE_META } from "./adminData";
 import { AdminIcon } from "./AdminIcons";
 import API from "../services/api";
+import useRealtimeRefresh from "../services/useRealtimeRefresh";
 import "./admin.css";
 import "../owner/owner.css";
 
@@ -29,6 +30,8 @@ export default function AdminLayout({ auth, onLogout }) {
       setLoading(false);
     }
   }, []);
+
+  useRealtimeRefresh(refreshAdminData, { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2500 });
 
   useEffect(() => {
     refreshAdminData();
