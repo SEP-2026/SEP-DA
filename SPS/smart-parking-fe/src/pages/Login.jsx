@@ -5,6 +5,7 @@ import "./Login.css";
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState("login");
+  const [showForgotForm, setShowForgotForm] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [registerName, setRegisterName] = useState("");
@@ -14,11 +15,18 @@ export default function Login({ onLogin }) {
   const [registerPlate, setRegisterPlate] = useState("");
   const [registerColor, setRegisterColor] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [forgotForm, setForgotForm] = useState({
+    identity: "",
+    phone: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -104,6 +112,59 @@ export default function Login({ onLogin }) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    setError("");
+    setSuccess("");
+
+    const identity = forgotForm.identity.trim().toLowerCase();
+    const phone = forgotForm.phone.trim();
+    const newPassword = forgotForm.newPassword;
+    const confirmPassword = forgotForm.confirmPassword;
+
+    if (!identity) {
+      setError("Vui lòng nhập email hoặc username employee");
+      return;
+    }
+    if (!phone) {
+      setError("Vui lòng nhập số điện thoại đã đăng ký");
+      return;
+    }
+    if (!newPassword) {
+      setError("Vui lòng nhập mật khẩu mới");
+      return;
+    }
+    if (!isStrongPassword(newPassword)) {
+      setError(PASSWORD_POLICY_TEXT);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const requestRes = await API.post("/auth/forgot-password/request", {
+        identity,
+        phone,
+      });
+      await API.post("/auth/forgot-password/reset", {
+        reset_token: requestRes.data.reset_token,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
+      setSuccess("Đã đặt lại mật khẩu thành công. Bạn có thể đăng nhập ngay.");
+      setShowForgotForm(false);
+      setEmail(identity);
+      setPassword("");
+      setForgotForm({ identity: "", phone: "", newPassword: "", confirmPassword: "" });
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Đặt lại mật khẩu thất bại");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <section className="page-wrap login-wrap">
       <div className="login-bg-shape" />
@@ -179,10 +240,85 @@ export default function Login({ onLogin }) {
             <button
               type="button"
               className="forgot-link"
-              onClick={() => setError("Tính năng quên mật khẩu sẽ được cập nhật sau")}
+              onClick={() => {
+                setShowForgotForm((prev) => !prev);
+                setError("");
+                setSuccess("");
+              }}
             >
-              Quên mật khẩu?
+              {showForgotForm ? "An quen mat khau" : "Quen mat khau?"}
             </button>
+
+            {showForgotForm ? (
+              <div className="login-forgot-box">
+                <p className="register-note">Xac minh bang email/username va so dien thoai da dang ky.</p>
+                <div className="login-form">
+                  <label className="login-label" htmlFor="forgot-identity">Email hoac username employee</label>
+                  <div className="input-shell">
+                    <span className="input-icon" aria-hidden="true">@</span>
+                    <input
+                      id="forgot-identity"
+                      className="login-input"
+                      type="text"
+                      value={forgotForm.identity}
+                      onChange={(event) => setForgotForm((prev) => ({ ...prev, identity: event.target.value }))}
+                      placeholder="email@domain.com hoac employee_demo"
+                      required
+                    />
+                  </div>
+
+                  <label className="login-label" htmlFor="forgot-phone">So dien thoai da dang ky</label>
+                  <div className="input-shell">
+                    <span className="input-icon" aria-hidden="true">#</span>
+                    <input
+                      id="forgot-phone"
+                      className="login-input"
+                      type="text"
+                      value={forgotForm.phone}
+                      onChange={(event) => setForgotForm((prev) => ({ ...prev, phone: event.target.value }))}
+                      placeholder="09xxxxxxxx"
+                      required
+                    />
+                  </div>
+
+                  <label className="login-label" htmlFor="forgot-new-password">Mat khau moi</label>
+                  <div className="input-shell">
+                    <span className="input-icon" aria-hidden="true">*</span>
+                    <input
+                      id="forgot-new-password"
+                      className="login-input"
+                      type="password"
+                      minLength={8}
+                      value={forgotForm.newPassword}
+                      onChange={(event) => setForgotForm((prev) => ({ ...prev, newPassword: event.target.value }))}
+                      placeholder="Nhap mat khau moi"
+                      required
+                    />
+                  </div>
+
+                  <label className="login-label" htmlFor="forgot-confirm-password">Nhap lai mat khau moi</label>
+                  <div className="input-shell">
+                    <span className="input-icon" aria-hidden="true">*</span>
+                    <input
+                      id="forgot-confirm-password"
+                      className="login-input"
+                      type="password"
+                      minLength={8}
+                      value={forgotForm.confirmPassword}
+                      onChange={(event) => setForgotForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+                      placeholder="Nhap lai mat khau moi"
+                      required
+                    />
+                  </div>
+
+                  <p className="register-note">{PASSWORD_POLICY_TEXT}</p>
+                  <button className="login-btn" type="button" disabled={forgotLoading} onClick={handleForgotPassword}>
+                    {forgotLoading ? "Dang dat lai mat khau..." : "Dat lai mat khau"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
 
             {error ? <p className="login-error">{error}</p> : null}
             {success ? <p className="login-success">{success}</p> : null}

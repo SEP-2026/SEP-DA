@@ -59,3 +59,8 @@ export async function getEmployeeGateBooking(bookingId) {
   const response = await API.get(`/api/employee/bookings/${bookingId}`);
   return response.data;
 }
+
+export async function employeeChangePassword(payload) {
+  const response = await API.post("/api/employee/change-password", payload);
+  return response.data;
+}

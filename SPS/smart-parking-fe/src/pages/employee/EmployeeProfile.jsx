@@ -1,7 +1,8 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { updateEmployeeParkingStatus } from "../../employee/employeeService";
+import { employeeChangePassword, updateEmployeeParkingStatus } from "../../employee/employeeService";
 import { useEmployeeContext } from "../../employee/useEmployeeContext";
+import { PASSWORD_POLICY_TEXT } from "../../services/passwordPolicy";
 
 const STATUS_LABEL = {
   open: "Mở bãi",
@@ -13,10 +14,22 @@ export default function EmployeeProfile() {
   const { profile, slotsOverview, refreshEmployee } = useEmployeeContext();
   const [statusValue, setStatusValue] = useState(profile?.parking_lot?.status || "open");
   const [saving, setSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordForm, setPasswordForm] = useState({
+    old_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
 
   useEffect(() => {
     setStatusValue(profile?.parking_lot?.status || "open");
   }, [profile?.parking_lot?.status]);
+
+  const isPasswordSuccess = useMemo(
+    () => /thành công|thanh cong/i.test(passwordMessage),
+    [passwordMessage],
+  );
 
   const handleUpdateStatus = async () => {
     setSaving(true);
@@ -25,6 +38,24 @@ export default function EmployeeProfile() {
       await refreshEmployee();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.old_password || !passwordForm.new_password || !passwordForm.confirm_password) {
+      setPasswordMessage("Vui lòng nhập đầy đủ thông tin đổi mật khẩu.");
+      return;
+    }
+    setPasswordSaving(true);
+    setPasswordMessage("");
+    try {
+      const res = await employeeChangePassword(passwordForm);
+      setPasswordMessage(res?.message || "Đổi mật khẩu thành công.");
+      setPasswordForm({ old_password: "", new_password: "", confirm_password: "" });
+    } catch (error) {
+      setPasswordMessage(error?.response?.data?.detail || "Không đổi được mật khẩu.");
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -43,7 +74,53 @@ export default function EmployeeProfile() {
           <p><strong>Trạng thái tài khoản:</strong> {profile?.employee?.status || "--"}</p>
         </div>
 
-        <p className="employee-note">Tài khoản nhân viên chỉ có quyền vận hành tại bãi được phân công, không tự chỉnh sửa thông tin cá nhân.</p>
+        <div className="employee-profile-kv">
+          <p>Tài khoản nhân viên có thể đổi mật khẩu đăng nhập, nhưng không thay đổi quyền vận hành bãi.</p>
+        </div>
+
+        <div className="employee-password-panel">
+          <h3>Đổi mật khẩu đăng nhập</h3>
+          <div className="employee-password-grid">
+            <input
+              type="password"
+              placeholder="Mật khẩu hiện tại"
+              value={passwordForm.old_password}
+              onChange={(event) => {
+                setPasswordMessage("");
+                setPasswordForm((prev) => ({ ...prev, old_password: event.target.value }));
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Mật khẩu mới"
+              value={passwordForm.new_password}
+              onChange={(event) => {
+                setPasswordMessage("");
+                setPasswordForm((prev) => ({ ...prev, new_password: event.target.value }));
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Nhập lại mật khẩu mới"
+              value={passwordForm.confirm_password}
+              onChange={(event) => {
+                setPasswordMessage("");
+                setPasswordForm((prev) => ({ ...prev, confirm_password: event.target.value }));
+              }}
+            />
+          </div>
+          <div className="employee-password-actions">
+            <button type="button" className="employee-btn" onClick={handleChangePassword} disabled={passwordSaving}>
+              {passwordSaving ? "Đang cập nhật..." : "Đổi mật khẩu"}
+            </button>
+            <p className="employee-note">{PASSWORD_POLICY_TEXT}</p>
+          </div>
+          {passwordMessage ? (
+            <p className={`employee-password-message ${isPasswordSuccess ? "is-success" : "is-error"}`}>
+              {passwordMessage}
+            </p>
+          ) : null}
+        </div>
       </article>
 
       <article className="employee-card employee-section-shell">
@@ -60,7 +137,7 @@ export default function EmployeeProfile() {
           <p><strong>Chỗ trống:</strong> {slotsOverview?.available_slots || profile?.parking_lot?.emptySlots || 0}</p>
         </div>
 
-        <div className="employee-action-row">
+        <div className="employee-action-row employee-status-control">
           <select value={statusValue} onChange={(event) => setStatusValue(event.target.value)}>
             <option value="open">{STATUS_LABEL.open}</option>
             <option value="closed">{STATUS_LABEL.closed}</option>
@@ -74,4 +151,3 @@ export default function EmployeeProfile() {
     </section>
   );
 }
-

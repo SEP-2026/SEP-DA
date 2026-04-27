@@ -1,5 +1,6 @@
-﻿import os
+import os
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 from typing import Any
 from uuid import uuid4
 
@@ -15,6 +16,10 @@ from app.models.models import District, EmployeeAccount, RevokedToken, User
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordRequestResponse,
+    ForgotPasswordResetRequest,
+    ForgotPasswordResetResponse,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
@@ -32,6 +37,10 @@ security = HTTPBearer(auto_error=False)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "3"))
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "10"))
+
+_PASSWORD_RESET_STORE: dict[str, dict[str, Any]] = {}
+_PASSWORD_RESET_STORE_LOCK = Lock()
 
 
 def _build_user_info(user: User) -> UserInfo:
@@ -94,13 +103,29 @@ def decode_access_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except ExpiredSignatureError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token Ã„â€˜ÃƒÂ£ hÃ¡ÂºÂ¿t hÃ¡ÂºÂ¡n") from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token Ä‘Ã£ háº¿t háº¡n") from exc
     except InvalidTokenError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡") from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng há»£p lá»‡") from exc
 
 
 def _is_token_revoked(db: Session, jti: str) -> bool:
     return db.query(RevokedToken).filter(RevokedToken.jti == jti).first() is not None
+
+
+def _normalize_identity(identity: str) -> str:
+    return (identity or "").strip().lower()
+
+
+def _normalize_phone(phone: str) -> str:
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
+def _cleanup_expired_password_reset_tokens() -> None:
+    now = datetime.now(timezone.utc)
+    with _PASSWORD_RESET_STORE_LOCK:
+        expired = [token for token, data in _PASSWORD_RESET_STORE.items() if data["expires_at"] <= now]
+        for token in expired:
+            _PASSWORD_RESET_STORE.pop(token, None)
 
 
 def get_current_user(
@@ -108,27 +133,27 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="ThiÃ¡ÂºÂ¿u access token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thiáº¿u access token")
 
     payload = decode_access_token(credentials.credentials)
     jti = payload.get("jti")
     if not jti or _is_token_revoked(db, jti):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ thu hÃ¡Â»â€œi")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token Ä‘Ã£ bá»‹ thu há»“i")
 
     subject = payload.get("sub")
     if not subject or str(subject).startswith("employee:"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃƒÂ´ng thuÃ¡Â»â„¢c ngÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng hÃ¡Â»â€¡ thÃ¡Â»â€˜ng")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng thuá»™c ngÆ°á»i dÃ¹ng há»‡ thá»‘ng")
 
     try:
         user_id = int(subject)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡") from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng há»£p lá»‡") from exc
 
     user = db.query(User).filter(User.id == user_id, User.is_active == 1).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="NgÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i hoÃ¡ÂºÂ·c Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ khÃƒÂ³a")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ bá»‹ khÃ³a")
     if user.status and user.status.lower() == "banned":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TÃƒÂ i khoÃ¡ÂºÂ£n Ã„â€˜ÃƒÂ£ bÃ¡Â»â€¹ vÃƒÂ´ hiÃ¡Â»â€¡u hÃƒÂ³a")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TÃ i khoáº£n Ä‘Ã£ bá»‹ vÃ´ hiá»‡u hÃ³a")
     return user
 
 
@@ -214,7 +239,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     normalized_email = payload.email.lower().strip()
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c sÃ¡Â»Â­ dÃ¡Â»Â¥ng")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng")
 
     user = User(
         name=payload.name.strip(),
@@ -231,7 +256,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return RegisterResponse(message="TÃ¡ÂºÂ¡o tÃƒÂ i khoÃ¡ÂºÂ£n user thÃƒÂ nh cÃƒÂ´ng", user=_build_user_info(user))
+    return RegisterResponse(message="Táº¡o tÃ i khoáº£n user thÃ nh cÃ´ng", user=_build_user_info(user))
 
 
 @router.post("/logout", response_model=LogoutResponse)
@@ -240,19 +265,116 @@ def logout(
     db: Session = Depends(get_db),
 ):
     if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="ThiÃ¡ÂºÂ¿u access token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Thiáº¿u access token")
 
     payload = decode_access_token(credentials.credentials)
     jti = payload.get("jti")
     exp = payload.get("exp")
     if not jti or not exp:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃƒÂ´ng hÃ¡Â»Â£p lÃ¡Â»â€¡")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token khÃ´ng há»£p lá»‡")
 
     if not _is_token_revoked(db, jti):
         expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
         db.add(RevokedToken(jti=jti, expires_at=expires_at))
         db.commit()
-    return LogoutResponse(message="Ã„ÂÃ„Æ’ng xuÃ¡ÂºÂ¥t thÃƒÂ nh cÃƒÂ´ng")
+    return LogoutResponse(message="ÄÄƒng xuáº¥t thÃ nh cÃ´ng")
+
+
+def _resolve_password_reset_subject(identity: str, phone: str, db: Session) -> dict[str, Any]:
+    normalized_identity = _normalize_identity(identity)
+    normalized_phone = _normalize_phone(phone)
+
+    user = db.query(User).filter(User.email == normalized_identity, User.is_active == 1).first()
+    if user and (user.role or "").lower() != "employee":
+        if user.status and user.status.lower() == "banned":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tai khoan da bi vo hieu hoa")
+        user_phone = _normalize_phone(user.phone or "")
+        if not user_phone or user_phone != normalized_phone:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Thong tin xac minh khong hop le")
+        return {"kind": "user", "id": int(user.id)}
+
+    employee_identities = {normalized_identity}
+    if "@" in normalized_identity:
+        local_part = normalized_identity.split("@", 1)[0].strip().lower()
+        if local_part:
+            employee_identities.add(local_part)
+
+    employee = (
+        db.query(EmployeeAccount)
+        .filter(EmployeeAccount.username.in_(employee_identities), EmployeeAccount.is_active == 1)
+        .first()
+    )
+    if not employee or employee.status != "active":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Khong tim thay tai khoan")
+
+    linked_user = db.query(User).filter(User.email == employee.username, User.is_active == 1).first()
+    linked_phone = _normalize_phone(linked_user.phone if linked_user else "")
+    if not linked_phone or linked_phone != normalized_phone:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Thong tin xac minh khong hop le")
+    return {"kind": "employee", "id": int(employee.id)}
+
+
+@router.post("/forgot-password/request", response_model=ForgotPasswordRequestResponse)
+def forgot_password_request(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    subject = _resolve_password_reset_subject(payload.identity, payload.phone, db)
+    _cleanup_expired_password_reset_tokens()
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    reset_token = str(uuid4())
+    with _PASSWORD_RESET_STORE_LOCK:
+        _PASSWORD_RESET_STORE[reset_token] = {
+            "kind": subject["kind"],
+            "subject_id": subject["id"],
+            "expires_at": expires_at,
+        }
+
+    expires_in = int((expires_at - now).total_seconds())
+    return ForgotPasswordRequestResponse(
+        message="Da tao yeu cau dat lai mat khau",
+        reset_token=reset_token,
+        expires_in=expires_in,
+    )
+
+
+@router.post("/forgot-password/reset", response_model=ForgotPasswordResetResponse)
+def forgot_password_reset(payload: ForgotPasswordResetRequest, db: Session = Depends(get_db)):
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mat khau xac nhan khong khop")
+
+    _cleanup_expired_password_reset_tokens()
+    with _PASSWORD_RESET_STORE_LOCK:
+        record = _PASSWORD_RESET_STORE.get(payload.reset_token)
+
+    if not record:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reset token khong hop le hoac da het han")
+
+    new_hash = generate_password_hash(payload.new_password)
+
+    if record["kind"] == "user":
+        user = db.query(User).filter(User.id == int(record["subject_id"]), User.is_active == 1).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tai khoan khong ton tai")
+        user.password_hash = new_hash
+        user.password = "__legacy_disabled__"
+    else:
+        employee = (
+            db.query(EmployeeAccount)
+            .filter(EmployeeAccount.id == int(record["subject_id"]), EmployeeAccount.is_active == 1)
+            .first()
+        )
+        if not employee:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tai khoan khong ton tai")
+        employee.password_hash = new_hash
+        linked_user = db.query(User).filter(User.email == employee.username, User.is_active == 1).first()
+        if linked_user:
+            linked_user.password_hash = new_hash
+            linked_user.password = "__legacy_disabled__"
+
+    db.commit()
+    with _PASSWORD_RESET_STORE_LOCK:
+        _PASSWORD_RESET_STORE.pop(payload.reset_token, None)
+    return ForgotPasswordResetResponse(message="Dat lai mat khau thanh cong")
 
 
 @router.get("/me", response_model=UserInfo)
@@ -268,33 +390,33 @@ def update_me(
 ):
     user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NgÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i")
 
     if payload.name is not None:
         name = payload.name.strip()
         if not name:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="TÃƒÂªn khÃƒÂ´ng Ã„â€˜Ã†Â°Ã¡Â»Â£c Ã„â€˜Ã¡Â»Æ’ trÃ¡Â»â€˜ng")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="TÃªn khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng")
         user.name = name
     if payload.phone is not None:
         user.phone = payload.phone.strip() or None
     if payload.managed_district_id is not None:
         if user.role not in {"owner", "admin"}:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="ChÃ¡Â»â€° owner hoÃ¡ÂºÂ·c admin mÃ¡Â»â€ºi Ã„â€˜Ã†Â°Ã¡Â»Â£c cÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t quÃ¡ÂºÂ­n quÃ¡ÂºÂ£n lÃƒÂ½")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chá»‰ owner hoáº·c admin má»›i Ä‘Æ°á»£c cáº­p nháº­t quáº­n quáº£n lÃ½")
         district = db.query(District).filter(District.id == payload.managed_district_id).first()
         if not district:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="QuÃ¡ÂºÂ­n khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quáº­n khÃ´ng tá»“n táº¡i")
         user.managed_district_id = district.id
     if payload.email is not None:
         normalized_email = payload.email.lower().strip()
         if normalized_email != user.email:
             existing_user = db.query(User).filter(User.email == normalized_email, User.id != user.id).first()
             if existing_user:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email Ã„â€˜ÃƒÂ£ Ã„â€˜Ã†Â°Ã¡Â»Â£c sÃ¡Â»Â­ dÃ¡Â»Â¥ng")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng")
             user.email = normalized_email
 
     db.commit()
     db.refresh(user)
-    return UpdateProfileResponse(message="CÃ¡ÂºÂ­p nhÃ¡ÂºÂ­t hÃ¡Â»â€œ sÃ†Â¡ thÃƒÂ nh cÃƒÂ´ng", user=_build_user_info(user))
+    return UpdateProfileResponse(message="Cáº­p nháº­t há»“ sÆ¡ thÃ nh cÃ´ng", user=_build_user_info(user))
 
 
 @router.post("/change-password", response_model=ChangePasswordResponse)
@@ -305,9 +427,9 @@ def change_password(
 ):
     user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NgÃ†Â°Ã¡Â»Âi dÃƒÂ¹ng khÃƒÂ´ng tÃ¡Â»â€œn tÃ¡ÂºÂ¡i")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i")
     if payload.old_password == payload.new_password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MÃ¡ÂºÂ­t khÃ¡ÂºÂ©u mÃ¡Â»â€ºi phÃ¡ÂºÂ£i khÃƒÂ¡c mÃ¡ÂºÂ­t khÃ¡ÂºÂ©u cÃ…Â©")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Máº­t kháº©u má»›i pháº£i khÃ¡c máº­t kháº©u cÅ©")
 
     ensure_strong_password(payload.new_password)
     password_ok = False
@@ -316,10 +438,13 @@ def change_password(
     elif user.password:
         password_ok = user.password == payload.old_password
     if not password_ok:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MÃ¡ÂºÂ­t khÃ¡ÂºÂ©u cÃ…Â© khÃƒÂ´ng Ã„â€˜ÃƒÂºng")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Máº­t kháº©u cÅ© khÃ´ng Ä‘Ãºng")
 
     user.password_hash = generate_password_hash(payload.new_password)
     user.password = "__legacy_disabled__"
     db.commit()
-    return ChangePasswordResponse(message="Ã„ÂÃ¡Â»â€¢i mÃ¡ÂºÂ­t khÃ¡ÂºÂ©u thÃƒÂ nh cÃƒÂ´ng")
+    return ChangePasswordResponse(message="Äá»•i máº­t kháº©u thÃ nh cÃ´ng")
+
+
+
 

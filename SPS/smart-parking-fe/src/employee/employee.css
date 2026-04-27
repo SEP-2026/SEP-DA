@@ -316,6 +316,26 @@
   flex-wrap: wrap;
 }
 
+.employee-vehicles-toolbar {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.employee-search-wrap input,
+.employee-filter-wrap select {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(21, 63, 95, 0.16);
+  background: #fff;
+  color: #153651;
+  font: inherit;
+}
+
 .employee-btn {
   padding: 12px 18px;
   border: none;
@@ -487,6 +507,85 @@
 
 .employee-note {
   color: #52738f;
+}
+
+.employee-profile-kv {
+  margin-top: 14px;
+}
+
+.employee-profile-kv p {
+  margin: 0;
+  color: #436983;
+  line-height: 1.55;
+}
+
+.employee-password-panel {
+  margin-top: 14px;
+  border: 1px solid rgba(31, 125, 172, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.employee-password-panel h3 {
+  margin: 0;
+  color: #14395d;
+  font-size: 18px;
+}
+
+.employee-password-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.employee-password-grid input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(21, 63, 95, 0.16);
+  background: #fff;
+  color: #153651;
+  font: inherit;
+}
+
+.employee-password-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.employee-password-actions .employee-note {
+  margin: 0;
+  max-width: 720px;
+}
+
+.employee-password-message {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.employee-password-message.is-success {
+  color: #0f6a44;
+  background: rgba(21, 176, 122, 0.12);
+  border: 1px solid rgba(21, 176, 122, 0.2);
+}
+
+.employee-password-message.is-error {
+  color: #8f2e3a;
+  background: rgba(196, 74, 93, 0.12);
+  border: 1px solid rgba(196, 74, 93, 0.2);
+}
+
+.employee-status-control {
+  margin-top: 14px;
 }
 
 .employee-parking-board {
@@ -825,7 +924,7 @@
 
 .employee-traffic-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   margin-bottom: 12px;
 }
@@ -942,6 +1041,11 @@
   .employee-history-item,
   .employee-action-row {
     flex-direction: column;
+  }
+
+  .employee-vehicles-toolbar,
+  .employee-password-grid {
+    grid-template-columns: 1fr;
   }
 
   .employee-vehicle-meta,

@@ -133,6 +133,20 @@ export default function AdminLayout({ auth, onLogout }) {
       setAdminData((prev) => ({ ...prev, settings: res.data.settings }));
       setSyncNote("Đã cập nhật cấu hình admin");
     },
+    async rebuildOwnerAssignments() {
+      const res = await API.post("/admin/rebuild-owner-assignments");
+      await refreshAdminData();
+      return res.data;
+    },
+    async autoAssignOwners() {
+      const res = await API.post("/admin/auto-assign-owners");
+      await refreshAdminData();
+      return res.data;
+    },
+    async getOwnerAssignmentsDebug() {
+      const res = await API.get("/admin/owner-assignments-debug");
+      return Array.isArray(res.data) ? res.data : [];
+    },
   };
 
   return (

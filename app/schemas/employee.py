@@ -171,3 +171,13 @@ class EmployeeHistoryItem(BaseModel):
 class EmployeeHistoryResponse(BaseModel):
     history: list[EmployeeHistoryItem]
     total_count: int
+
+
+class EmployeeChangePasswordRequest(BaseModel):
+    old_password: str = Field(min_length=1, max_length=255)
+    new_password: str = Field(min_length=8, max_length=255)
+    confirm_password: str = Field(min_length=8, max_length=255)
+
+
+class EmployeeChangePasswordResponse(BaseModel):
+    message: str

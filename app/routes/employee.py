@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.controllers.employee_controller import (
     create_owner_employee_controller,
@@ -22,7 +23,10 @@ from app.controllers.employee_controller import (
 from app.database import get_db
 from app.models.models import EmployeeAccount, RevokedToken, User
 from app.routes.auth import decode_access_token, get_current_user
+from app.security.password_policy import ensure_strong_password
 from app.schemas.employee import (
+    EmployeeChangePasswordRequest,
+    EmployeeChangePasswordResponse,
     EmployeeHistoryResponse,
     EmployeeInfo,
     EmployeeLoginRequest,
@@ -170,6 +174,41 @@ def employee_me(current_employee: EmployeeAccount = Depends(get_current_employee
             "created_at": current_employee.created_at,
         }
     )
+
+
+@router.post("/change-password", response_model=EmployeeChangePasswordResponse)
+def employee_change_password(
+    payload: EmployeeChangePasswordRequest,
+    current_employee: EmployeeAccount = Depends(get_current_employee),
+    db: Session = Depends(get_db),
+):
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Xac nhan mat khau khong khop")
+    if payload.old_password == payload.new_password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mat khau moi phai khac mat khau cu")
+
+    employee = (
+        db.query(EmployeeAccount)
+        .filter(EmployeeAccount.id == current_employee.id, EmployeeAccount.is_active == 1)
+        .with_for_update()
+        .first()
+    )
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tai khoan nhan vien khong ton tai")
+    if not employee.password_hash or not check_password_hash(employee.password_hash, payload.old_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mat khau cu khong dung")
+
+    ensure_strong_password(payload.new_password)
+    new_hash = generate_password_hash(payload.new_password)
+    employee.password_hash = new_hash
+
+    linked_user = db.query(User).filter(User.email == employee.username, User.is_active == 1).first()
+    if linked_user:
+        linked_user.password_hash = new_hash
+        linked_user.password = "__legacy_disabled__"
+
+    db.commit()
+    return EmployeeChangePasswordResponse(message="Doi mat khau thanh cong")
 
 
 @router.get("/parking-lot", response_model=EmployeeParkingOverview)

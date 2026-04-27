@@ -1,15 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "../pages/Home.css";
 
 function formatStatusLabel(status) {
   const mapping = {
     available: "Trống",
-    reserved: "Giữ chỗ",
-    in_use: "Đã có xe",
-    occupied: "Đã có xe",
-    maintenance: "Bảo trì",
+    reserved: "Đang đỗ",
+    in_use: "Đang đỗ",
+    occupied: "Đang đỗ",
+    maintenance: "Trống",
   };
-  return mapping[status] || status || "Không rõ";
+  return mapping[status] || "Trống";
 }
 
 function formatServiceLabel(mode) {
@@ -44,6 +44,14 @@ export default function EmployeeParkingBoard({ slotsOverview, title = "Sơ đồ
     [slots],
   );
 
+  useEffect(() => {
+    if (!selectedVehicleSlot) return;
+    const stillVisible = normalizedSlots.some((slot) => slot.id === selectedVehicleSlot.id);
+    if (!stillVisible) {
+      setSelectedVehicleSlot(null);
+    }
+  }, [normalizedSlots, selectedVehicleSlot]);
+
   return (
     <section className="parking-lot-card employee-parking-board">
       <div className="parking-lot-head employee-parking-board-head">
@@ -53,14 +61,14 @@ export default function EmployeeParkingBoard({ slotsOverview, title = "Sơ đồ
         </div>
         <div className="parking-lot-stats">
           <span className="stat-chip stat-available">Trống: {available}</span>
-          <span className="stat-chip stat-occupied">Giữ/Đã có xe: {occupied}</span>
+          <span className="stat-chip stat-occupied">Đang đỗ: {occupied}</span>
           <span className="stat-chip stat-total">Tổng: {total}</span>
         </div>
       </div>
 
       <div className="parking-grid">
         {normalizedSlots.map((slot) => {
-          const isAvailable = slot.status === "available";
+          const isAvailable = slot.status === "available" || slot.status === "maintenance";
           const cardClass = `slot-card${slot.clickable ? " employee-slot-card--interactive" : " employee-slot-card--static"}`;
           return (
             <article
