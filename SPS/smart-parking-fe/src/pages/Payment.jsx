@@ -28,6 +28,20 @@ const getTotalPaymentAmount = (payment) => {
   return amount + overtime;
 };
 
+const formatDuration = (start, end) => {
+  try {
+    const s = new Date(start);
+    const e = new Date(end);
+    let diff = Math.max(0, e - s);
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    diff -= hours * 1000 * 60 * 60;
+    const minutes = Math.round(diff / (1000 * 60));
+    return `${hours} giờ ${minutes} phút`;
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function Payment() {
   const { bookingId } = useParams();
   const location = useLocation();
@@ -37,6 +51,7 @@ export default function Payment() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [payment, setPayment] = useState(null);
+  const [bookingDetail, setBookingDetail] = useState(null);
   const [staticQrMissing, setStaticQrMissing] = useState(false);
   const dynamicQrUrl = useMemo(
     () => buildDynamicVietQrUrl(getTotalPaymentAmount(payment), payment?.booking_id),
@@ -59,6 +74,15 @@ export default function Payment() {
         booking_id: numericBookingId,
       });
       setPayment(res.data);
+
+      // Try to fetch booking detail to display upfront amount and booking time
+      try {
+        const bres = await API.get(`/booking/my/${numericBookingId}`);
+        setBookingDetail(bres.data);
+      } catch (err) {
+        // ignore booking detail failures
+        setBookingDetail(null);
+      }
     } catch (err) {
       setError(err?.response?.data?.detail || "Không tạo được payment");
       setPayment(null);
@@ -118,7 +142,15 @@ export default function Payment() {
           <div className="payment-card">
             <p><strong>Booking ID:</strong> {payment.booking_id}</p>
             <p><strong>Số tiền dự kiến:</strong> {formatMoney(payment.amount)}đ</p>
+            {bookingDetail && (
+              <p><strong>Số tiền cần thanh toán:</strong> {formatMoney(bookingDetail.upfront_amount)}đ</p>
+            )}
             <p><strong>Phí lố giờ:</strong> {formatMoney(payment.overtime_fee)}đ</p>
+            {bookingDetail && bookingDetail.checkout_time && bookingDetail.checkin_time && (
+              <p>
+                <strong>Thời gian booking:</strong> {formatDuration(bookingDetail.checkin_time, bookingDetail.checkout_time)}
+              </p>
+            )}
             <p><strong>Tổng tiền phải thanh toán:</strong> {formatMoney(getTotalPaymentAmount(payment))}đ</p>
             <p><strong>Trạng thái:</strong> {payment.payment_status}</p>
             <p className="payment-note">Đường dẫn QR cố định: public/payment/merchant-qr.png</p>
@@ -134,7 +166,14 @@ export default function Payment() {
                   onError={() => setStaticQrMissing(true)}
                 />
               ) : payment.qr_code ? (
-                <img src={`http://localhost:8000/${payment.qr_code}`} alt="QR thanh toán VNPay fallback" />
+                <div>
+                  <img src={`http://localhost:8000/${payment.qr_code}`} alt="QR thanh toán VNPay fallback" />
+                  <div style={{ marginTop: 8 }}>
+                    <a href={`http://localhost:8000/${payment.qr_code}`} download className="btn-link">
+                      Tải QR
+                    </a>
+                  </div>
+                </div>
               ) : (
                 <p className="payment-note">Chưa có QR code để hiển thị</p>
               )}

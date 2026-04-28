@@ -19,6 +19,25 @@ class PaymentCreateRequest(BaseModel):
     booking_id: int = Field(gt=0)
 
 
+def _calculate_no_show_deposit(booking: Booking) -> float:
+    if booking.status == "cancelled" and (booking.cancel_reason or "") == "no_show":
+        return round(float(booking.total_amount or 0) * 0.3, 2)
+    return 0.0
+
+
+def _get_effective_paid_amount(booking: Booking, payment: Payment | None) -> float:
+    if booking.status == "cancelled" and (booking.cancel_reason or "") == "no_show":
+        deposit_amount = float((payment.deposit_amount if payment else 0) or 0)
+        if deposit_amount > 0:
+            return round(deposit_amount, 2)
+        return _calculate_no_show_deposit(booking)
+
+    if not payment:
+        return 0.0
+
+    return round(float(payment.amount or 0) + float(payment.overtime_fee or 0), 2)
+
+
 def _ensure_qr_directory() -> None:
     import os
 
@@ -152,3 +171,45 @@ def payment_callback(
         "payment_status": payment.payment_status,
         "paid_at": payment.paid_at,
     }
+
+
+@router.get("/history")
+def payment_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    bookings = (
+        db.query(Booking)
+        .filter(Booking.user_id == current_user.id)
+        .order_by(Booking.created_at.desc(), Booking.id.desc())
+        .all()
+    )
+
+    payment_map = {}
+    if bookings:
+        booking_ids = [booking.id for booking in bookings]
+        payments = db.query(Payment).filter(Payment.booking_id.in_(booking_ids)).all()
+        payment_map = {payment.booking_id: payment for payment in payments}
+
+    result = []
+    for booking in bookings:
+        payment = payment_map.get(booking.id)
+        paid_amount = _get_effective_paid_amount(booking, payment)
+        deposit_amount = _calculate_no_show_deposit(booking)
+        result.append(
+            {
+                "booking_id": booking.id,
+                "booking_status": booking.status,
+                "cancel_reason": booking.cancel_reason,
+                "booking_amount": float(booking.total_amount or 0),
+                "paid_amount": round(paid_amount, 2),
+                "deposit_amount": deposit_amount,
+                "payment_status": payment.payment_status if payment else None,
+                "paid_at": payment.paid_at if payment else None,
+                "booking_created_at": booking.created_at,
+                "checkin_time": booking.start_time,
+                "checkout_time": booking.expire_time,
+            }
+        )
+
+    return result

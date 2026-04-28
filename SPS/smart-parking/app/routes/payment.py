@@ -17,6 +17,11 @@ class PaymentCreateRequest(BaseModel):
     booking_id: int = Field(gt=0)
 
 
+class MockPaymentRequest(BaseModel):
+    booking_id: int = Field(gt=0)
+    status: str = Field(regex="^(success|fail)$")
+
+
 def _ensure_qr_directory() -> None:
     import os
 
@@ -129,6 +134,43 @@ def payment_callback(
         if booking.slot:
             booking.slot.status = "available"
         message = "Thanh toán thất bại"
+
+    db.commit()
+
+    return {
+        "message": message,
+        "booking_id": booking.id,
+        "booking_status": booking.status,
+        "payment_status": payment.payment_status,
+        "paid_at": payment.paid_at,
+    }
+
+
+@router.post("/mock")
+def mock_payment(payload: MockPaymentRequest, db: Session = Depends(get_db)):
+    """Mock endpoint to simulate payment gateway callback (for testing).
+
+    Accepts JSON { booking_id, status }
+    """
+    booking = db.query(Booking).filter(Booking.id == payload.booking_id).with_for_update().first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking không tồn tại")
+
+    payment = db.query(Payment).filter(Payment.booking_id == payload.booking_id).with_for_update().first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment không tồn tại")
+
+    if payload.status == "success":
+        payment.payment_status = "paid"
+        payment.paid_at = datetime.utcnow()
+        booking.status = "booked"
+        message = "Thanh toán (mock) thành công"
+    else:
+        payment.payment_status = "failed"
+        booking.status = "cancelled"
+        if booking.slot:
+            booking.slot.status = "available"
+        message = "Thanh toán (mock) thất bại"
 
     db.commit()
 

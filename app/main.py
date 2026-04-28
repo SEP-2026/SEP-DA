@@ -106,6 +106,11 @@ def root():
     return {"message": "API + CSDL đã sẵn sàng"}
 
 
+@app.get("/ws-health")
+def ws_health():
+    return {"ok": True}
+
+
 @app.websocket("/ws/updates")
 async def ws_updates(websocket: WebSocket):
     await realtime_hub.connect(websocket)

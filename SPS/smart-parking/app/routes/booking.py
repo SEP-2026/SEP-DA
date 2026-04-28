@@ -457,6 +457,25 @@ def get_my_booking_detail(
 
     payment_required = booking.status == "pending"
 
+    # Compute upfront amount (30% of total) and potential overtime info
+    total_amount = float(booking.total_amount or 0)
+    upfront_amount = round(total_amount * 0.3, 2)
+
+    overtime_fee = 0.0
+    overtime_hours = 0.0
+    try:
+        now = datetime.utcnow()
+        if booking.expire_time and now > booking.expire_time:
+            extra_hours = (now - booking.expire_time).total_seconds() / 3600
+            price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_lot_id).first()
+            if price and extra_hours > 0:
+                overtime_hours = round(extra_hours, 2)
+                overtime_fee = round(max(0, extra_hours) * float(price.price_per_hour), 2)
+    except Exception:
+        # Fail gracefully; leave overtime as zero
+        overtime_fee = 0.0
+        overtime_hours = 0.0
+
     return {
         "booking_id": booking.id,
         "booking_status": booking.status,
@@ -464,8 +483,12 @@ def get_my_booking_detail(
         "checkout_time": booking.expire_time,
         "booking_mode": booking.booking_mode,
         "billed_units": booking.billed_units,
-        "total_amount": booking.total_amount,
+        "total_amount": total_amount,
+        "upfront_amount": upfront_amount,
+        "overtime_fee": overtime_fee,
+        "overtime_hours": overtime_hours,
         "qr_code": booking.qr_code,
+        "qr_url": booking.qr_code,
         "payment_required": payment_required,
         "parking": {
             "id": parking_lot.id if parking_lot else None,
