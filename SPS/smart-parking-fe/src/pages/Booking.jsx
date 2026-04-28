@@ -689,15 +689,34 @@ export default function Booking() {
         <section className="booking-search-section">
           <h2 className="booking-subtitle">Tìm bãi xe gần bạn</h2>
           <div className="booking-tools booking-tools--search">
-            <input
-              className="booking-input"
-              placeholder="Ví dụ: Nguyễn Văn Săng, Tân Phú"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-            <button type="button" className="btn-primary" onClick={handleSearchNearby} disabled={searching}>
-              {searching ? "Đang tìm..." : "Tìm bãi xe gần bạn"}
+            <div className="input-with-clear">
+              <input
+                className="booking-input"
+                aria-label="Địa chỉ tìm kiếm"
+                placeholder="Ví dụ: Nguyễn Văn Săng, Tân Phú"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+              {address && (
+                <button
+                  type="button"
+                  className="input-clear-btn"
+                  aria-label="Xóa địa chỉ"
+                  onClick={() => setAddress("")}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <button type="button" className="btn-primary btn-primary--search" onClick={handleSearchNearby} disabled={searching}>
+              {searching ? (
+                <span className="btn-loading">⏳ Đang tìm...</span>
+              ) : (
+                "Tìm bãi xe gần bạn"
+              )}
             </button>
+
             <button type="button" className="btn-secondary" onClick={handleUseCurrentLocation} disabled={searching}>
               📍 Dùng vị trí hiện tại
             </button>

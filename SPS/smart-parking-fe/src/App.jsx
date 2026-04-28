@@ -16,6 +16,7 @@ import RevenuePage from "./pages/admin/RevenuePage";
 import UserManagement from "./pages/admin/UserManagement";
 import OwnerBookings from "./pages/owner/OwnerBookings";
 import OwnerCustomers from "./pages/owner/OwnerCustomers";
+import OwnerNotifications from "./pages/owner/OwnerNotifications";
 import OwnerOverview from "./pages/owner/OwnerOverview";
 import OwnerParking from "./pages/owner/OwnerParking";
 import OwnerRevenue from "./pages/owner/OwnerRevenue";
@@ -317,6 +318,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           <Route path="customers" element={<OwnerCustomers />} />
           <Route path="revenue" element={<OwnerRevenue />} />
           <Route path="reviews" element={<OwnerReviews />} />
+          <Route path="notifications" element={<OwnerNotifications />} />
           <Route path="settings" element={<OwnerSettings />} />
         </Route>
         <Route

@@ -121,6 +121,28 @@ export default function OwnerLayout({ auth, onLogout }) {
     };
   }, [refreshOwnerData]);
 
+  // Re-render when localStorage changes (from OwnerNotifications page or other tabs)
+  const [storageVersion, setStorageVersion] = useState(0);
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "owner_read_notifications") {
+        setStorageVersion((prev) => prev + 1);
+      }
+    };
+    
+    const handleNotificationsUpdate = () => {
+      setStorageVersion((prev) => prev + 1);
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("owner_notifications_updated", handleNotificationsUpdate);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("owner_notifications_updated", handleNotificationsUpdate);
+    };
+  }, []);
+
   const stats = useMemo(() => {
     const todayRevenue = ownerData.transactions
       .filter((item) => item.status === "paid")
@@ -141,7 +163,41 @@ export default function OwnerLayout({ auth, onLogout }) {
   }, [ownerData]);
 
   const meta = OWNER_ROUTE_META[location.pathname] || OWNER_ROUTE_META["/owner"];
-  const notificationsCount = ownerData.activities.length;
+  
+  // Calculate unread notification count from stored read state
+  const unreadNotificationsCount = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("owner_read_notifications");
+      const readIds = stored ? new Set(JSON.parse(stored)) : new Set();
+      
+      let count = 0;
+      // Count pending bookings that aren't marked as read
+      (ownerData.bookings || []).slice(0, 5).forEach((booking) => {
+        if (booking.status === "pending" && !readIds.has(`booking-pending-${booking.id}`)) {
+          count++;
+        }
+        if (booking.status === "confirmed" && !readIds.has(`booking-confirmed-${booking.id}`)) {
+          count++;
+        }
+      });
+      // Count unreplied reviews that aren't marked as read
+      (ownerData.reviews || []).filter((r) => !r.ownerReply).slice(0, 3).forEach((review) => {
+        if (!readIds.has(`review-unreplied-${review.id}`)) {
+          count++;
+        }
+      });
+      // Count warning activities that aren't marked as read
+      (ownerData.activities || []).slice(0, 5).forEach((activity) => {
+        if (activity.type === "warning" && !readIds.has(activity.id)) {
+          count++;
+        }
+      });
+      return count;
+    } catch {
+      return 0;
+    }
+  }, [ownerData, storageVersion]);
+  
   const ownerDisplayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "Owner";
 
   const actions = {
@@ -332,10 +388,10 @@ export default function OwnerLayout({ auth, onLogout }) {
           </div>
 
           <div className="owner-topbar-tools">
-            <div className="owner-notify-pill">
+            <Link to="/owner/notifications" className="owner-notify-pill">
               <OwnerIcon name="bell" className="owner-menu-icon" />
-              <span>{notificationsCount}</span>
-            </div>
+              {unreadNotificationsCount > 0 && <span className="owner-notify-badge">{unreadNotificationsCount}</span>}
+            </Link>
             <div className="owner-role-pill">Tài khoản vận hành</div>
             <div className="owner-avatar" title={syncNote}>
               <div className="owner-avatar-mark">{ownerDisplayName.slice(0, 1).toUpperCase()}</div>

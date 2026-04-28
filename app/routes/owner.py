@@ -407,6 +407,39 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
                 "type": "warning",
             }
         )
+    
+    # Add cancelled booking notifications as warnings
+    cancelled_bookings = [b for b in bookings if b.status == "cancelled"]
+    # Query payments for cancelled bookings separately to ensure we have the latest data
+    cancelled_booking_ids = [b.id for b in cancelled_bookings]
+    cancelled_payments = {}
+    if cancelled_booking_ids:
+        for payment in db.query(Payment).filter(Payment.booking_id.in_(cancelled_booking_ids)).all():
+            cancelled_payments[int(payment.booking_id)] = payment
+    
+    for booking in cancelled_bookings:
+        # Try payments from the main dict first, then from the dedicated cancelled query
+        payment = payments_by_booking_id.get(int(booking.id)) or cancelled_payments.get(int(booking.id))
+        
+        # Get the deposit amount (what user loses when no-show)
+        deposit_amount = 0
+        if payment and float(payment.deposit_amount or 0) > 0:
+            deposit_amount = float(payment.deposit_amount)
+        else:
+            # Fallback: calculate 30% of total booking amount as deposit
+            deposit_amount = round(float(booking.total_amount or 0) * 0.3, 2)
+        
+        cancel_time = booking.actual_checkout or booking.created_at or datetime.utcnow()
+        activity_rows.append(
+            {
+                "id": f"cancellation-{booking.id}",
+                "title": f"Booking BK-{booking.id} bị hủy - Mất cọc {int(deposit_amount)} VND",
+                "message": f"Đặt chỗ tại {parking_by_id.get(int(booking.parking_id)).name if booking.parking_id and parking_by_id.get(int(booking.parking_id)) else 'bãi đỗ'} đã bị hủy do quá thời gian check-in. Khách mất cọc {int(deposit_amount)} VND.",
+                "time": cancel_time.isoformat(),
+                "type": "warning",
+            }
+        )
+    
     activities = sorted(activity_rows, key=lambda item: item["time"], reverse=True)[:8]
 
     return {
