@@ -1,0 +1,92 @@
+/* Owner Booking Notification */
+.owner-booking-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 400px;
+  max-height: 600px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.notification-header {
+  background: #149a8f;
+  color: white;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notification-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.notification-header button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-content {
+  padding: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.booking-item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.booking-item p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.booking-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.confirm-btn, .cancel-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.confirm-btn {
+  background: #28a745;
+  color: white;
+}
+
+.cancel-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.confirm-btn:hover {
+  background: #218838;
+}
+
+.cancel-btn:hover {
+  background: #c82333;
+}
