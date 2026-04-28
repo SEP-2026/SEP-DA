@@ -351,7 +351,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "endTime": isoformat_vn(booking.actual_checkout),
             "bookingStartTime": isoformat_vn(booking.start_time or booking.created_at, fallback_now=True),
             "bookingEndTime": isoformat_vn(booking.expire_time or booking.created_at, fallback_now=True),
-            "price": float(booking.total_amount or 0),
+            "price": float(booking.total_actual_fee or booking.total_amount or 0),
             "status": _owner_booking_status(booking.status),
             "phone": user.phone if user and user.phone else "Chưa có",
         })
@@ -721,10 +721,11 @@ def owner_reply_review(
         raise HTTPException(status_code=404, detail="Không tìm thấy đánh giá")
     if _get_owner_parking_assignment(current_user.id, review.parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Bạn không có quyền phản hồi đánh giá này")
-    if review.owner_reply:
-        raise HTTPException(status_code=400, detail="Đã phản hồi đánh giá này rồi")
+    normalized_reply = payload.reply.strip()
+    if not normalized_reply:
+        raise HTTPException(status_code=400, detail="Nội dung phản hồi không được để trống")
 
-    review.owner_reply = payload.reply.strip()
+    review.owner_reply = normalized_reply
     review.owner_replied_at = datetime.utcnow()
     db.commit()
     return {
@@ -812,7 +813,7 @@ def get_owner_slot_detail(
                 "status": _owner_booking_status(active_booking.status),
                 "startTime": (active_booking.start_time or active_booking.created_at or datetime.utcnow()).isoformat(),
                 "endTime": (active_booking.expire_time or active_booking.created_at or datetime.utcnow()).isoformat(),
-                "price": float(active_booking.total_amount or 0),
+                "price": float(active_booking.total_actual_fee or active_booking.total_amount or 0),
                 "user": user.name if user else "Unknown user",
                 "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
                 "phone": user.phone if user and user.phone else "Chưa có",
