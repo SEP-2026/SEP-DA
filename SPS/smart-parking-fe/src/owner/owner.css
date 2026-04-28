@@ -185,12 +185,53 @@
   flex: 0 1 560px;
 }
 
-.owner-notify-pill,
+.owner-notify-pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(16, 128, 145, 0.22);
+  background: linear-gradient(135deg, rgba(28, 154, 149, 0.12), rgba(14, 127, 150, 0.08));
+  color: #0f6f78;
+  font-weight: 700;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.owner-notify-pill:hover {
+  background: linear-gradient(135deg, rgba(28, 154, 149, 0.18), rgba(14, 127, 150, 0.14));
+  border-color: rgba(16, 128, 145, 0.35);
+  transform: translateY(-1px);
+}
+
+.owner-notify-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #ff5252, #ff1744);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(251, 254, 255, 0.88);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
 .owner-role-pill {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-radius: 999px;
+  border-radius: 10px;
   padding: 8px 12px;
   border: 1px solid rgba(16, 128, 145, 0.18);
   background: rgba(255, 255, 255, 0.72);

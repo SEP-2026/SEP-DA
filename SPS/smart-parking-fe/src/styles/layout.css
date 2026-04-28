@@ -114,116 +114,147 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.12);
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.15);
   color: #fff;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.notification-bell-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
 }
 
 .notification-bell-icon {
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1;
 }
 
 .notification-bell-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #ef5350;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ef5350, #e53935);
   color: #fff;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 2px solid rgba(11, 32, 49, 0.96);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .notification-panel {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 12px);
   right: 0;
-  width: min(340px, 80vw);
+  width: min(360px, 85vw);
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(11, 32, 49, 0.96);
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(180deg, rgba(11, 32, 49, 0.98), rgba(8, 28, 44, 0.98));
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   z-index: 2500;
+  backdrop-filter: blur(8px);
 }
 
 .notification-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 12px;
+  padding: 14px 16px;
   color: #fff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+  font-size: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .notification-panel__clear {
   border: 0;
   background: transparent;
-  color: #9ee7ff;
+  color: #4dd0e1;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
+  transition: all 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.notification-panel__clear:hover {
+  background: rgba(77, 208, 225, 0.15);
+  color: #80deea;
 }
 
 .notification-panel__list {
-  max-height: 320px;
-  overflow: auto;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .notification-panel__empty {
-  padding: 16px 14px;
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 13px;
+  padding: 20px 16px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 14px;
+  text-align: center;
 }
 
 .notification-item {
   width: 100%;
   display: block;
-  padding: 12px 14px;
+  padding: 12px 16px;
   border: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: transparent;
   text-align: left;
   color: #fff;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.notification-item:last-child {
+  border-bottom: 0;
 }
 
 .notification-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .notification-item--unread {
-  background: rgba(46, 170, 255, 0.12);
+  background: rgba(46, 170, 255, 0.15);
+  border-left: 3px solid #2eaaff;
 }
 
 .notification-item__title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   margin-bottom: 4px;
+  color: #ffffff;
 }
 
 .notification-item__message {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.86);
-  line-height: 1.5;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+  margin-bottom: 6px;
 }
 
 .notification-item__time {
-  margin-top: 6px;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.65);
+  display: block;
+  margin-top: 6px;
 }
 
 .app-link {
