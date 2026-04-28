@@ -1,0 +1,109 @@
+.payment-history-wrap {
+  padding-top: 24px;
+}
+
+.payment-history-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  border-radius: 22px;
+  background: linear-gradient(170deg, rgba(236, 246, 255, 0.94), rgba(240, 250, 245, 0.92));
+}
+
+.payment-history-head {
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.payment-history-subtitle {
+  margin: 8px 0 0;
+  color: #44657d;
+}
+
+.payment-history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 18px;
+}
+
+.payment-summary-card {
+  border-radius: 16px;
+  border: 1px solid rgba(20, 57, 93, 0.18);
+  background: rgba(255, 255, 255, 0.88);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payment-summary-card span {
+  color: #5b768b;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.payment-summary-card strong {
+  color: #14395d;
+  font-size: 20px;
+}
+
+.payment-history-note,
+.payment-history-error {
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.payment-history-note {
+  background: rgba(35, 143, 94, 0.14);
+  border: 1px solid rgba(35, 143, 94, 0.34);
+  color: #176940;
+}
+
+.payment-history-error {
+  background: rgba(183, 45, 58, 0.12);
+  border: 1px solid rgba(183, 45, 58, 0.36);
+  color: #9b1f2f;
+}
+
+.payment-history-table-wrap {
+  overflow-x: auto;
+}
+
+.payment-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.payment-history-table th,
+.payment-history-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(20, 57, 93, 0.1);
+  text-align: left;
+}
+
+.payment-history-table th {
+  background: rgba(16, 98, 160, 0.08);
+  color: #183f5b;
+  font-size: 13px;
+}
+
+.payment-history-table td {
+  color: #264b66;
+}
+
+.payment-history-empty {
+  text-align: center;
+  color: #5b768b;
+  padding: 22px 14px;
+}
+
+@media (max-width: 860px) {
+  .payment-history-summary {
+    grid-template-columns: 1fr;
+  }
+}

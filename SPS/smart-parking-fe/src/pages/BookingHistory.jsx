@@ -798,6 +798,20 @@ export default function BookingHistory() {
                         <span>QR</span>
                       </button>
                     )}
+                    {item.status === "pending" && (
+                      <button
+                        type="button"
+                        className="btn-pay"
+                        onClick={() => navigate(`/payment/${item.booking_id}`, { state: { booking: item } })}
+                        title="Thanh toán"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="2" y="7" width="20" height="14" rx="2" />
+                          <line x1="2" y1="11" x2="22" y2="11" />
+                        </svg>
+                        <span>Thanh toán</span>
+                      </button>
+                    )}
                     <a
                       href={directionsUrl}
                       target="_blank"
