@@ -5,6 +5,7 @@ export const OWNER_NAV_ITEMS = [
   { to: "/owner/customers", label: "Quản lý khách hàng", icon: "customer" },
   { to: "/owner/revenue", label: "Doanh thu", icon: "revenue" },
   { to: "/owner/reviews", label: "Đánh giá", icon: "reviews" },
+  { to: "/owner/notifications", label: "Thông báo", icon: "bell" },
   { to: "/owner/settings", label: "Cài đặt & nhân viên", icon: "settings" },
 ];
 
@@ -36,5 +37,9 @@ export const OWNER_ROUTE_META = {
   "/owner/reviews": {
     title: "Đánh giá khách hàng",
     description: "Theo dõi phản hồi của người dùng và trả lời trực tiếp cho bãi đỗ của bạn.",
+  },
+  "/owner/notifications": {
+    title: "Thông báo & Cảnh báo",
+    description: "Theo dõi tất cả các sự kiện, booking, đánh giá và cảnh báo hệ thống.",
   },
 };

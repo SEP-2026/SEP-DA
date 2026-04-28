@@ -20,6 +20,11 @@ export async function getEmployeeVehicles() {
   return response.data;
 }
 
+export async function getEmployeeSlotsOverview() {
+  const response = await API.get("/api/employee/slots-overview");
+  return response.data;
+}
+
 export async function getEmployeeRevenue() {
   const response = await API.get("/api/employee/revenue");
   return response.data;
@@ -30,8 +35,8 @@ export async function getEmployeeProfile() {
   return response.data;
 }
 
-export async function getEmployeeHistory() {
-  const response = await API.get("/api/employee/history");
+export async function getEmployeeHistory(params = {}) {
+  const response = await API.get("/api/employee/history", { params });
   return response.data;
 }
 
@@ -47,5 +52,15 @@ export async function employeeCheckIn(payload) {
 
 export async function employeeCheckOut(payload) {
   const response = await API.post("/api/employee/check-out", payload);
+  return response.data;
+}
+
+export async function getEmployeeGateBooking(bookingId) {
+  const response = await API.get(`/api/employee/bookings/${bookingId}`);
+  return response.data;
+}
+
+export async function employeeChangePassword(payload) {
+  const response = await API.post("/api/employee/change-password", payload);
   return response.data;
 }

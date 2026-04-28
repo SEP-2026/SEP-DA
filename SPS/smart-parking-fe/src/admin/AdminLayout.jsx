@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { ADMIN_NAV_ITEMS, ADMIN_ROUTE_META } from "./adminData";
 import { AdminIcon } from "./AdminIcons";
 import API from "../services/api";
+import useRealtimeRefresh from "../services/useRealtimeRefresh";
 import "./admin.css";
 import "../owner/owner.css";
 
@@ -13,7 +14,7 @@ export default function AdminLayout({ auth, onLogout }) {
   const [syncNote, setSyncNote] = useState("Đang tải dữ liệu admin");
   const [loading, setLoading] = useState(true);
   const meta = ADMIN_ROUTE_META[location.pathname] || ADMIN_ROUTE_META["/admin"];
-  const notificationsCount = adminData?.logs?.length || 0;
+  const notificationsCount = adminData?.notifications?.length || adminData?.logs?.length || 0;
   const adminDisplayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "Admin";
 
   const refreshAdminData = useCallback(async () => {
@@ -29,6 +30,8 @@ export default function AdminLayout({ auth, onLogout }) {
       setLoading(false);
     }
   }, []);
+
+  useRealtimeRefresh(refreshAdminData, { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2500 });
 
   useEffect(() => {
     refreshAdminData();
@@ -64,6 +67,10 @@ export default function AdminLayout({ auth, onLogout }) {
     },
     async toggleOwnerStatus(id, status) {
       await API.patch(`/admin/owners/${id}/status`, { status });
+      await refreshAdminData();
+    },
+    async updateOwner(id, payload) {
+      await API.patch(`/admin/owners/${id}`, payload);
       await refreshAdminData();
     },
     async resetOwnerPassword(id) {
@@ -126,6 +133,20 @@ export default function AdminLayout({ auth, onLogout }) {
       setAdminData((prev) => ({ ...prev, settings: res.data.settings }));
       setSyncNote("Đã cập nhật cấu hình admin");
     },
+    async rebuildOwnerAssignments() {
+      const res = await API.post("/admin/rebuild-owner-assignments");
+      await refreshAdminData();
+      return res.data;
+    },
+    async autoAssignOwners() {
+      const res = await API.post("/admin/auto-assign-owners");
+      await refreshAdminData();
+      return res.data;
+    },
+    async getOwnerAssignmentsDebug() {
+      const res = await API.get("/admin/owner-assignments-debug");
+      return Array.isArray(res.data) ? res.data : [];
+    },
   };
 
   return (
@@ -186,6 +207,10 @@ export default function AdminLayout({ auth, onLogout }) {
               <span>{notificationsCount}</span>
             </div>
             <div className="admin-role-pill">Trung tâm vận hành</div>
+            <button type="button" className="admin-topbar-logout" onClick={onLogout}>
+              <AdminIcon name="logout" className="admin-menu-icon" />
+              <span>Đăng xuất</span>
+            </button>
             <div className="admin-avatar">
               <div className="admin-avatar-mark">{adminDisplayName.slice(0, 1).toUpperCase()}</div>
               <div>

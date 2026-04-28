@@ -86,3 +86,30 @@ class ChangePasswordRequest(BaseModel):
 
 class ChangePasswordResponse(BaseModel):
     message: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    identity: str = Field(min_length=3, max_length=255)
+    phone: str = Field(min_length=6, max_length=30)
+
+
+class ForgotPasswordRequestResponse(BaseModel):
+    message: str
+    reset_token: str
+    expires_in: int
+
+
+class ForgotPasswordResetRequest(BaseModel):
+    reset_token: str = Field(min_length=10, max_length=255)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+    confirm_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+
+    @validator("new_password")
+    def validate_reset_password_strength(cls, value: str) -> str:
+        if not is_strong_password(value):
+            raise ValueError(PASSWORD_POLICY_MESSAGE)
+        return value
+
+
+class ForgotPasswordResetResponse(BaseModel):
+    message: str

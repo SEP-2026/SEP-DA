@@ -18,6 +18,7 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+  overflow-y: auto;
 }
 
 .admin-brand,
@@ -123,6 +124,23 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
+}
+
+.admin-topbar-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px solid rgba(43, 103, 183, 0.2);
+  background: rgba(255, 255, 255, 0.88);
+  color: #183d60;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.admin-topbar-logout:hover {
+  background: #ffffff;
 }
 
 .admin-main {

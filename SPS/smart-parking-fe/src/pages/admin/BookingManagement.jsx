@@ -1,13 +1,51 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { SectionCard, StatusBadge, formatCurrency, formatDateTime } from "../../owner/OwnerUI";
 import { useAdminContext } from "../../admin/useAdminContext";
 
 export default function BookingManagement() {
   const { adminData, actions } = useAdminContext();
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredBookings = useMemo(() => {
+    return adminData.bookings.filter((booking) => {
+      const matchesStatus = statusFilter === "all" ? true : booking.status === statusFilter;
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch = !searchQuery || 
+        booking.user?.toLowerCase().includes(searchLower) ||
+        booking.plate?.toLowerCase().includes(searchLower) ||
+        booking.parkingLot?.toLowerCase().includes(searchLower) ||
+        booking.id?.toLowerCase().includes(searchLower);
+      return matchesStatus && matchesSearch;
+    });
+  }, [adminData.bookings, statusFilter, searchQuery]);
   return (
     <div className="owner-page-grid">
-      <SectionCard title="Toàn bộ đặt chỗ" subtitle="Theo dõi đặt chỗ toàn hệ thống, xem chi tiết và hủy khi cần.">
+      <SectionCard
+        title="Toàn bộ đặt chỗ"
+        subtitle="Theo dõi đặt chỗ toàn hệ thống, xem chi tiết và hủy khi cần."
+        actions={
+          <div className="owner-section-actions" style={{ display: "flex", gap: "8px" }}>
+            <input
+              type="text"
+              className="owner-input"
+              placeholder="Tìm kiếm (user, biển số, bãi, ID)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ minWidth: "200px" }}
+            />
+            <select className="owner-input owner-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="pending">Chờ xác nhận</option>
+              <option value="confirmed">Đã xác nhận</option>
+              <option value="in_progress">Đang hoạt động</option>
+              <option value="completed">Hoàn tất</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+          </div>
+        }
+      >
         <div className="owner-table-shell">
           <table className="owner-table">
             <thead>
@@ -16,7 +54,12 @@ export default function BookingManagement() {
               </tr>
             </thead>
             <tbody>
-              {adminData.bookings.map((booking) => (
+              {filteredBookings.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="owner-empty-cell">Không tìm thấy booking nào khớp bộ lọc hiện tại.</td>
+                </tr>
+              ) : null}
+              {filteredBookings.map((booking) => (
                 <tr key={booking.id}>
                   <td>{booking.user}</td>
                   <td>{booking.plate}</td>

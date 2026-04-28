@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import API from "../services/api";
 import { formatDateTimeVN } from "../utils/dateTime";
@@ -123,13 +124,33 @@ function getStatusTone(status) {
 }
 
 export default function Home({ role = "" }) {
+  const navigate = useNavigate();
   const [parkingLots, setParkingLots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [expandedLots, setExpandedLots] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
   const popoverRef = useRef(null);
 
   const isOwner = role === "owner";
+
+  const filteredLots = useMemo(() => {
+    return parkingLots.filter((lot) => {
+      const matchesSearch = 
+        searchQuery === "" ||
+        lot.parking_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lot.parking_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (lot.district && lot.district.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      const matchesFilter = 
+        filterStatus === "all" ||
+        (filterStatus === "available" && lot.available_slots > 0) ||
+        (filterStatus === "full" && lot.available_slots === 0);
+      
+      return matchesSearch && matchesFilter;
+    });
+  }, [parkingLots, searchQuery, filterStatus]);
 
   useEffect(() => {
     let active = true;
@@ -278,7 +299,13 @@ export default function Home({ role = "" }) {
   }, [selectedSlot?.slot?.id, isOwner]);
 
   const handleSlotClick = (lot, slot, slotIndex, event) => {
+    // If user (not owner) clicks a slot, navigate to booking with prefilled lot and slot
     if (!isOwner) {
+      // prevent any parent handlers
+      if (event && typeof event.stopPropagation === "function") {
+        event.stopPropagation();
+      }
+      navigate(`/booking?lotId=${lot.parking_id}&slotId=${slot.id}&slotName=${encodeURIComponent(slot.code || slot.slot_number || "")}`);
       return;
     }
 
@@ -321,14 +348,73 @@ export default function Home({ role = "" }) {
       <div className="page-card parking-board">
         <h1 className="parking-title">Danh sách bãi xe</h1>
 
+        <div className="parking-filters">
+          <div className="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="search-icon">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Tìm kiếm bãi xe..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+          </div>
+          <div className="filter-buttons">
+            <button
+              type="button"
+              className={`filter-btn ${filterStatus === "all" ? "filter-btn--active" : ""}`}
+              onClick={() => setFilterStatus("all")}
+            >
+              Tất cả
+            </button>
+            <button
+              type="button"
+              className={`filter-btn ${filterStatus === "available" ? "filter-btn--active" : ""}`}
+              onClick={() => setFilterStatus("available")}
+            >
+              Còn trống
+            </button>
+            <button
+              type="button"
+              className={`filter-btn ${filterStatus === "full" ? "filter-btn--active" : ""}`}
+              onClick={() => setFilterStatus("full")}
+            >
+              Đầy chỗ
+            </button>
+          </div>
+        </div>
+
         <div className="parking-legend">
           <div className="legend-item">
-            <span className="legend-car legend-available">🚗</span>
+            <div className="legend-icon legend-available">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+            </div>
             <span>Vị trí trống</span>
           </div>
           <div className="legend-item">
-            <span className="legend-car legend-occupied">🚗</span>
+            <div className="legend-icon legend-occupied">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 9h6v6H9z" />
+              </svg>
+            </div>
             <span>Vị trí đã có xe</span>
+          </div>
+          <div className="legend-item">
+            <div className="legend-icon legend-reserved">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
+            </div>
+            <span>Giữ chỗ</span>
           </div>
         </div>
 
@@ -336,44 +422,111 @@ export default function Home({ role = "" }) {
           <div className="parking-empty">Đang tải dữ liệu bãi xe...</div>
         ) : null}
 
-        {!loading && parkingLots.length === 0 ? (
-          <div className="parking-empty">Chưa có dữ liệu bãi xe để hiển thị.</div>
+        {!loading && filteredLots.length === 0 ? (
+          <div className="parking-empty">
+            {searchQuery || filterStatus !== "all" ? (
+              <>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="empty-icon">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <p>Không tìm thấy bãi xe phù hợp với tìm kiếm của bạn.</p>
+                <button 
+                  type="button" 
+                  className="reset-filter-btn"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setFilterStatus("all");
+                  }}
+                >
+                  Xóa bộ lọc
+                </button>
+              </>
+            ) : (
+              "Chưa có dữ liệu bãi xe để hiển thị."
+            )}
+          </div>
         ) : null}
 
         <div className="parking-lot-list">
-          {parkingLots.map((lot) => (
+          {filteredLots.map((lot) => (
             <section key={lot.parking_id} className={`parking-lot-card${expandedLots[lot.parking_id] ? " is-expanded" : ""}`}>
-              <button
-                type="button"
-                className="parking-lot-head"
-                onClick={() => toggleLot(lot.parking_id)}
-                aria-expanded={Boolean(expandedLots[lot.parking_id])}
-              >
-                <div>
+              <div className="parking-lot-head">
+                <div className="parking-lot-info">
                   <h2 className="parking-lot-name">{lot.parking_name}</h2>
-                  <p className="parking-lot-rating">⭐ {Number(lot.avg_rating || 0).toFixed(1)} ({lot.review_count || 0} đánh giá)</p>
+                  <div className="parking-lot-rating">
+                    <div className="rating-stars">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <svg
+                          key={star}
+                          width="18"
+                          height="18"
+                          viewBox="0 0 24 24"
+                          fill={star <= Math.round(lot.avg_rating || 0) ? "currentColor" : "none"}
+                          stroke={star <= Math.round(lot.avg_rating || 0) ? "none" : "currentColor"}
+                          strokeWidth="2"
+                          className={star <= Math.round(lot.avg_rating || 0) ? "star-filled" : "star-empty"}
+                        >
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                      ))}
+                    </div>
+                    <span className="rating-value">{Number(lot.avg_rating || 0).toFixed(1)}</span>
+                    <span className="rating-count">({lot.review_count || 0} đánh giá)</span>
+                  </div>
                   <p className="parking-lot-address">{lot.parking_address}</p>
                   {lot.district && <p className="parking-lot-district">{lot.district}</p>}
                 </div>
                 <div className="parking-lot-stats">
-                  <span className="stat-chip stat-available">Trống: {lot.available_slots}</span>
-                  <span className="stat-chip stat-occupied">Giữ/Đã có xe: {lot.occupied_or_reserved_slots}</span>
-                  <span className="stat-chip stat-total">Tổng: {lot.total_slots}</span>
-                  <span className="parking-lot-toggle" aria-hidden="true">
-                    {expandedLots[lot.parking_id] ? "−" : "+"}
-                  </span>
+                  <div className="stat-availability">
+                    <div className="availability-bar">
+                      <div 
+                        className="availability-fill" 
+                        style={{ width: `${(lot.available_slots / lot.total_slots) * 100}%` }}
+                      />
+                    </div>
+                    <span className="availability-text">{lot.available_slots}/{lot.total_slots} trống</span>
+                  </div>
+                  <div className="stat-chips">
+                    <span className="stat-chip stat-available">Trống: {lot.available_slots}</span>
+                    <span className="stat-chip stat-occupied">Giữ/Đã có xe: {lot.occupied_or_reserved_slots}</span>
+                  </div>
+                  <div className="parking-lot-actions">
+                    <button 
+                      type="button" 
+                      className="action-btn action-btn--primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/booking?lotId=${lot.parking_id}`);
+                      }}
+                      disabled={lot.available_slots === 0}
+                    >
+                      Đặt chỗ
+                    </button>
+                    <button 
+                      type="button" 
+                      className="action-btn action-btn--toggle"
+                      onClick={() => toggleLot(lot.parking_id)}
+                      aria-expanded={Boolean(expandedLots[lot.parking_id])}
+                    >
+                      {expandedLots[lot.parking_id] ? "−" : "+"}
+                    </button>
+                  </div>
                 </div>
-              </button>
+              </div>
 
               <div className={`parking-lot-body${expandedLots[lot.parking_id] ? " is-open" : ""}`}>
                 <div className="parking-grid">
                   {lot.slots.map((slot, slotIndex) => {
                     const isAvailable = slot.status === "available";
+                    const isReserved = slot.status === "reserved";
+                    const isOccupied = slot.status === "occupied";
+                    const isMaintenance = slot.status === "maintenance";
 
                     return (
                       <article
                         key={slot.id}
-                        className={`slot-card${isOwner ? " slot-card--interactive" : ""}`}
+                        className={`slot-card${isOwner ? " slot-card--interactive" : ""} slot-card--${slot.status}`}
                         data-slot-anchor={slot.id}
                         onClick={(event) => handleSlotClick(lot, slot, slotIndex, event)}
                         onKeyDown={(event) => {
@@ -386,14 +539,34 @@ export default function Home({ role = "" }) {
                         tabIndex={isOwner ? 0 : undefined}
                       >
                         <div className="slot-lane" />
-                        <div className={`slot-car ${isAvailable ? "slot-available" : "slot-occupied"}`}>
-                          <img
-                            src={isAvailable ? "/car-top-view2.png" : "/car-top-view.png"}
-                            alt={isAvailable ? "Xe nhìn từ trên xuống - vị trí trống" : "Xe nhìn từ trên xuống - vị trí đã có xe"}
-                            className="car-image"
-                          />
+                        <div className={`slot-car slot-car--${slot.status}`}>
+                          {isAvailable && (
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="slot-icon">
+                              <circle cx="12" cy="12" r="10" />
+                              <path d="M12 6v6l4 2" />
+                            </svg>
+                          )}
+                          {isReserved && (
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="slot-icon">
+                              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                              <path d="M2 17l10 5 10-5" />
+                              <path d="M2 12l10 5 10-5" />
+                            </svg>
+                          )}
+                          {isOccupied && (
+                            <img
+                              src="/car-top-view.png"
+                              alt="Xe nhìn từ trên xuống - vị trí đã có xe"
+                              className="car-image"
+                            />
+                          )}
+                          {isMaintenance && (
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="slot-icon">
+                              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                            </svg>
+                          )}
                         </div>
-                        <div className="slot-badge">{slot.code} - {formatStatusLabel(slot.status)}</div>
+                        <div className="slot-badge slot-badge--${slot.status}">{slot.code}</div>
                       </article>
                     );
                   })}

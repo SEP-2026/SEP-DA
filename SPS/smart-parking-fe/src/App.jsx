@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNaviga
 
 import Booking from "./pages/Booking";
 import BookingHistory from "./pages/BookingHistory";
+import PaymentHistory from "./pages/PaymentHistory";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
@@ -15,6 +16,7 @@ import RevenuePage from "./pages/admin/RevenuePage";
 import UserManagement from "./pages/admin/UserManagement";
 import OwnerBookings from "./pages/owner/OwnerBookings";
 import OwnerCustomers from "./pages/owner/OwnerCustomers";
+import OwnerNotifications from "./pages/owner/OwnerNotifications";
 import OwnerOverview from "./pages/owner/OwnerOverview";
 import OwnerParking from "./pages/owner/OwnerParking";
 import OwnerRevenue from "./pages/owner/OwnerRevenue";
@@ -25,6 +27,7 @@ import Payment from "./pages/Payment";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Profile from "./pages/Profile";
 import Scan from "./pages/Scan";
+import NotificationBell from "./components/NotificationBell";
 import AdminLayout from "./admin/AdminLayout";
 import EmployeeLayout from "./employee/EmployeeLayout";
 import OwnerLayout from "./owner/OwnerLayout";
@@ -35,7 +38,35 @@ import EmployeeQrScanner from "./pages/employee/EmployeeQrScanner";
 import EmployeeRevenue from "./pages/employee/EmployeeRevenue";
 import EmployeeVehicles from "./pages/employee/EmployeeVehicles";
 import API, { clearAuth, getAuth, saveAuth } from "./services/api";
+import useRealtimeNotifications from "./services/useRealtimeNotifications";
 import "./styles/layout.css";
+
+const NOTIFICATIONS_KEY = "smart-parking.notifications";
+
+function formatTimeLabel(value) {
+  try {
+    return new Date(value).toLocaleString("vi-VN");
+  } catch {
+    return "";
+  }
+}
+
+function loadNotifications() {
+  try {
+    const raw = localStorage.getItem(NOTIFICATIONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getDefaultRouteByRole(role) {
+  if (role === "admin") return "/admin";
+  if (role === "employee") return "/employee";
+  if (role === "owner") return "/owner";
+  return "/";
+}
 
 function App() {
   const [auth, setAuth] = useState(() => getAuth());
@@ -105,26 +136,52 @@ function App() {
 function AppBody({ auth, role, onLogin, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [notifications, setNotifications] = useState(() => loadNotifications());
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const isOwnerWorkspace = location.pathname.startsWith("/owner");
   const isAdminWorkspace = location.pathname.startsWith("/admin");
   const isEmployeeWorkspace = location.pathname.startsWith("/employee");
   const isOwnerScanPage = location.pathname.startsWith("/scan");
   const displayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.username || auth?.user?.email || "";
 
-  const navigateWithFallback = (to) => {
-    navigate(to);
+  useEffect(() => {
+    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
+  }, [notifications]);
 
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.setTimeout(() => {
-      const targetPath = to.startsWith("/") ? to : `/${to}`;
-      if (window.location.pathname !== targetPath) {
-        window.location.assign(targetPath);
+  useRealtimeNotifications(
+    (payload) => {
+      if (payload?.type !== "booking_no_show") {
+        return;
       }
-    }, 120);
+
+      setNotifications((current) => [
+        {
+          id: `${payload.booking_id || "booking"}-${payload.ts || Date.now()}`,
+          title: "Booking quá hạn",
+          message: payload.message || "Booking của bạn đã bị hủy do quá thời gian check-in.",
+          timeLabel: formatTimeLabel(payload.ts || Date.now()),
+          read: false,
+        },
+        ...current,
+      ].slice(0, 20));
+    },
+    { enabled: Boolean(auth?.token) },
+  );
+
+  const toggleNotifications = () => {
+    setNotificationsOpen((current) => !current);
+    setNotifications((current) => current.map((item) => (item.read ? item : { ...item, read: true })));
   };
+
+  const clearNotifications = () => {
+    setNotifications([]);
+    setNotificationsOpen(false);
+  };
+
+  const removeNotification = (notificationId) => {
+    setNotifications((current) => current.filter((item) => item.id !== notificationId));
+  };
+
 
   const links = useMemo(() => {
     if (!auth) {
@@ -135,6 +192,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
       user: [
         { to: "/booking", label: "Đặt chỗ" },
         { to: "/booking-history", label: "Lịch sử booking" },
+        { to: "/payment-history", label: "Lịch sử thanh toán" },
         { to: "/profile", label: "Hồ sơ" },
       ],
       owner: [
@@ -150,6 +208,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         { to: "/admin", label: "Bảng Admin" },
         { to: "/booking", label: "Đặt chỗ" },
         { to: "/booking-history", label: "Lịch sử booking" },
+        { to: "/payment-history", label: "Lịch sử thanh toán" },
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
       ],
@@ -158,9 +217,9 @@ function AppBody({ auth, role, onLogin, onLogout }) {
     return [{ to: "/", label: "Trang bãi xe" }, ...(roleLinks[role] || [])];
   }, [auth, role]);
 
-  const userInfo = [displayName, auth?.user?.email, auth?.user?.phone, auth?.user?.vehicle_plate]
-    .filter(Boolean)
-    .join(" • ");
+  const userInfo = displayName;
+
+  const defaultAuthedRoute = getDefaultRouteByRole(role);
 
   return (
     <div className={`app-shell${isOwnerWorkspace || isOwnerScanPage ? " app-shell--owner" : ""}${isAdminWorkspace ? " app-shell--admin" : ""}${isEmployeeWorkspace ? " app-shell--employee" : ""}`}>
@@ -173,16 +232,19 @@ function AppBody({ auth, role, onLogin, onLogout }) {
                 to={link.to}
                 end={link.to === "/"}
                 className={({ isActive }) => `app-link${isActive ? " active" : ""}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigateWithFallback(link.to);
-                }}
               >
                 {link.label}
               </NavLink>
             ))}
           </div>
           <div className="app-nav-user">
+            <NotificationBell
+              notifications={notifications}
+              open={notificationsOpen}
+              onToggle={toggleNotifications}
+              onClear={clearNotifications}
+              onRemove={removeNotification}
+            />
             <span>
               {userInfo}
             </span>
@@ -193,14 +255,15 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         </nav>
       ) : null}
 
-      <Routes>
+      <div className="page-transition">
+        <Routes>
         <Route
           path="/login"
-          element={auth ? <Navigate to="/" replace /> : <Login onLogin={onLogin} />}
+          element={auth ? <Navigate to={defaultAuthedRoute} replace /> : <Login onLogin={onLogin} />}
         />
         <Route
           path="/"
-          element={auth ? (role === "admin" ? <Navigate to="/admin" replace /> : role === "employee" ? <Navigate to="/employee" replace /> : <Home role={role} />) : <Navigate to="/login" replace />}
+          element={auth ? (role === "user" ? <Home role={role} /> : <Navigate to={defaultAuthedRoute} replace />) : <Navigate to="/login" replace />}
         />
         <Route
           path="/booking"
@@ -209,6 +272,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         <Route
           path="/booking-history"
           element={auth ? <BookingHistory /> : <Navigate to="/login" replace />}
+        />
+        <Route
+          path="/payment-history"
+          element={auth ? <PaymentHistory /> : <Navigate to="/login" replace />}
         />
         <Route
           path="/profile"
@@ -251,6 +318,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           <Route path="customers" element={<OwnerCustomers />} />
           <Route path="revenue" element={<OwnerRevenue />} />
           <Route path="reviews" element={<OwnerReviews />} />
+          <Route path="notifications" element={<OwnerNotifications />} />
           <Route path="settings" element={<OwnerSettings />} />
         </Route>
         <Route
@@ -266,10 +334,12 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
-        <Route path="*" element={<Navigate to={auth ? "/" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={auth ? defaultAuthedRoute : "/login"} replace />} />
       </Routes>
+      </div>
     </div>
   );
 }
 
 export default App;
+

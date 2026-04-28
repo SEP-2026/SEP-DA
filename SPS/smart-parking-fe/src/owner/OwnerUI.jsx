@@ -142,7 +142,7 @@ export function LineChart({ data, formatValue = formatCurrency }) {
   );
 }
 
-export function BarChart({ data }) {
+export function BarChart({ data, formatValue = formatCurrency }) {
   const max = Math.max(...data.map((item) => item.amount), 1);
 
   return (
@@ -153,7 +153,7 @@ export function BarChart({ data }) {
             <div className="owner-bar-fill" style={{ height: `${(item.amount / max) * 100}%` }} />
           </div>
           <strong>{item.label}</strong>
-          <span>{formatCurrency(item.amount)}</span>
+          <span>{formatValue(item.amount)}</span>
         </div>
       ))}
     </div>

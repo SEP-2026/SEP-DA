@@ -6,12 +6,14 @@ from app.services.employee_service import (
     delete_owner_employee,
     employee_check_in,
     employee_check_out,
+    employee_get_gate_booking,
     employee_login,
     get_owner_employees,
     get_employee_dashboard,
     get_employee_history,
     get_employee_profile,
     get_employee_revenue,
+    get_employee_slots_overview,
     get_employee_vehicles,
     update_owner_employee,
     update_employee_parking_status,
@@ -91,6 +93,10 @@ def employee_revenue_controller(employee: EmployeeAccount, db: Session) -> dict:
     return get_employee_revenue(employee, db)
 
 
+def employee_slots_overview_controller(employee: EmployeeAccount, db: Session) -> dict:
+    return get_employee_slots_overview(employee, db)
+
+
 def employee_parking_status_controller(employee: EmployeeAccount, status_value: str, db: Session) -> dict:
     return update_employee_parking_status(employee, status_value, db)
 
@@ -103,5 +109,15 @@ def employee_check_out_controller(employee: EmployeeAccount, qr_data: str, payme
     return employee_check_out(employee, qr_data, payment_method, db)
 
 
-def employee_history_controller(employee: EmployeeAccount, db: Session) -> dict:
-    return get_employee_history(employee, db)
+def employee_gate_booking_controller(employee: EmployeeAccount, booking_id: int, db: Session) -> dict:
+    return employee_get_gate_booking(employee, booking_id, db)
+
+
+def employee_history_controller(
+    employee: EmployeeAccount,
+    db: Session,
+    *,
+    limit: int = 200,
+    action: str | None = None,
+) -> dict:
+    return get_employee_history(employee, db, limit=limit, action=action)

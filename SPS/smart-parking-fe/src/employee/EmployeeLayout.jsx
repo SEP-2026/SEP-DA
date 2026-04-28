@@ -1,8 +1,9 @@
-﻿import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { OwnerIcon } from "../owner/OwnerIcons";
-import { getEmployeeParkingLot, getEmployeeProfile, getEmployeeRevenue } from "./employeeService";
+import { getEmployeeParkingLot, getEmployeeProfile, getEmployeeRevenue, getEmployeeSlotsOverview } from "./employeeService";
+import useRealtimeRefresh from "../services/useRealtimeRefresh";
 import "./employee.css";
 
 const NAV_ITEMS = [
@@ -17,7 +18,7 @@ const NAV_ITEMS = [
 const ROUTE_HINT = {
   "/employee": "Tổng quan luồng xe và trạng thái bãi theo thời gian thực.",
   "/employee/scanner": "Xử lý check-in/check-out bằng mã QR tại cổng.",
-  "/employee/vehicles": "Danh sách xe đang ở trong bãi và vị trí đỗ.",
+  "/employee/vehicles": "Theo dõi xe trong bãi và vị trí đỗ trực quan theo ô.",
   "/employee/revenue": "Theo dõi doanh thu theo ngày và theo tháng.",
   "/employee/history": "Nhật ký thao tác gần nhất của nhân viên.",
   "/employee/profile": "Thông tin bãi đỗ đang được phân công vận hành.",
@@ -29,27 +30,65 @@ export default function EmployeeLayout({ auth, onLogout }) {
   const [parkingLot, setParkingLot] = useState(null);
   const [profile, setProfile] = useState(null);
   const [revenue, setRevenue] = useState({ revenueToday: 0, revenueMonth: 0 });
+  const [slotsOverview, setSlotsOverview] = useState({
+    total_slots: 0,
+    available_slots: 0,
+    reserved_slots: 0,
+    in_use_slots: 0,
+    maintenance_slots: 0,
+    slots: [],
+  });
   const [loading, setLoading] = useState(true);
+  const [syncNote, setSyncNote] = useState("Đang đồng bộ...");
 
-  const refreshEmployee = async () => {
+  const refreshEmployee = useCallback(async () => {
     setLoading(true);
-    try {
-      const [parkingLotRes, profileRes, revenueRes] = await Promise.all([
-        getEmployeeParkingLot(),
-        getEmployeeProfile(),
-        getEmployeeRevenue(),
-      ]);
-      setParkingLot(parkingLotRes);
-      setProfile(profileRes);
-      setRevenue(revenueRes);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const [parkingLotRes, profileRes, revenueRes, slotsOverviewRes] = await Promise.allSettled([
+      getEmployeeParkingLot(),
+      getEmployeeProfile(),
+      getEmployeeRevenue(),
+      getEmployeeSlotsOverview(),
+    ]);
+
+    if (parkingLotRes.status === "fulfilled") setParkingLot(parkingLotRes.value);
+    if (profileRes.status === "fulfilled") setProfile(profileRes.value);
+    if (revenueRes.status === "fulfilled") setRevenue(revenueRes.value);
+    if (slotsOverviewRes.status === "fulfilled") setSlotsOverview(slotsOverviewRes.value);
+
+    const failedCount = [parkingLotRes, profileRes, revenueRes, slotsOverviewRes].filter((item) => item.status === "rejected").length;
+    setSyncNote(failedCount > 0 ? `Đồng bộ thiếu ${failedCount} mục dữ liệu` : "Đồng bộ thành công");
+    setLoading(false);
+  }, []);
+
+  useRealtimeRefresh(refreshEmployee, { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2000 });
 
   useEffect(() => {
     refreshEmployee();
-  }, []);
+
+    const intervalId = window.setInterval(() => {
+      refreshEmployee();
+    }, 10000);
+
+    const handleFocus = () => refreshEmployee();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshEmployee();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshEmployee]);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   const displayName = auth?.user?.username || "nhân viên";
   const routeHint = ROUTE_HINT[location.pathname] || "Không gian vận hành dành cho tài khoản nhân viên.";
@@ -84,17 +123,18 @@ export default function EmployeeLayout({ auth, onLogout }) {
           </nav>
         </div>
 
-        <div className="employee-sidebar-panel employee-sidebar-panel--compact">
-          <p className="employee-sidebar-title">Lối tắt</p>
-          <Link to="/" className="employee-shortcut">Trang bãi xe</Link>
-          <Link to="/scan" className="employee-shortcut">Quét cổng owner/admin</Link>
-        </div>
-
         <button type="button" className="employee-logout" onClick={onLogout}>
           <OwnerIcon name="logout" className="owner-menu-icon" />
           <span>Đăng xuất</span>
         </button>
       </aside>
+
+      <button
+        type="button"
+        aria-label="Đóng menu"
+        className="employee-sidebar-backdrop"
+        onClick={() => setSidebarOpen(false)}
+      />
 
       <div className="employee-main">
         <header className="employee-topbar">
@@ -110,7 +150,7 @@ export default function EmployeeLayout({ auth, onLogout }) {
           </div>
 
           <div className="employee-topbar-tools">
-            <div className="employee-notify-pill">
+            <div className="employee-notify-pill" title="Số xe đang sử dụng chỗ">
               <OwnerIcon name="bell" className="owner-menu-icon" />
               <span>{notificationsCount}</span>
             </div>
@@ -119,14 +159,14 @@ export default function EmployeeLayout({ auth, onLogout }) {
               <div className="employee-avatar-mark">{displayName.slice(0, 1).toUpperCase()}</div>
               <div>
                 <strong>{displayName}</strong>
-                <span>{loading ? "Đang đồng bộ..." : `Hôm nay ${Number(revenue.revenueToday || 0).toLocaleString("vi-VN")}đ`}</span>
+                <span>{loading ? "Đang đồng bộ..." : `${syncNote} · Hôm nay ${Number(revenue.revenueToday || 0).toLocaleString("vi-VN")}đ`}</span>
               </div>
             </div>
           </div>
         </header>
 
         <main className="employee-content">
-          <Outlet context={{ auth, parkingLot, profile, revenue, refreshEmployee, loading }} />
+          <Outlet context={{ auth, parkingLot, profile, revenue, slotsOverview, refreshEmployee, loading, syncNote }} />
         </main>
       </div>
     </div>

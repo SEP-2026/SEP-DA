@@ -85,10 +85,13 @@ class EmployeeProfileResponse(BaseModel):
 
 class EmployeeVehicleItem(BaseModel):
     booking_id: int
+    owner_name: str | None = None
+    owner_phone: str | None = None
     license_plate: str | None = None
     check_in_time: datetime | None = None
     status: str
     slot_code: str | None = None
+    booking_mode: str | None = None
 
 
 class EmployeeVehicleResponse(BaseModel):
@@ -114,6 +117,34 @@ class EmployeeRevenueResponse(BaseModel):
     trafficByHour: list[EmployeeTrafficPoint] = Field(default_factory=list)
     occupancyRatio: float = 0
     totalPaidBookings: int = 0
+
+
+class EmployeeSlotItem(BaseModel):
+    id: int
+    code: str
+    booking_id: int | None = None
+    booking_status: str | None = None
+    zone: str
+    level: str
+    status: str
+    owner_name: str | None = None
+    owner_phone: str | None = None
+    vehicle_plate: str | None = None
+    booking_mode: str | None = None
+    check_in_time: datetime | None = None
+    check_out_time: datetime | None = None
+    booking_code: str | None = None
+
+
+class EmployeeSlotsOverviewResponse(BaseModel):
+    parking_id: int
+    parking_name: str
+    total_slots: int
+    available_slots: int
+    reserved_slots: int
+    in_use_slots: int
+    maintenance_slots: int
+    slots: list[EmployeeSlotItem] = Field(default_factory=list)
 
 
 class EmployeeParkingStatusRequest(BaseModel):
@@ -142,3 +173,13 @@ class EmployeeHistoryItem(BaseModel):
 class EmployeeHistoryResponse(BaseModel):
     history: list[EmployeeHistoryItem]
     total_count: int
+
+
+class EmployeeChangePasswordRequest(BaseModel):
+    old_password: str = Field(min_length=1, max_length=255)
+    new_password: str = Field(min_length=8, max_length=255)
+    confirm_password: str = Field(min_length=8, max_length=255)
+
+
+class EmployeeChangePasswordResponse(BaseModel):
+    message: str

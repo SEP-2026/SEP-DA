@@ -1,0 +1,203 @@
+/* Owner Notifications Page Styles */
+.notification-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 56px 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(20, 57, 93, 0.12);
+  background: rgba(255, 255, 255, 0.8);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.notification-item:hover {
+  border-color: rgba(20, 57, 93, 0.25);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(20, 57, 93, 0.08);
+}
+
+.notification-item--high {
+  border-left: 4px solid #c73f4c;
+  background: rgba(199, 63, 76, 0.06);
+}
+
+.notification-item--normal {
+  border-left: 4px solid #1c9a95;
+}
+
+.notification-item--unread {
+  font-weight: 500;
+  background: rgba(28, 154, 149, 0.08);
+  border-left-width: 6px;
+}
+
+.notification-item--unread:hover {
+  background: rgba(28, 154, 149, 0.12);
+}
+
+.notification-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 24px;
+  text-align: center;
+  line-height: 1;
+}
+
+.notification-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.notification-content h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f4f6e;
+  line-height: 1.3;
+}
+
+.notification-content p {
+  margin: 0;
+  font-size: 13px;
+  color: #5d7d97;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.notification-time {
+  font-size: 12px;
+  color: rgba(20, 57, 93, 0.6);
+}
+
+.notification-badge {
+  display: flex;
+  align-items: center;
+}
+
+.notification-badge .owner-badge {
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.notification-action {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(20, 57, 93, 0.06);
+  color: #0f4f6e;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.notification-action:hover {
+  background: rgba(20, 57, 93, 0.12);
+  color: #0f4f6e;
+}
+
+.notification-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.notification-summary-item {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(20, 57, 93, 0.12);
+  background: linear-gradient(135deg, rgba(251, 254, 255, 0.88), rgba(237, 247, 252, 0.76));
+  text-align: center;
+}
+
+.notification-summary-value {
+  display: block;
+  font-size: 32px;
+  font-weight: 900;
+  color: #0f4f6e;
+  margin-bottom: 4px;
+}
+
+.notification-summary-label {
+  display: block;
+  font-size: 13px;
+  color: #5d7d97;
+  font-weight: 600;
+}
+
+/* Notification Badge Colors */
+.owner-badge--booking {
+  color: #0e7f96;
+  background: rgba(14, 127, 150, 0.12);
+}
+
+.owner-badge--review {
+  color: #1c9a95;
+  background: rgba(28, 154, 149, 0.12);
+}
+
+.owner-badge--payment {
+  color: #0ca07f;
+  background: rgba(12, 160, 127, 0.12);
+}
+
+.owner-badge--alert {
+  color: #c73f4c;
+  background: rgba(199, 63, 76, 0.12);
+}
+
+.owner-badge--system {
+  color: #5d7d97;
+  background: rgba(82, 109, 131, 0.12);
+}
+
+/* Mobile Responsive */
+@media (max-width: 760px) {
+  .notification-controls {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .notification-controls select {
+    width: 100%;
+  }
+
+  .notification-item {
+    grid-template-columns: 40px 1fr;
+    gap: 12px;
+  }
+
+  .notification-badge,
+  .notification-action {
+    grid-column: 2;
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .notification-summary {
+    grid-template-columns: 1fr;
+  }
+}

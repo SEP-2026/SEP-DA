@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import API, { getAuth, saveAuth } from "../services/api";
 import { formatDateOnlyVN, toDateInputValue, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
+import ParkingMap from "../components/ParkingMap";
+import NearbyParkingMap from "../components/NearbyParkingMap";
 import "./Booking.css";
-
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
-const GOOGLE_MAP_SCRIPT_ID = "google-maps-script";
 
 const formatDisplayDate = (date) => {
   return formatDateOnlyVN(date, "");
@@ -214,37 +213,11 @@ const formatSeats = (seatCount) => {
   return `${seatCount} chỗ`;
 };
 
-const loadGoogleMapsScript = () => {
-  if (!GOOGLE_MAPS_API_KEY) {
-    return Promise.reject(new Error("Thiếu VITE_GOOGLE_MAPS_API_KEY"));
-  }
-
-  if (window.google?.maps) {
-    return Promise.resolve(window.google.maps);
-  }
-
-  return new Promise((resolve, reject) => {
-    const existingScript = document.getElementById(GOOGLE_MAP_SCRIPT_ID);
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(window.google.maps));
-      existingScript.addEventListener("error", () => reject(new Error("Không tải được Google Maps")));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = GOOGLE_MAP_SCRIPT_ID;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(window.google.maps);
-    script.onerror = () => reject(new Error("Không tải được Google Maps"));
-    document.head.appendChild(script);
-  });
-};
 
 export default function Booking() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const auth = getAuth();
   const [address, setAddress] = useState("");
   const [sortBy, setSortBy] = useState("nearest");
@@ -252,7 +225,6 @@ export default function Booking() {
   const [nearby, setNearby] = useState([]);
   const [searchMeta, setSearchMeta] = useState(null);
   const [searching, setSearching] = useState(false);
-  const [mapError, setMapError] = useState("");
   const [error, setError] = useState("");
   const [bookingError, setBookingError] = useState("");
   const [selectedLot, setSelectedLot] = useState(location.state?.selectedLot || null);
@@ -265,9 +237,7 @@ export default function Booking() {
   const [bookingResult, setBookingResult] = useState(null);
   const [profile, setProfile] = useState(() => auth?.user || null);
   const [expandedLotId, setExpandedLotId] = useState(null);
-  const mapRef = useRef(null);
-  const mapInstanceRef = useRef(null);
-  const markersRef = useRef([]);
+  const [prefilledSlotName, setPrefilledSlotName] = useState("");
   const bookingSectionRef = useRef(null);
   const bookingSubmitLockRef = useRef(false);
   const bookingWindow = useMemo(() => buildBookingWindow(bookingForm), [bookingForm]);
@@ -326,6 +296,23 @@ export default function Booking() {
       setBookingResult({ message: location.state.paymentNotice });
     }
   }, [location.state]);
+
+  useEffect(() => {
+    const lotIdParam = searchParams.get("lotId");
+    const slotIdParam = searchParams.get("slotId");
+    const slotNameParam = searchParams.get("slotName");
+
+    if (lotIdParam && slotIdParam) {
+      const lotId = Number(lotIdParam);
+      const slotId = Number(slotIdParam);
+
+      if (lotId && slotId) {
+        setSelectedLot((prev) => (prev?.id === lotId ? prev : { id: lotId, name: "" }));
+        setSelectedSlotId(String(slotId));
+        setPrefilledSlotName(slotNameParam || "");
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const loadSlots = async () => {
@@ -497,6 +484,14 @@ export default function Booking() {
   const handleSelectLot = (lot) => {
     setSelectedLot(lot);
     setBookingResult(null);
+    setError("");
+    setBookingError("");
+    setPrefilledSlotName("");
+  };
+
+  const handleSlotSelectFromMap = (slot) => {
+    setSelectedSlotId(String(slot.id));
+    setPrefilledSlotName(slot.code || slot.slot_number || "");
     setError("");
     setBookingError("");
   };
@@ -683,92 +678,6 @@ export default function Booking() {
     }
   };
 
-  useEffect(() => {
-    const renderMap = async () => {
-      if (!mapRef.current || !searchMeta || nearby.length === 0) {
-        return;
-      }
-
-      try {
-        setMapError("");
-        await loadGoogleMapsScript();
-
-        const center = {
-          lat: Number(searchMeta.lat),
-          lng: Number(searchMeta.lng),
-        };
-
-        if (!mapInstanceRef.current) {
-          mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-            zoom: 14,
-            center,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: true,
-          });
-        }
-
-        const map = mapInstanceRef.current;
-        map.setCenter(center);
-
-        markersRef.current.forEach((marker) => marker.setMap(null));
-        markersRef.current = [];
-
-        const bounds = new window.google.maps.LatLngBounds();
-        bounds.extend(center);
-
-        const userMarker = new window.google.maps.Marker({
-          position: center,
-          map,
-          title: "Vị trí tìm kiếm",
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: "#1976d2",
-            fillOpacity: 1,
-            strokeWeight: 2,
-            strokeColor: "#ffffff",
-          },
-        });
-        markersRef.current.push(userMarker);
-
-        nearby.forEach((lot) => {
-          const position = {
-            lat: Number(lot.latitude),
-            lng: Number(lot.longitude),
-          };
-          bounds.extend(position);
-
-          const marker = new window.google.maps.Marker({
-            position,
-            map,
-            title: lot.name,
-          });
-
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div style="min-width:180px">
-                <strong>${lot.name}</strong><br/>
-                <span>${lot.address}</span><br/>
-                <span>Khoảng cách: ${lot.distance} km</span><br/>
-                <span>Giá: ${Number(lot.price_per_hour).toLocaleString("vi-VN")}đ/giờ</span>
-              </div>
-            `,
-          });
-
-          marker.addListener("click", () => infoWindow.open({ anchor: marker, map }));
-          markersRef.current.push(marker);
-        });
-
-        map.fitBounds(bounds);
-      } catch {
-        setMapError("Không tải được Google Maps. Hãy kiểm tra VITE_GOOGLE_MAPS_API_KEY.");
-      }
-    };
-
-    renderMap();
-  }, [nearby, searchMeta]);
-
   return (
     <section className="page-wrap">
       <div className="page-card booking-shell">
@@ -780,15 +689,34 @@ export default function Booking() {
         <section className="booking-search-section">
           <h2 className="booking-subtitle">Tìm bãi xe gần bạn</h2>
           <div className="booking-tools booking-tools--search">
-            <input
-              className="booking-input"
-              placeholder="Ví dụ: Nguyễn Văn Săng, Tân Phú"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-            />
-            <button type="button" className="btn-primary" onClick={handleSearchNearby} disabled={searching}>
-              {searching ? "Đang tìm..." : "Tìm bãi xe gần bạn"}
+            <div className="input-with-clear">
+              <input
+                className="booking-input"
+                aria-label="Địa chỉ tìm kiếm"
+                placeholder="Ví dụ: Nguyễn Văn Săng, Tân Phú"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+              {address && (
+                <button
+                  type="button"
+                  className="input-clear-btn"
+                  aria-label="Xóa địa chỉ"
+                  onClick={() => setAddress("")}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <button type="button" className="btn-primary btn-primary--search" onClick={handleSearchNearby} disabled={searching}>
+              {searching ? (
+                <span className="btn-loading">⏳ Đang tìm...</span>
+              ) : (
+                "Tìm bãi xe gần bạn"
+              )}
             </button>
+
             <button type="button" className="btn-secondary" onClick={handleUseCurrentLocation} disabled={searching}>
               📍 Dùng vị trí hiện tại
             </button>
@@ -818,8 +746,11 @@ export default function Booking() {
 
           {nearby.length > 0 && (
             <>
-              <div className="nearby-map" ref={mapRef} />
-              {mapError && <p className="booking-error">{mapError}</p>}
+              <NearbyParkingMap
+                searchMeta={searchMeta}
+                nearbyLots={nearby}
+                onSelectLot={handleSelectLot}
+              />
 
               <div className="nearby-list">
                 {nearby.map((lot) => (
@@ -856,6 +787,24 @@ export default function Booking() {
 
         {selectedLot && (
           <section className="booking-search-section booking-form-section" ref={bookingSectionRef}>
+            {/* Progress Stepper */}
+            <div className="booking-stepper">
+              <div className="stepper-step stepper-step--completed">
+                <div className="stepper-number">✓</div>
+                <div className="stepper-label">Chọn bãi xe</div>
+              </div>
+              <div className="stepper-line"></div>
+              <div className="stepper-step stepper-step--active">
+                <div className="stepper-number">2</div>
+                <div className="stepper-label">Chi tiết đặt chỗ</div>
+              </div>
+              <div className="stepper-line"></div>
+              <div className="stepper-step stepper-step--pending">
+                <div className="stepper-number">3</div>
+                <div className="stepper-label">Xác nhận & Thanh toán</div>
+              </div>
+            </div>
+
             <div className="booking-form-headline">
               <h2>ĐẶT BÃI XE ĐÃ CHỌN</h2>
             </div>
@@ -870,244 +819,320 @@ export default function Booking() {
               </div>
             </div>
 
+            <ParkingMap
+              lotId={selectedLot.id}
+              lotName={selectedLot.name}
+              onSelectSlot={handleSlotSelectFromMap}
+            />
+
             <div className="booking-form-sheet">
-              <h3>Chi tiết đặt chỗ</h3>
-
-              <div className="booking-form-grid booking-form-grid--two">
-                <div className="field-wrap">
-                  <label>Người đặt (Booking Name)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Nhập tên người đặt"
-                    value={bookingForm.ownerName}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, ownerName: e.target.value }))}
-                  />
+              {/* Section 1: Thông tin người đặt */}
+              <div className="form-section">
+                <div className="form-section-header">
+                  <span className="section-icon">👤</span>
+                  <h3>Thông tin người đặt</h3>
+                  {profile && <span className="badge badge--account">Từ tài khoản</span>}
                 </div>
-                <div className="field-wrap">
-                  <label>Biển số (License Plate)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Nhập biển số xe"
-                    value={bookingForm.licensePlate}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, licensePlate: e.target.value }))}
-                  />
+                <div className="form-section-content">
+                  <div className="booking-form-grid booking-form-grid--two">
+                    <div className="field-wrap">
+                      <label>Họ tên</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Nhập tên người đặt"
+                        value={bookingForm.ownerName}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, ownerName: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field-wrap">
+                      <label>Số điện thoại</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Tự động lấy từ tài khoản"
+                        value={bookingForm.contactPhone}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, contactPhone: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  {profile && (
+                    <div className="profile-badge">
+                      <span className="profile-text">
+                        {profile.name} • {profile.phone} {profile.vehicle_plate ? `• ${profile.vehicle_plate}` : ""}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="booking-form-grid booking-form-grid--two">
-                <div className="field-wrap">
-                  <label>Số điện thoại (Phone)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Tự động lấy từ tài khoản"
-                    value={bookingForm.contactPhone}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, contactPhone: e.target.value }))}
-                  />
+              {/* Section 2: Thông tin xe */}
+              <div className="form-section">
+                <div className="form-section-header">
+                  <span className="section-icon">🚗</span>
+                  <h3>Thông tin xe</h3>
                 </div>
-                <div className="field-wrap booking-price-note">
-                  <label>Hồ sơ tài khoản</label>
-                  <p>
-                    {profile?.name || bookingForm.ownerName || "Chưa có tên"}
-                    {profile?.phone ? ` • ${profile.phone}` : ""}
-                    {profile?.vehicle_plate ? ` • ${profile.vehicle_plate}` : ""}
-                  </p>
+                <div className="form-section-content">
+                  <div className="booking-form-grid booking-form-grid--two">
+                    <div className="field-wrap">
+                      <label>Biển số xe</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Nhập biển số xe"
+                        value={bookingForm.licensePlate}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, licensePlate: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field-wrap">
+                      <label>Thương hiệu</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Ví dụ: Vinfast"
+                        value={bookingForm.brand}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, brand: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="booking-form-grid booking-form-grid--three">
+                    <div className="field-wrap">
+                      <label>Dòng xe</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Ví dụ: vf4"
+                        value={bookingForm.vehicleType}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, vehicleType: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field-wrap">
+                      <label>Số chỗ ngồi</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Ví dụ: 4 chỗ"
+                        value={bookingForm.seats}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, seats: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field-wrap">
+                      <label>Màu xe</label>
+                      <input
+                        className="booking-input"
+                        placeholder="Ví dụ: Đen"
+                        value={bookingForm.vehicleColor}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, vehicleColor: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="vehicle-save-action">
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      onClick={handleSaveVehicleProfile}
+                      disabled={savingVehicle}
+                    >
+                      {savingVehicle ? "Đang lưu..." : "💾 Lưu thông tin xe"}
+                    </button>
+                    {vehicleNotice && <span className="vehicle-notice">{vehicleNotice}</span>}
+                  </div>
                 </div>
               </div>
 
-              <div className="booking-form-grid booking-form-grid--three">
-                <div className="field-wrap">
-                  <label>Thương hiệu (Brand)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Ví dụ: Vinfast"
-                    value={bookingForm.brand}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, brand: e.target.value }))}
-                  />
+              {/* Section 3: Chi tiết đặt chỗ */}
+              <div className="form-section">
+                <div className="form-section-header">
+                  <span className="section-icon">📅</span>
+                  <h3>Chi tiết đặt chỗ</h3>
                 </div>
-                <div className="field-wrap">
-                  <label>Dòng xe (Model)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Ví dụ: vf4"
-                    value={bookingForm.vehicleType}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, vehicleType: e.target.value }))}
-                  />
-                </div>
-                <div className="field-wrap">
-                  <label>Số chỗ (Seats)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Ví dụ: 4 chỗ"
-                    value={bookingForm.seats}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, seats: e.target.value }))}
-                  />
-                </div>
-              </div>
+                <div className="form-section-content">
 
-              <div className="booking-form-grid booking-form-grid--two">
-                <div className="field-wrap">
-                  <label>Màu xe (Vehicle Color)</label>
-                  <input
-                    className="booking-input"
-                    placeholder="Ví dụ: Đen"
-                    value={bookingForm.vehicleColor}
-                    onChange={(e) => setBookingForm((prev) => ({ ...prev, vehicleColor: e.target.value }))}
-                  />
-                </div>
-                <div className="field-wrap booking-price-note">
-                  <label>Lưu thông tin xe</label>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={handleSaveVehicleProfile}
-                    disabled={savingVehicle}
-                  >
-                    {savingVehicle ? "Đang lưu..." : "Lưu thông tin xe"}
-                  </button>
-                  {vehicleNotice ? <p>{vehicleNotice}</p> : null}
-                </div>
-              </div>
+                  <div className="booking-form-grid booking-form-grid--single">
+                    <div className="field-wrap">
+                      <label>
+                        Vị trí mong muốn
+                        <span className="label-hint" title="Chọn vị trí từ sơ đồ bãi xe hoặc từ danh sách slot trống">ℹ️</span>
+                      </label>
+                      {prefilledSlotName ? (
+                        <div className="prefilled-slot-display">
+                          <input
+                            className="booking-input"
+                            value={prefilledSlotName}
+                            readOnly
+                            disabled
+                          />
+                          <small className="slot-hint">Vị trí đã chọn từ sơ đồ bãi xe</small>
+                        </div>
+                      ) : (
+                        <select
+                          className="booking-input booking-slot-select"
+                          value={selectedSlotId}
+                          onChange={(e) => setSelectedSlotId(e.target.value)}
+                        >
+                          <option value="">Chọn slot trống</option>
+                          {availableSlots.map((slot) => (
+                            <option key={slot.id} value={slot.id}>
+                              {slot.code} {slot.slot_number ? `- ${slot.slot_number}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
 
-              <div className="booking-form-grid booking-form-grid--three">
-                <div className="field-wrap">
-                  <label>Vị trí mong muốn (Preferred Slot)</label>
-                  <select
-                    className="booking-input booking-slot-select"
-                    value={selectedSlotId}
-                    onChange={(e) => setSelectedSlotId(e.target.value)}
-                  >
-                    <option value="">Chọn slot trống</option>
-                    {availableSlots.map((slot) => (
-                      <option key={slot.id} value={slot.id}>
-                        {slot.code} {slot.slot_number ? `- ${slot.slot_number}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field-wrap">
-                  <label>Hình thức đặt chỗ (Booking Mode)</label>
-                  <div className="booking-mode-switch" role="radiogroup" aria-label="Chọn hình thức đặt chỗ">
-                    {BOOKING_MODE_OPTIONS.map((modeOption) => (
-                      <button
-                        key={modeOption.value}
-                        type="button"
-                        className={`booking-mode-pill ${bookingForm.bookingMode === modeOption.value ? "is-active" : ""}`}
-                        role="radio"
-                        aria-checked={bookingForm.bookingMode === modeOption.value}
-                        onClick={() => handleBookingModeChange(modeOption.value)}
-                      >
-                        <span>{modeOption.label}</span>
-                        <small>{modeOption.description}</small>
-                      </button>
-                    ))}
+                  <div className="booking-mode-section">
+                    <label>Hình thức đặt chỗ</label>
+                    <div className="booking-mode-cards" role="radiogroup" aria-label="Chọn hình thức đặt chỗ">
+                      {BOOKING_MODE_OPTIONS.map((modeOption) => {
+                        const price = modeOption.value === "hourly" 
+                          ? selectedLot.price_per_hour 
+                          : modeOption.value === "daily" 
+                          ? selectedLot.price_per_day 
+                          : selectedLot.price_per_month;
+                        const priceText = modeOption.value === "monthly" 
+                          ? `${Number(price).toLocaleString("vi-VN")}đ/tháng`
+                          : `${Number(price).toLocaleString("vi-VN")}đ/${modeOption.value === "hourly" ? "giờ" : "ngày"}`;
+                        return (
+                          <button
+                            key={modeOption.value}
+                            type="button"
+                            className={`booking-mode-card ${bookingForm.bookingMode === modeOption.value ? "is-active" : ""}`}
+                            role="radio"
+                            aria-checked={bookingForm.bookingMode === modeOption.value}
+                            onClick={() => handleBookingModeChange(modeOption.value)}
+                          >
+                            <div className="mode-card-header">
+                              <span className="mode-title">{modeOption.label}</span>
+                              <span className="mode-price">{priceText}</span>
+                            </div>
+                            <div className="mode-card-desc">{modeOption.description}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-                <div className="field-wrap booking-price-note">
-                  <label>Đơn giá</label>
-                  <p>
-                    {Number(selectedLot.price_per_hour).toLocaleString("vi-VN")}đ/giờ | {" "}
-                    {Number(selectedLot.price_per_day).toLocaleString("vi-VN")}đ/ngày | {" "}
-                    {Number(selectedLot.price_per_month).toLocaleString("vi-VN")}đ/tháng
-                  </p>
-                </div>
-              </div>
 
-              {bookingForm.bookingMode === "hourly" && (
-                <div className="booking-form-grid booking-form-grid--two">
-                  <div className="field-wrap">
-                    <label>Thời gian vào (Check-in Time)</label>
-                    <input
-                      className="booking-input"
-                      type="datetime-local"
-                      value={bookingForm.checkinTime}
-                      onChange={(e) => setBookingForm((prev) => ({ ...prev, checkinTime: e.target.value }))}
-                    />
-                  </div>
-                  <div className="field-wrap">
-                    <label>Thời gian ra (Check-out Time)</label>
-                    <input
-                      className="booking-input"
-                      type="datetime-local"
-                      value={bookingForm.checkoutTime}
-                      onChange={(e) => setBookingForm((prev) => ({ ...prev, checkoutTime: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {bookingForm.bookingMode === "daily" && (
-                <div className="booking-form-grid booking-form-grid--two">
-                  <div className="field-wrap">
-                    <label>Đặt từ ngày</label>
-                    <input
-                      className="booking-input"
-                      type="date"
-                      value={bookingForm.startDate}
-                      onChange={(e) => setBookingForm((prev) => ({ ...prev, startDate: e.target.value }))}
-                    />
-                  </div>
-                  <div className="field-wrap">
-                    <label>Đặt đến ngày</label>
-                    <input
-                      className="booking-input"
-                      type="date"
-                      value={bookingForm.endDate}
-                      onChange={(e) => setBookingForm((prev) => ({ ...prev, endDate: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {bookingForm.bookingMode === "monthly" && (
-                <div className="booking-form-grid booking-form-grid--two">
-                  <div className="field-wrap">
-                    <label>Bắt đầu từ ngày</label>
-                    <input
-                      className="booking-input"
-                      type="date"
-                      value={bookingForm.startDate}
-                      onChange={(e) => setBookingForm((prev) => ({ ...prev, startDate: e.target.value }))}
-                    />
-                  </div>
-                  <div className="field-wrap">
-                    <label>Số tháng đặt chỗ</label>
-                    <input
-                      className="booking-input"
-                      type="number"
-                      min={1}
-                      max={24}
-                      value={bookingForm.monthCount}
-                      onChange={(e) => setBookingForm((prev) => ({ ...prev, monthCount: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="booking-estimate-box">
-                {!bookingWindow.ok && <p className="booking-error">{bookingWindow.error}</p>}
-                {bookingWindow.ok && (
-                  <>
-                    <p>
-                      Từ {bookingRangePreview.start} đến {bookingRangePreview.end}
-                    </p>
-                    <p>
-                      Dự kiến tính phí: {estimatedCharge.billedUnits} {estimatedCharge.billedUnit} ({estimatedCharge.resolvedMode})
-                    </p>
-                    {estimatedCharge.autoConvertedToDaily && (
-                      <p className="booking-estimate-note">
-                        Booking theo giờ nhưng lớn hơn 12 giờ nên hệ thống tự động tính theo ngày.
-                      </p>
+                  <div className="time-picker-section">
+                    {bookingForm.bookingMode === "hourly" && (
+                      <div className="booking-form-grid booking-form-grid--two">
+                        <div className="field-wrap">
+                          <label>Thời gian vào</label>
+                          <input
+                            className="booking-input"
+                            type="datetime-local"
+                            value={bookingForm.checkinTime}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, checkinTime: e.target.value }))}
+                          />
+                        </div>
+                        <div className="field-wrap">
+                          <label>Thời gian ra</label>
+                          <input
+                            className="booking-input"
+                            type="datetime-local"
+                            value={bookingForm.checkoutTime}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, checkoutTime: e.target.value }))}
+                          />
+                        </div>
+                      </div>
                     )}
-                  </>
-                )}
+
+                    {bookingForm.bookingMode === "daily" && (
+                      <div className="booking-form-grid booking-form-grid--two">
+                        <div className="field-wrap">
+                          <label>Đặt từ ngày</label>
+                          <input
+                            className="booking-input"
+                            type="date"
+                            value={bookingForm.startDate}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                          />
+                        </div>
+                        <div className="field-wrap">
+                          <label>Đặt đến ngày</label>
+                          <input
+                            className="booking-input"
+                            type="date"
+                            value={bookingForm.endDate}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {bookingForm.bookingMode === "monthly" && (
+                      <div className="booking-form-grid booking-form-grid--two">
+                        <div className="field-wrap">
+                          <label>Bắt đầu từ ngày</label>
+                          <input
+                            className="booking-input"
+                            type="date"
+                            value={bookingForm.startDate}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                          />
+                        </div>
+                        <div className="field-wrap">
+                          <label>Số tháng đặt chỗ</label>
+                          <input
+                            className="booking-input"
+                            type="number"
+                            min={1}
+                            max={24}
+                            value={bookingForm.monthCount}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, monthCount: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="booking-estimate-box">
+                    {!bookingWindow.ok && <p className="booking-error">{bookingWindow.error}</p>}
+                    {bookingWindow.ok && (
+                      <>
+                        <p className="estimate-range">
+                          Từ {bookingRangePreview.start} đến {bookingRangePreview.end}
+                        </p>
+                        <p className="estimate-cost">
+                          Dự kiến tính phí: {estimatedCharge.billedUnits} {estimatedCharge.billedUnit} ({estimatedCharge.resolvedMode})
+                        </p>
+                        {estimatedCharge.autoConvertedToDaily && (
+                          <p className="booking-estimate-note">
+                            Booking theo giờ nhưng lớn hơn 12 giờ nên hệ thống tự động tính theo ngày.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="lot-actions center-actions">
-              <button type="button" className="btn-primary btn-primary-wide" onClick={handleCreateBooking} disabled={bookingLoading}>
-                {bookingLoading
-                  ? "Đang tạo booking..."
-                  : `XÁC NHẬN BOOKING (${estimatedCharge.amount.toLocaleString("vi-VN")} đ)`}
+            {/* Sticky Summary Bar (Mobile) / Summary Card (Desktop) */}
+            <div className="booking-summary-bar">
+              <div className="summary-info">
+                <div className="summary-item">
+                  <span className="summary-label">Bãi xe:</span>
+                  <span className="summary-value">{selectedLot.name}</span>
+                </div>
+                <div className="summary-item">
+                  <span className="summary-label">Thời gian:</span>
+                  <span className="summary-value">
+                    {bookingWindow.ok ? `${estimatedCharge.billedUnits} ${estimatedCharge.billedUnit}` : "--"}
+                  </span>
+                </div>
+                <div className="summary-item summary-item--total">
+                  <span className="summary-label">Tổng:</span>
+                  <span className="summary-value summary-value--price">
+                    {estimatedCharge.amount.toLocaleString("vi-VN")} ₫
+                  </span>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                className="btn-primary btn-primary--summary" 
+                onClick={handleCreateBooking} 
+                disabled={bookingLoading}
+              >
+                {bookingLoading ? (
+                  <span className="btn-loading">⏳ Đang xử lý...</span>
+                ) : (
+                  <span>Xác nhận đặt chỗ</span>
+                )}
               </button>
             </div>
 

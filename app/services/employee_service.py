@@ -17,10 +17,25 @@ from app.models.models import (
     User,
 )
 from app.routes.auth import create_access_token_for_subject
-from app.routes.gate import _execute_check_in, _execute_check_out, _get_payment, _parse_scan_payload
+from app.routes.booking import _overview_slot_status
+from app.routes.gate import (
+    _execute_check_in,
+    _execute_check_out,
+    _get_payment,
+    _local_now,
+    _parse_scan_payload,
+    _serialize_booking_detail,
+)
 
 APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 EMPLOYEE_PASSWORD_MIN_LENGTH = 6
+
+BOOKING_STATUS_PRIORITY = {
+    "checked_in": 0,
+    "in_progress": 1,
+    "booked": 2,
+    "pending": 3,
+}
 
 
 def _get_owner_assignment(owner_id: int, parking_id: int, db: Session) -> OwnerParking | None:
@@ -74,6 +89,15 @@ def _resolve_status(parking_id: int, db: Session) -> str:
     if state.status == "full" or (total_slots > 0 and occupied_slots >= total_slots):
         return "full"
     return "open"
+
+
+def _assert_employee_can_check_in(parking_id: int, db: Session) -> None:
+    total_slots, occupied_slots, _ = _compute_slot_metrics(parking_id, db)
+    state = _get_operational_state(parking_id, db)
+    if state.status == "closed":
+        raise HTTPException(status_code=409, detail="Bãi đang đóng, không thể check-in")
+    if state.status == "full" or (total_slots > 0 and occupied_slots >= total_slots):
+        raise HTTPException(status_code=409, detail="Bãi đang đầy, không thể check-in")
 
 
 def _serialize_employee(employee: EmployeeAccount) -> dict:
@@ -226,6 +250,35 @@ def create_employee_for_owner(
         "full_name": user.name,
         "phone": user.phone,
     }
+
+
+def _display_slot_code(slot: ParkingSlot) -> str:
+    slot_number = (slot.slot_number or "").strip()
+    code = (slot.code or "").strip()
+    if slot_number and code == f"{slot.parking_id}-{slot_number}":
+        return slot_number
+    if code:
+        return code
+    if slot_number:
+        return slot_number
+    return f"Slot-{slot.id}"
+
+
+def _is_preferred_slot_booking(candidate: Booking, current: Booking) -> bool:
+    candidate_status = (candidate.status or "").lower()
+    current_status = (current.status or "").lower()
+    candidate_priority = BOOKING_STATUS_PRIORITY.get(candidate_status, 99)
+    current_priority = BOOKING_STATUS_PRIORITY.get(current_status, 99)
+    if candidate_priority != current_priority:
+        return candidate_priority < current_priority
+
+    candidate_time = candidate.actual_checkin or candidate.start_time or candidate.created_at
+    current_time = current.actual_checkin or current.start_time or current.created_at
+    if current_time is None:
+        return True
+    if candidate_time is None:
+        return False
+    return candidate_time > current_time
 
 
 def get_owner_employees(owner: User, db: Session) -> dict:
@@ -430,39 +483,119 @@ def get_employee_dashboard(employee: EmployeeAccount, db: Session) -> dict:
 
 
 def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     rows = db.execute(
         text(
             """
             SELECT
                 b.id AS booking_id,
                 u.vehicle_plate AS license_plate,
+                u.full_name AS owner_name,
+                u.phone AS owner_phone,
                 COALESCE(b.actual_checkin, b.checkin_time) AS check_in_time,
                 b.status AS status,
-                COALESCE(ps.slot_number, ps.code) AS slot_code
+                COALESCE(ps.slot_number, ps.code) AS slot_code,
+                b.booking_mode AS booking_mode
             FROM bookings b
             LEFT JOIN users u ON u.id = b.user_id
             LEFT JOIN parking_slots ps ON ps.id = b.slot_id
             WHERE b.parking_id = :parking_id
-              AND b.status = 'checked_in'
-            ORDER BY COALESCE(b.actual_checkin, b.checkin_time) DESC, b.id DESC
+              AND b.status IN ('pending', 'booked', 'checked_in', 'in_progress')
+            ORDER BY
+              CASE b.status
+                WHEN 'checked_in' THEN 1
+                WHEN 'in_progress' THEN 2
+                WHEN 'booked' THEN 3
+                WHEN 'pending' THEN 4
+                ELSE 5
+              END,
+              COALESCE(b.actual_checkin, b.checkin_time) DESC,
+              b.id DESC
             """
         ),
-        {"parking_id": employee.parking_id},
+        {"parking_id": parking_lot.id},
     ).mappings().all()
     vehicles = [
         {
             "booking_id": row["booking_id"],
             "license_plate": row["license_plate"],
+            "owner_name": row["owner_name"],
+            "owner_phone": row["owner_phone"],
             "check_in_time": row["check_in_time"],
             "status": row["status"],
             "slot_code": row["slot_code"],
+            "booking_mode": row["booking_mode"],
         }
         for row in rows
     ]
     return {"vehicles": vehicles, "total_count": len(vehicles)}
 
 
+def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
+    slots = (
+        db.query(ParkingSlot)
+        .filter(ParkingSlot.parking_id == parking_lot.id)
+        .order_by(ParkingSlot.level.asc(), ParkingSlot.zone.asc(), ParkingSlot.slot_number.asc(), ParkingSlot.code.asc())
+        .all()
+    )
+    active_bookings = db.query(Booking).filter(
+        Booking.parking_id == parking_lot.id,
+        Booking.status.in_(["pending", "booked", "checked_in"]),
+    ).all()
+
+    booking_statuses_by_slot: dict[int, set[str]] = {}
+    latest_booking_by_slot: dict[int, Booking] = {}
+    for booking in active_bookings:
+        if not booking.slot_id:
+            continue
+        slot_id = int(booking.slot_id)
+        booking_statuses_by_slot.setdefault(slot_id, set()).add((booking.status or "").lower())
+        if slot_id not in latest_booking_by_slot or _is_preferred_slot_booking(booking, latest_booking_by_slot[slot_id]):
+            latest_booking_by_slot[slot_id] = booking
+
+    slot_rows = []
+    for slot in slots:
+        status = _overview_slot_status(slot.status, booking_statuses_by_slot.get(int(slot.id), set()))
+        active_booking = latest_booking_by_slot.get(int(slot.id))
+        slot_rows.append(
+            {
+                "id": int(slot.id),
+                "code": _display_slot_code(slot),
+                "booking_id": int(active_booking.id) if active_booking else None,
+                "booking_status": (active_booking.status if active_booking else None),
+                "zone": slot.zone or "Chưa phân khu",
+                "level": slot.level or "Chưa gán tầng",
+                "status": status,
+                "owner_name": active_booking.user.name if active_booking and active_booking.user else None,
+                "owner_phone": active_booking.user.phone if active_booking and active_booking.user else None,
+                "vehicle_plate": active_booking.user.vehicle_plate if active_booking and active_booking.user else None,
+                "booking_mode": active_booking.booking_mode if active_booking else None,
+                "check_in_time": (active_booking.actual_checkin or active_booking.start_time) if active_booking else None,
+                "check_out_time": (active_booking.actual_checkout or active_booking.expire_time) if active_booking else None,
+                "booking_code": f"BK-{active_booking.id}" if active_booking else None,
+            }
+        )
+
+    available_slots = [item for item in slot_rows if item["status"] == "available"]
+    maintenance_slots = [item for item in slot_rows if item["status"] == "maintenance"]
+    occupied_slots = [item for item in slot_rows if item["status"] == "occupied"]
+
+    return {
+        "parking_id": int(parking_lot.id),
+        "parking_name": parking_lot.name,
+        "total_slots": len(slot_rows),
+        "available_slots": len(available_slots),
+        "reserved_slots": 0,
+        "in_use_slots": len(occupied_slots),
+        "maintenance_slots": len(maintenance_slots),
+        "occupied_or_reserved_slots": len(slot_rows) - len(available_slots),
+        "slots": slot_rows,
+    }
+
+
 def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     today = datetime.now(APP_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     month_start = today.replace(day=1)
     week_start = today - timedelta(days=6)
@@ -490,7 +623,7 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
               AND p.payment_status = 'paid'
             """
         ),
-        {"parking_id": employee.parking_id},
+        {"parking_id": parking_lot.id},
     ).mappings().all()
 
     for row in rows:
@@ -522,7 +655,7 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
             """
         ),
         {
-            "parking_id": employee.parking_id,
+            "parking_id": parking_lot.id,
             "today_start": today,
             "tomorrow_start": today + timedelta(days=1),
         },
@@ -550,7 +683,7 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
         elif row["action"] == "check_out":
             bucket["check_outs"] += 1
 
-    total_slots, occupied_slots, _ = _compute_slot_metrics(employee.parking_id, db)
+    total_slots, occupied_slots, _ = _compute_slot_metrics(parking_lot.id, db)
     occupancy_ratio = round((occupied_slots / total_slots) * 100, 2) if total_slots > 0 else 0
 
     return {
@@ -577,10 +710,14 @@ def update_employee_parking_status(employee: EmployeeAccount, status_value: str,
 
 
 def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
+    _assert_employee_can_check_in(parking_lot.id, db)
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if int(booking.parking_id or 0) != int(parking_lot.id):
+        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_in(
         booking=booking,
@@ -592,7 +729,7 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
     )
     _log_activity(
         employee,
-        employee.parking_id,
+        parking_lot.id,
         "check_in",
         f"Check-in booking BK-{booking.id}",
         db,
@@ -606,11 +743,46 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
     }
 
 
+def employee_get_gate_booking(employee: EmployeeAccount, booking_id: int, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if int(booking.parking_id or 0) != int(parking_lot.id):
+        raise HTTPException(status_code=403, detail="Employee không có quyền thao tác tại bãi này")
+    payment = _get_payment(booking.id, db, lock=False)
+    _log_activity(
+        employee,
+        parking_lot.id,
+        "resolve_booking",
+        f"Xem thông tin booking BK-{booking.id}",
+        db,
+        booking_id=booking.id,
+    )
+    db.commit()
+    return _serialize_booking_detail(booking, payment, db, _local_now())
+
+
 def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: str, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+    if int(booking.parking_id or 0) != int(parking_lot.id):
+        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
+
+    # Fallback for legacy/edge data where a vehicle is physically occupying a slot but booking was not transitioned to checked_in.
+    now = _local_now()
+    normalized_status = (booking.status or "").lower()
+    is_overdue = bool(booking.expire_time and booking.expire_time <= now)
+    if normalized_status in {"pending", "booked"} and is_overdue:
+        booking.status = "checked_in"
+        if booking.actual_checkin is None:
+            booking.actual_checkin = booking.start_time or now
+        if booking.slot:
+            booking.slot.status = "occupied"
+
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_out(
         booking=booking,
@@ -621,10 +793,10 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
         actor=employee,
         db=db,
     )
-    amount = float(detail.get("pricing_preview", {}).get("total_charge") or 0)
+    amount = float(detail.get("pricing_preview", {}).get("remaining_due") or 0)
     _log_activity(
         employee,
-        employee.parking_id,
+        parking_lot.id,
         "check_out",
         f"Check-out booking BK-{booking.id}",
         db,
@@ -639,12 +811,21 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
     }
 
 
-def get_employee_history(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_history(
+    employee: EmployeeAccount,
+    db: Session,
+    *,
+    limit: int = 200,
+    action: str | None = None,
+) -> dict:
+    safe_limit = max(1, min(int(limit or 200), 500))
+    query = db.query(EmployeeActivity).filter(EmployeeActivity.employee_id == employee.id)
+    if action:
+        query = query.filter(EmployeeActivity.action == action.strip())
     rows = (
-        db.query(EmployeeActivity)
-        .filter(EmployeeActivity.employee_id == employee.id)
+        query
         .order_by(EmployeeActivity.created_at.desc(), EmployeeActivity.id.desc())
-        .limit(200)
+        .limit(safe_limit)
         .all()
     )
     history = [
