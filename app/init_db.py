@@ -528,7 +528,7 @@ def migrate_payments_columns():
             text(
                 """
                 ALTER TABLE payments
-                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay') DEFAULT 'vnpay'
+                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay','wallet') DEFAULT 'vnpay'
                 """
             )
         )
@@ -545,6 +545,43 @@ def migrate_payments_columns():
     if "uq_payments_booking_id" not in indexes:
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX uq_payments_booking_id ON payments (booking_id)"))
+
+
+def migrate_wallets():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "wallets" not in table_names or "users" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("wallets")}
+    alter_statements = []
+
+    if "balance" not in columns:
+        alter_statements.append("ADD COLUMN balance FLOAT NOT NULL DEFAULT 0")
+    if "reserved_balance" not in columns:
+        alter_statements.append("ADD COLUMN reserved_balance FLOAT NOT NULL DEFAULT 0")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if "updated_at" not in columns:
+        alter_statements.append("ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE wallets {', '.join(alter_statements)}"))
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO wallets (user_id, balance, reserved_balance, created_at, updated_at)
+                SELECT u.id, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM users u
+                LEFT JOIN wallets w ON w.user_id = u.id
+                WHERE w.id IS NULL
+                """
+            )
+        )
 
 
 def migrate_transactions_columns():
@@ -795,6 +832,7 @@ def init_db():
     _run_migration_step("reviews", migrate_reviews_columns)
     _run_migration_step("bookings", migrate_bookings_columns)
     _run_migration_step("payments", migrate_payments_columns)
+    _run_migration_step("wallets", migrate_wallets)
     _run_migration_step("transactions", migrate_transactions_columns)
     _run_migration_step("employee_accounts", migrate_employee_accounts_columns)
     _run_migration_step("parking_operational_states", migrate_parking_operational_states_columns)

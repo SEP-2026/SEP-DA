@@ -1,11 +1,10 @@
-import { buildDynamicVietQrUrl, formatCurrency } from "./gateFormatters";
+import { formatCurrency } from "./gateFormatters";
 import { getPaymentStatusLabel } from "./statusLabel";
 
 export default function PaymentPanel({ booking, paymentMethod, setPaymentMethod }) {
   const pricing = booking?.pricing_preview;
   const payment = booking?.payment;
   const remainingDue = Number(pricing?.remaining_due || payment?.remaining_amount || 0);
-  const vnpayQrUrl = buildDynamicVietQrUrl(remainingDue, booking?.booking_id);
 
   return (
     <div className="scan-payment-panel">
@@ -33,30 +32,16 @@ export default function PaymentPanel({ booking, paymentMethod, setPaymentMethod 
         </div>
       </div>
 
-      <label className="scan-field">
-        <span>Phương thức thanh toán khi checkout</span>
-        <select className="scan-input" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-          <option value="cash">Tiền mặt</option>
-          <option value="vnpay">VNPay</option>
-        </select>
-      </label>
+      <div className="scan-hint">
+        Checkout sẽ tự khấu trừ từ ví nội bộ. Nhân viên chỉ cần quét QR booking để xác nhận vào/ra.
+      </div>
 
-      {paymentMethod === "vnpay" ? (
-        <div className="scan-vnpay-box">
-          <div className="scan-summary-list">
-            <div>
-              <span>QR VNPay cần thanh toán</span>
-              <strong>{remainingDue > 0 ? formatCurrency(remainingDue) : "Không còn số tiền phải trả"}</strong>
-            </div>
+      {remainingDue > 0 ? (
+        <div className="scan-summary-list" style={{ marginTop: 12 }}>
+          <div>
+            <span>Số tiền còn phải trừ khi checkout</span>
+            <strong>{formatCurrency(remainingDue)}</strong>
           </div>
-
-          {remainingDue > 0 && vnpayQrUrl ? (
-            <div className="scan-vnpay-qr">
-              <img src={vnpayQrUrl} alt="QR thanh toán VNPay tại cổng" />
-            </div>
-          ) : (
-            <p className="scan-hint">Booking này hiện không còn số tiền cần thanh toán qua VNPay.</p>
-          )}
         </div>
       ) : null}
     </div>

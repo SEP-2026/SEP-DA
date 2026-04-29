@@ -39,6 +39,7 @@ export default function Profile({ onAuthUpdated }) {
   const auth = getAuth();
   const role = auth?.user?.role || "user";
   const isVehicleProfileAvailable = role === "user";
+  const isWalletAvailable = role === "user";
   const isOwner = role === "owner";
   const isAdmin = role === "admin";
   const [activeSection, setActiveSection] = useState("personal");
@@ -48,9 +49,11 @@ export default function Profile({ onAuthUpdated }) {
   const [vehicleLoading, setVehicleLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [managerLoading, setManagerLoading] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
 
   const [personalNotice, setPersonalNotice] = useState("");
   const [vehicleNotice, setVehicleNotice] = useState("");
+  const [walletNotice, setWalletNotice] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
   const [managerNotice, setManagerNotice] = useState("");
 
@@ -96,11 +99,19 @@ export default function Profile({ onAuthUpdated }) {
     totalSlots: 0,
     occupiedSlots: 0,
   });
+  const [walletInfo, setWalletInfo] = useState({
+    balance: 0,
+    reserved_balance: 0,
+  });
+  const [walletTopUpAmount, setWalletTopUpAmount] = useState("");
 
   const greetingName = useMemo(() => personalForm.name || auth?.user?.name || "User", [personalForm.name, auth?.user?.name]);
   const sectionTitle = useMemo(() => {
     if (activeSection === "manager") {
       return isAdmin ? "Thông tin quản trị" : "Thông tin quản lý";
+    }
+    if (activeSection === "wallet") {
+      return "Ví điện tử";
     }
     if (activeSection === "vehicle") {
       return "Thông tin xe";
@@ -219,6 +230,27 @@ export default function Profile({ onAuthUpdated }) {
 
     loadProfile();
   }, [isAdmin, isOwner, isVehicleProfileAvailable]);
+
+  useEffect(() => {
+    const loadWallet = async () => {
+      if (!auth?.token || !isWalletAvailable) {
+        setWalletInfo({ balance: 0, reserved_balance: 0 });
+        return;
+      }
+
+      try {
+        setWalletLoading(true);
+        const res = await API.get("/wallet/me");
+        setWalletInfo(res.data?.wallet || { balance: 0, reserved_balance: 0 });
+      } catch {
+        setWalletInfo({ balance: 0, reserved_balance: 0 });
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    loadWallet();
+  }, [auth?.token, isWalletAvailable]);
 
   const handleSavePersonal = async (event) => {
     event.preventDefault();
@@ -399,6 +431,32 @@ export default function Profile({ onAuthUpdated }) {
     }
   };
 
+  const handleTopUpWallet = async (event) => {
+    event.preventDefault();
+    setWalletNotice("");
+
+    const amount = Number(walletTopUpAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setWalletNotice("Số tiền nạp phải lớn hơn 0");
+      return;
+    }
+
+    try {
+      setWalletLoading(true);
+      const res = await API.post("/wallet/topup", {
+        amount,
+        note: "Nạp tiền mô phỏng",
+      });
+      setWalletInfo(res.data?.wallet || { balance: 0, reserved_balance: 0 });
+      setWalletTopUpAmount("");
+      setWalletNotice("Nạp tiền thành công");
+    } catch (err) {
+      setWalletNotice(normalizeError(err, "Nạp tiền thất bại"));
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <section className="page-wrap">
@@ -456,6 +514,16 @@ export default function Profile({ onAuthUpdated }) {
                 {isAdmin ? "Thông tin quản trị" : "Thông tin quản lý"}
               </button>
             )}
+            {isWalletAvailable ? (
+              <button
+                type="button"
+                className={`profile-menu-item ${activeSection === "wallet" ? "is-active" : ""}`}
+                onClick={() => setActiveSection("wallet")}
+              >
+                <span aria-hidden="true">💳</span>
+                Ví điện tử
+              </button>
+            ) : null}
             <button
               type="button"
               className={`profile-menu-item ${activeSection === "password" ? "is-active" : ""}`}
@@ -571,6 +639,40 @@ export default function Profile({ onAuthUpdated }) {
                   {managerLoading ? "Đang đồng bộ..." : "→ Đồng bộ thông tin quản lý"}
                 </button>
                 {managerNotice ? <p className={`profile-notice ${getNoticeTone(managerNotice)}`} aria-live="polite">{managerNotice}</p> : null}
+              </form>
+            )}
+
+            {activeSection === "wallet" && isWalletAvailable && (
+              <form className="profile-card" onSubmit={handleTopUpWallet}>
+                <div className="profile-manager-grid">
+                  <article className="profile-manager-stat">
+                    <span className="profile-manager-label">Số dư khả dụng</span>
+                    <strong>{Number(walletInfo.balance || 0).toLocaleString("vi-VN")} đ</strong>
+                  </article>
+                  <article className="profile-manager-stat">
+                    <span className="profile-manager-label">Đang giữ chỗ</span>
+                    <strong>{Number(walletInfo.reserved_balance || 0).toLocaleString("vi-VN")} đ</strong>
+                  </article>
+                </div>
+
+                <label>Số tiền nạp</label>
+                <div className="profile-input-shell">
+                  <span className="profile-input-icon" aria-hidden="true">➕</span>
+                  <input
+                    className="booking-input profile-input"
+                    type="number"
+                    min={1}
+                    placeholder="Ví dụ: 100000"
+                    value={walletTopUpAmount}
+                    onChange={(e) => setWalletTopUpAmount(e.target.value)}
+                  />
+                </div>
+
+                <button className="profile-action-btn" type="submit" disabled={walletLoading}>
+                  {walletLoading ? "Đang xử lý..." : "→ Nạp tiền mô phỏng"}
+                </button>
+                <p className="profile-hint">Nạp tiền mô phỏng dùng cho demo, không tích hợp ngân hàng thật.</p>
+                {walletNotice ? <p className={`profile-notice ${getNoticeTone(walletNotice)}`} aria-live="polite">{walletNotice}</p> : null}
               </form>
             )}
 

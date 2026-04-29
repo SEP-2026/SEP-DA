@@ -21,6 +21,7 @@ from app.database import get_db
 from app.models.models import Booking, District, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
 from app.services.qr_service import invalidate_booking_qr_code
+from app.services.wallet_service import get_wallet_summary, settle_booking_payment, WalletError, InsufficientWalletBalance
 from app.utils.timezone import ensure_vn_local_naive, vn_now
 
 router = APIRouter()
@@ -737,6 +738,9 @@ def get_my_booking_detail(
     vehicle_profile = db.query(UserVehicle).filter(UserVehicle.user_id == current_user.id).first()
 
     payment_required = booking.status == "pending"
+    total_amount = round(float(booking.total_amount or 0), 2)
+    upfront_amount = round(total_amount * 0.3, 2)
+    remaining_amount = round(max(0.0, total_amount - upfront_amount), 2)
 
     return {
         "booking_id": booking.id,
@@ -748,7 +752,9 @@ def get_my_booking_detail(
         "actual_checkout": booking.actual_checkout,
         "booking_mode": booking.booking_mode,
         "billed_units": booking.billed_units,
-        "total_amount": booking.total_amount,
+        "total_amount": total_amount,
+        "upfront_amount": upfront_amount,
+        "remaining_amount": remaining_amount,
         "overstay_minutes": int(booking.overstay_minutes or 0),
         "overstay_fee": float(booking.overstay_fee or 0),
         "total_actual_fee": float(booking.total_actual_fee or booking.total_amount or 0),
@@ -1423,9 +1429,32 @@ def checkout_booking(
     now = vn_now()
     parking_price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_id).first()
     fee = calculate_checkout_fee(booking, now, float(parking_price.price_per_hour if parking_price else 0))
-    payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
+    payment = db.query(Payment).filter(Payment.booking_id == booking.id).with_for_update().first()
     if payment:
         payment.overtime_fee = fee["overstay_fee"]
+
+    wallet_summary = None
+    if payment and payment.payment_method == "wallet" and payment.payment_status == "paid":
+        reserve_amount = round(float(payment.deposit_amount or 0), 2)
+        capture_amount = round(float(payment.remaining_amount or 0), 2)
+        try:
+            settle_booking_payment(
+                db=db,
+                user_id=booking.user_id,
+                reserved_amount=reserve_amount,
+                capture_amount=capture_amount,
+                reference_type="booking_payment",
+                reference_id=booking.id,
+                note=f"Thanh toán phần còn lại cho booking #{booking.id} khi checkout",
+            )
+            payment.remaining_amount = 0
+            wallet_summary = get_wallet_summary(db, booking.user_id)
+        except InsufficientWalletBalance as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"Số dư ví không đủ để checkout: {str(exc)}") from exc
+        except WalletError as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     booking.actual_checkout = now
     booking.status = "completed"
@@ -1438,7 +1467,7 @@ def checkout_booking(
         booking.slot.status = "available"
     invalidate_booking_qr_code(booking, db)
     db.commit()
-    return {
+    response = {
         "success": True,
         "booking_id": booking.id,
         "actual_checkout": now,
@@ -1450,6 +1479,8 @@ def checkout_booking(
         "message": "Checkout thành công. Xe đã ra khỏi bãi.",
         "qr_url": None,
     }
+    if wallet_summary is not None:
+        response["wallet"] = wallet_summary
 
 
 @router.get("/bookings/{booking_id}/status")

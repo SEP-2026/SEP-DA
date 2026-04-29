@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.database import get_db
-from app.models.models import District, RevokedToken, User
+from app.models.models import District, RevokedToken, User, Wallet
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -207,6 +207,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         is_active=1,
     )
     db.add(user)
+    db.flush()
+    db.add(Wallet(user_id=user.id, balance=0, reserved_balance=0))
     db.commit()
     db.refresh(user)
     return RegisterResponse(message="Tao tai khoan user thanh cong", user=_build_user_info(user))

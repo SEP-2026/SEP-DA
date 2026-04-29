@@ -16,6 +16,7 @@ export default function PaymentSuccess() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [booking, setBooking] = useState(null);
+  const [wallet, setWallet] = useState(null);
   const [shareNotice, setShareNotice] = useState("");
   const [statusData, setStatusData] = useState(null);
   const [reviewData, setReviewData] = useState(null);
@@ -34,8 +35,12 @@ export default function PaymentSuccess() {
       try {
         setLoading(true);
         setError("");
-        const res = await API.get(`/booking/my/${numericBookingId}`);
-        setBooking(res.data);
+        const [bookingRes, walletRes] = await Promise.all([
+          API.get(`/booking/my/${numericBookingId}`),
+          API.get("/wallet/me"),
+        ]);
+        setBooking(bookingRes.data);
+        setWallet(walletRes.data?.wallet || null);
       } catch (err) {
         setBooking(null);
         setError(err?.response?.data?.detail || "Không tải được thông tin booking");
@@ -169,8 +174,8 @@ export default function PaymentSuccess() {
   return (
     <section className="page-wrap">
       <div className="page-card payment-success-shell">
-        <h1 className="page-title">Thanh Toán Thành Công</h1>
-        <p className="payment-success-note">Mang mã QR này đến cổng để quét check-in và check-out.</p>
+        <h1 className="page-title">Booking Đã Xác Nhận</h1>
+        <p className="payment-success-note">Ví đã giữ trước 30% tổng tiền booking, phần còn lại sẽ tự trừ khi checkout.</p>
 
         {loading && <p className="payment-success-note">Đang tải thông tin booking...</p>}
         {error && <p className="payment-success-error">{error}</p>}
@@ -197,6 +202,11 @@ export default function PaymentSuccess() {
             <p><strong>Check-in:</strong> {formatDateTimeVN(booking.checkin_time)}</p>
             <p><strong>Check-out:</strong> {formatDateTimeVN(booking.checkout_time)}</p>
             <p><strong>Số tiền:</strong> {formatMoney(booking.total_amount)}đ</p>
+            <p><strong>Đã giữ từ ví:</strong> {formatMoney(booking.upfront_amount)}đ</p>
+            <p><strong>Còn lại sẽ trừ khi checkout:</strong> {formatMoney(Math.max(0, Number(booking.total_amount || 0) - Number(booking.upfront_amount || 0)))}đ</p>
+            {wallet ? (
+              <p><strong>Số dư ví hiện tại:</strong> {formatMoney(wallet.balance)}đ</p>
+            ) : null}
             {(currentCheckinStatus === "checked_out" || currentCheckinStatus === "completed") ? (
               <p><strong>Tổng chi phí thực tế:</strong> {formatMoney(statusData?.total_actual_fee || booking.total_amount)}đ</p>
             ) : null}
