@@ -831,6 +831,87 @@
   display: block;
 }
 
+/* QR modal (viewport-centered) - same look as history modal */
+.qr-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 16px;
+}
+
+.qr-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 460px;
+  width: 100%;
+  position: relative;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+  text-align: center;
+}
+
+/* Force center the modal in viewport to avoid being affected by page layout */
+.qr-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block; /* keep full-screen */
+}
+
+.qr-modal {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  max-height: 90vh;
+  overflow: auto;
+  z-index: 1300;
+}
+
+.qr-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-modal-image img { 
+  max-width: 320px;
+  width: 80%;
+  height: auto;
+  border: 2px solid #e6eef4;
+  border-radius: 8px;
+}
+
+.qr-modal-download {
+  background: linear-gradient(135deg,#2084c7 0%,#145f96 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
 .booking-input {
   width: 100%;
   border: 1px solid rgba(20, 57, 93, 0.26);

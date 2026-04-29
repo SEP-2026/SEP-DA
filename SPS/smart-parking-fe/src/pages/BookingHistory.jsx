@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import ReviewForm from "../components/ReviewForm";
 import API from "../services/api";
@@ -867,7 +868,7 @@ export default function BookingHistory() {
       </div>
 
       {/* QR Code Modal */}
-      {qrModal.isOpen && (
+      {qrModal.isOpen && ReactDOM.createPortal(
         <div className="qr-modal-overlay" onClick={closeQrModal}>
           <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
             <button className="qr-modal-close" onClick={closeQrModal}>×</button>
@@ -885,9 +886,10 @@ export default function BookingHistory() {
               </>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-      {reviewModal.isOpen && (
+      {reviewModal.isOpen && ReactDOM.createPortal(
         <div className="qr-modal-overlay" onClick={closeReviewModal}>
           <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
             <button className="qr-modal-close" onClick={closeReviewModal}>×</button>
@@ -936,7 +938,8 @@ export default function BookingHistory() {
               </div>
             ) : null}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

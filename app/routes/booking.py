@@ -338,6 +338,34 @@ def search_parking_by_coords(
     }
 
 
+@router.get("/parking-lots/{parking_id}")
+def get_parking_lot_detail(parking_id: int, db: Session = Depends(get_db)):
+    parking_lot = (
+        db.query(ParkingLot)
+        .filter(ParkingLot.id == parking_id, ParkingLot.is_active == 1)
+        .first()
+    )
+    if not parking_lot:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bãi xe")
+
+    parking_price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == parking_id).first()
+
+    return {
+        "id": parking_lot.id,
+        "name": parking_lot.name,
+        "address": parking_lot.address,
+        "district": parking_lot.district.name if parking_lot.district else None,
+        "latitude": parking_lot.latitude,
+        "longitude": parking_lot.longitude,
+        "has_roof": bool(parking_lot.has_roof),
+        "avg_rating": float(parking_lot.avg_rating or 0),
+        "review_count": int(parking_lot.review_count or 0),
+        "price_per_hour": float(parking_price.price_per_hour or 0) if parking_price else 0,
+        "price_per_day": float(parking_price.price_per_day or 0) if parking_price else 0,
+        "price_per_month": float(parking_price.price_per_month or 0) if parking_price else 0,
+    }
+
+
 @router.get("/owner/parking-lots")
 def get_owner_parking_lots(
     current_user: User = Depends(get_current_user),
