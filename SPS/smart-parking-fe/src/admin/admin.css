@@ -288,6 +288,62 @@ body.admin-page-lock,
   cursor: pointer;
 }
 
+.admin-log-list,
+.admin-login-list {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-log-item,
+.admin-login-item {
+  border: 1px solid rgba(20, 57, 93, 0.12);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(242, 249, 253, 0.86));
+}
+
+.admin-log-main,
+.admin-login-main {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.admin-log-action {
+  margin: 0;
+  color: #173f5f;
+  font-weight: 600;
+}
+
+.admin-log-meta,
+.admin-login-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  color: #4e6f89;
+  font-size: 14px;
+}
+
+.admin-login-main {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.admin-login-main strong {
+  color: #173f5f;
+}
+
+.admin-login-main span {
+  color: #537691;
+  font-weight: 600;
+}
+
 @media (max-width: 980px) {
   .admin-shell {
     grid-template-columns: 1fr;

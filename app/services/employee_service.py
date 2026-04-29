@@ -1,5 +1,7 @@
 ﻿from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import re
+import unicodedata
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, text
@@ -124,6 +126,12 @@ def _normalize_identity(value: str) -> str:
     return value.strip().lower()
 
 
+def _parking_login_token(parking_name: str) -> str:
+    normalized = unicodedata.normalize("NFKD", parking_name or "").encode("ascii", "ignore").decode("ascii").lower()
+    token = re.sub(r"[^a-z0-9]+", "", normalized)
+    return token or "parking"
+
+
 def _serialize_parking(parking_lot: ParkingLot, db: Session) -> dict:
     total_slots, occupied_slots, empty_slots = _compute_slot_metrics(parking_lot.id, db)
     return {
@@ -187,21 +195,19 @@ def create_employee_for_owner(
     if _get_owner_assignment(owner.id, parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Owner email is not allowed to manage this parking")
 
-    if len(password or "") < EMPLOYEE_PASSWORD_MIN_LENGTH:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Employee password must be at least {EMPLOYEE_PASSWORD_MIN_LENGTH} characters",
-        )
-    normalized_email = _normalize_identity(email)
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == parking_id).first()
+    if not parking_lot:
+        raise HTTPException(status_code=404, detail="Khong tim thay bai do de tao tai khoan nhan vien")
+
+    login_token = _parking_login_token(parking_lot.name)
+    normalized_email = f"bx{login_token}@gmail.com"
+    generated_password = f"{login_token}@hcm"
     normalized_full_name = (full_name or "").strip()
     normalized_phone = (phone or "").strip()
     if not normalized_full_name:
         raise HTTPException(status_code=400, detail="Employee full name is required")
     if not normalized_phone:
         raise HTTPException(status_code=400, detail="Employee phone is required")
-    if "@" not in normalized_email:
-        raise HTTPException(status_code=400, detail="Email nhân viên không h?p l?")
-
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
         raise HTTPException(status_code=409, detail="Email employee dã t?n t?i")
@@ -210,7 +216,7 @@ def create_employee_for_owner(
         name=normalized_full_name,
         email=normalized_email,
         password="__legacy_disabled__",
-        password_hash=generate_password_hash(password),
+        password_hash=generate_password_hash(generated_password),
         phone=normalized_phone,
         owner_id=owner.id,
         parking_id=parking_id,
@@ -231,6 +237,7 @@ def create_employee_for_owner(
         "email": user.email,
         "full_name": user.name,
         "phone": user.phone,
+        "default_password": generated_password,
     }
 
 

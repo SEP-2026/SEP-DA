@@ -201,7 +201,7 @@ export default function Login({ onLogin }) {
 
         {mode === "login" ? (
           <form className="login-form" onSubmit={handleLogin}>
-            <label className="login-label" htmlFor="email">Email hoac username employee</label>
+            <label className="login-label" htmlFor="email">Email đăng nhập</label>
             <div className="input-shell">
               <span className="input-icon" aria-hidden="true">✉</span>
               <input
@@ -210,7 +210,7 @@ export default function Login({ onLogin }) {
                 type="text"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="email@domain.com hoac employee_demo"
+                placeholder="email@domain.com"
                 required
               />
             </div>
@@ -251,9 +251,9 @@ export default function Login({ onLogin }) {
 
             {showForgotForm ? (
               <div className="login-forgot-box">
-                <p className="register-note">Xac minh bang email/username va so dien thoai da dang ky.</p>
+                <p className="register-note">Xác minh bằng email và số điện thoại đã đăng ký.</p>
                 <div className="login-form">
-                  <label className="login-label" htmlFor="forgot-identity">Email hoac username employee</label>
+                  <label className="login-label" htmlFor="forgot-identity">Email đăng nhập</label>
                   <div className="input-shell">
                     <span className="input-icon" aria-hidden="true">@</span>
                     <input
@@ -262,7 +262,7 @@ export default function Login({ onLogin }) {
                       type="text"
                       value={forgotForm.identity}
                       onChange={(event) => setForgotForm((prev) => ({ ...prev, identity: event.target.value }))}
-                      placeholder="email@domain.com hoac employee_demo"
+                      placeholder="email@domain.com"
                       required
                     />
                   </div>

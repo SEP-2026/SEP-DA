@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useMemo, useState } from "react";
 
 import { SectionCard, StatusBadge, formatDateTime } from "../../owner/OwnerUI";
 import { useAdminContext } from "../../admin/useAdminContext";
@@ -11,6 +11,9 @@ export default function AdminSettings() {
   const [opsMessage, setOpsMessage] = useState("");
   const [opsError, setOpsError] = useState("");
   const [assignmentRows, setAssignmentRows] = useState([]);
+
+  const activityLogs = useMemo(() => (adminData.logs || []).slice(0, 20), [adminData.logs]);
+  const loginHistory = useMemo(() => (adminData.loginHistory || []).slice(0, 20), [adminData.loginHistory]);
 
   const runAdminOp = async (runner) => {
     setOpsLoading(true);
@@ -95,7 +98,7 @@ export default function AdminSettings() {
 
       <SectionCard
         title="Vận hành phân công owner"
-        subtitle="Công cụ admin để rebuild, auto-assign và kiểm tra owner_parking."
+        subtitle="Công cụ admin để tạo lại phân công, tự động phân công và kiểm tra owner_parking."
       >
         <div className="owner-row-actions" style={{ marginBottom: 12 }}>
           <button
@@ -144,7 +147,7 @@ export default function AdminSettings() {
             <tbody>
               {assignmentRows.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="owner-empty-cell">Chưa có dữ liệu debug assignment.</td>
+                  <td colSpan={3} className="owner-empty-cell">Chưa có dữ liệu kiểm tra phân công.</td>
                 </tr>
               ) : (
                 assignmentRows.map((row) => (
@@ -161,56 +164,50 @@ export default function AdminSettings() {
       </SectionCard>
 
       <div className="owner-two-col">
-        <SectionCard title="Nhật ký quản trị" subtitle="Nhật ký hành động quản trị mới nhất.">
-          <div className="owner-table-shell">
-            <table className="owner-table">
-              <thead>
-                <tr>
-                  <th>Người thực hiện</th>
-                  <th>Hành động</th>
-                  <th>Thời gian</th>
-                  <th>Loại</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(adminData.logs || []).map((log) => (
-                  <tr key={log.id}>
-                    <td>{log.actor}</td>
-                    <td>{log.action}</td>
-                    <td>{formatDateTime(log.time)}</td>
-                    <td><StatusBadge status={log.type} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <SectionCard title="Nhật ký quản trị" subtitle="Theo dõi đầy đủ người thực hiện, hành động, thời gian và đối tượng.">
+          {activityLogs.length === 0 ? (
+            <p className="owner-empty">Chưa có dữ liệu nhật ký.</p>
+          ) : (
+            <div className="admin-log-list">
+              {activityLogs.map((log) => (
+                <article key={log.id} className="admin-log-item">
+                  <div className="admin-log-main">
+                    <div className="admin-log-head">
+                      <strong>{log.actor || "Hệ thống"}</strong>
+                      <StatusBadge status={log.type || "system"} />
+                    </div>
+                    <p className="admin-log-action">{log.action}</p>
+                    <div className="admin-log-meta">
+                      <span><b>Đối tượng:</b> {log.target || "--"}</span>
+                      <span><b>Thời gian:</b> {formatDateTime(log.time)}</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
-        <SectionCard title="Lịch sử đăng nhập" subtitle="Lịch sử đăng nhập và sự kiện bảo mật.">
-          <div className="owner-table-shell">
-            <table className="owner-table">
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>IP</th>
-                  <th>Thiết bị</th>
-                  <th>Thời gian</th>
-                  <th>Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(adminData.loginHistory || []).map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.email}</td>
-                    <td>{item.ip}</td>
-                    <td>{item.device}</td>
-                    <td>{formatDateTime(item.time)}</td>
-                    <td><StatusBadge status={item.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <SectionCard title="Lịch sử đăng nhập" subtitle="Lịch sử đăng nhập và sự kiện bảo mật gần đây.">
+          {loginHistory.length === 0 ? (
+            <p className="owner-empty">Chưa có dữ liệu đăng nhập.</p>
+          ) : (
+            <div className="admin-login-list">
+              {loginHistory.map((item) => (
+                <article key={item.id} className="admin-login-item">
+                  <div className="admin-login-main">
+                    <strong>{item.email || "--"}</strong>
+                    <span>{formatDateTime(item.time)}</span>
+                  </div>
+                  <div className="admin-login-meta">
+                    <span><b>IP:</b> {item.ip || "--"}</span>
+                    <span><b>Thiết bị:</b> {item.device || "--"}</span>
+                    <StatusBadge status={item.status || "blocked"} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </SectionCard>
       </div>
     </div>

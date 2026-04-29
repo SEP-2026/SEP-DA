@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 import secrets
 import string
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 from werkzeug.security import generate_password_hash
 
 from app.database import get_db
-from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
+from app.models.models import Booking, EmployeeActivity, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, RevokedToken, User
 from app.routes.auth import get_current_user
 from app.security.password_policy import ensure_strong_password
 import unicodedata
@@ -202,6 +203,12 @@ def _find_owner_by_reference(db: Session, reference: str | None) -> User | None:
     if owner:
         return owner
     return db.query(User).filter(User.name == normalized, User.role == "owner").first()
+
+
+def _parking_login_token(parking_name: str) -> str:
+    normalized = unicodedata.normalize("NFKD", parking_name or "").encode("ascii", "ignore").decode("ascii").lower()
+    token = re.sub(r"[^a-z0-9]+", "", normalized)
+    return token or "parking"
 
 
 def _assign_owner_parking(db: Session, owner_id: int, parking_id: int) -> None:
@@ -414,6 +421,8 @@ def _evaluate_user_spam(users: list[User], bookings: list[Booking]) -> tuple[dic
                 "id": f"spam-{user.id}-{int(now.timestamp())}",
                 "actor": "system",
                 "action": f"Tu dong khoa user {user.email} do hanh vi spam",
+                "target": user.email,
+                "targetType": "user",
                 "time": now.isoformat(),
                 "type": "security",
             })
@@ -426,11 +435,14 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
     for booking in sorted(bookings, key=lambda item: item.created_at or datetime.min, reverse=True)[:6]:
         actor = booking.user.name if booking.user else "Hệ thống"
         parking_name = booking.parking_lot.name if booking.parking_lot else "Không rõ bãi"
-        action_label = f"Tạo booking BK-{booking.id} tại {parking_name}"
+        booking_code = f"BK-{booking.id}"
+        action_label = f"Tạo booking {booking_code} tại {parking_name}"
         logs.append({
             "id": f"booking-{booking.id}",
             "actor": actor,
             "action": action_label,
+            "target": booking_code,
+            "targetType": "booking",
             "time": booking.created_at.isoformat() if booking.created_at else datetime.utcnow().isoformat(),
             "type": "booking",
         })
@@ -441,6 +453,8 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
                 "id": f"user-{user.id}",
                 "actor": "Hệ thống",
                 "action": f"Tài khoản {user.email} đang bị khóa",
+                "target": user.email,
+                "targetType": "user",
                 "time": datetime.utcnow().isoformat(),
                 "type": "security",
             })
@@ -451,10 +465,13 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
                 "id": f"lot-{lot.id}",
                 "actor": "Hệ thống",
                 "action": f"Bãi {lot.name} đang bị khóa vận hành",
+                "target": lot.name,
+                "targetType": "parking_lot",
                 "time": datetime.utcnow().isoformat(),
                 "type": "warning",
             })
 
+    logs.sort(key=lambda item: item.get("time") or "", reverse=True)
     return logs[:12]
 
 
@@ -871,10 +888,75 @@ def delete_owner(
     if not owner:
         raise HTTPException(status_code=404, detail="Không tìm thấy chủ bãi")
 
+    # Xóa đồng bộ dữ liệu liên quan owner để tránh vướng khóa ngoại.
+    # 1) Xóa phân công bãi của owner.
     _remove_owner_assignments(db, owner.id)
+
+    # 2) Lấy toàn bộ nhân viên thuộc owner.
+    employee_rows = (
+        db.query(User.id)
+        .filter(User.owner_id == owner.id, User.role == "employee")
+        .all()
+    )
+    employee_ids = [int(row.id) for row in employee_rows]
+
+    # 3) Xóa log hoạt động của nhân viên trước.
+    if employee_ids:
+        db.query(EmployeeActivity).filter(EmployeeActivity.employee_id.in_(employee_ids)).delete(synchronize_session=False)
+
+        # 4) Xóa toàn bộ tài khoản nhân viên thuộc owner.
+        db.query(User).filter(User.id.in_(employee_ids), User.role == "employee").delete(synchronize_session=False)
+
+    # 5) Dọn tham chiếu owner_id còn sót (nếu có).
+    db.query(User).filter(User.owner_id == owner.id).update({User.owner_id: None}, synchronize_session=False)
+
+    # 6) Xóa owner.
     db.delete(owner)
     db.commit()
-    return {"message": "Đã xóa chủ bãi"}
+    return {
+        "message": "Đã xóa chủ bãi và đồng bộ dữ liệu liên quan",
+        "deletedEmployees": len(employee_ids),
+    }
+
+
+@router.post("/employees/sync-login-format")
+def sync_employee_login_format(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    employees = db.query(User).filter(User.role == "employee").all()
+    updated = 0
+    skipped = 0
+
+    for employee in employees:
+        if not employee.parking_id:
+            skipped += 1
+            continue
+        parking_lot = db.query(ParkingLot).filter(ParkingLot.id == employee.parking_id).first()
+        if not parking_lot:
+            skipped += 1
+            continue
+
+        token = _parking_login_token(parking_lot.name)
+        next_email = f"bx{token}@gmail.com"
+        next_password = f"{token}@hcm"
+
+        duplicate = db.query(User.id).filter(User.email == next_email, User.id != employee.id).first()
+        if duplicate:
+            skipped += 1
+            continue
+
+        employee.email = next_email
+        employee.password = "__legacy_disabled__"
+        employee.password_hash = generate_password_hash(next_password)
+        updated += 1
+
+    db.commit()
+    return {
+        "message": "Đã đồng bộ format đăng nhập employee",
+        "updated": updated,
+        "skipped": skipped,
+    }
 
 
 @router.post("/parking-lots")
