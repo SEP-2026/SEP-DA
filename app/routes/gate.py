@@ -1,4 +1,4 @@
-import json
+﻿import json
 import math
 import os
 import re
@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Booking, EmployeeAccount, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Transaction, User, UserVehicle
+from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Transaction, User, UserVehicle
 from app.routes.auth import get_current_user
 from app.services.qr_service import invalidate_booking_qr_code
 
@@ -50,14 +50,14 @@ def _local_now() -> datetime:
     return datetime.now(APP_TIMEZONE).replace(tzinfo=None)
 
 
-def _normalized_role(current_user: User | EmployeeAccount) -> str:
+def _normalized_role(current_user: User) -> str:
     return (getattr(current_user, "role", "") or "").strip().lower()
 
 
-def _ensure_gate_operator(current_user: User | EmployeeAccount) -> None:
+def _ensure_gate_operator(current_user: User) -> None:
     role = _normalized_role(current_user)
     if role not in {"owner", "admin", "employee"}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner, admin hoặc employee mới được thao tác tại cổng")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chá»‰ owner, admin hoáº·c employee má»›i Ä‘Æ°á»£c thao tÃ¡c táº¡i cá»•ng")
 
 
 def _extract_json_candidate(raw_value: str) -> dict | None:
@@ -81,15 +81,15 @@ def _extract_json_candidate(raw_value: str) -> dict | None:
 def _parse_scan_payload(raw_value: str, source_type: str) -> dict:
     text = raw_value.strip()
     if not text:
-        raise HTTPException(status_code=400, detail="Nội dung quét không được để trống")
+        raise HTTPException(status_code=400, detail="Ná»™i dung quÃ©t khÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ trá»‘ng")
 
     if source_type == "manual_id":
         if not text.isdigit():
-            raise HTTPException(status_code=400, detail="Booking ID thủ công phải là số nguyên dương")
+            raise HTTPException(status_code=400, detail="Booking ID thá»§ cÃ´ng pháº£i lÃ  sá»‘ nguyÃªn dÆ°Æ¡ng")
         return {
             "booking_id": int(text),
             "input_type": "manual_id",
-            "input_label": "Booking ID thủ công",
+            "input_label": "Booking ID thá»§ cÃ´ng",
             "payload": None,
         }
 
@@ -101,7 +101,7 @@ def _parse_scan_payload(raw_value: str, source_type: str) -> dict:
         except (TypeError, ValueError):
             booking_id = None
         if not booking_id or booking_id <= 0:
-            raise HTTPException(status_code=400, detail="QR hợp lệ nhưng không có booking_id khả dụng")
+            raise HTTPException(status_code=400, detail="QR há»£p lá»‡ nhÆ°ng khÃ´ng cÃ³ booking_id kháº£ dá»¥ng")
         return {
             "booking_id": booking_id,
             "input_type": "qr_json" if "booking_id" in payload else "qr_booking",
@@ -117,7 +117,7 @@ def _parse_scan_payload(raw_value: str, source_type: str) -> dict:
             "payload": {"booking_id": int(text)},
         }
 
-    raise HTTPException(status_code=400, detail="QR không hợp lệ hoặc không parse được nội dung booking")
+    raise HTTPException(status_code=400, detail="QR khÃ´ng há»£p lá»‡ hoáº·c khÃ´ng parse Ä‘Æ°á»£c ná»™i dung booking")
 
 
 def _round_up_hours(hours: float) -> int:
@@ -128,14 +128,14 @@ def _round_up_days(hours: float) -> int:
     return max(1, int(math.ceil(max(hours, 0) / 24)))
 
 
-def _assert_gate_permission(current_user: User | EmployeeAccount, booking: Booking, db: Session) -> None:
+def _assert_gate_permission(current_user: User, booking: Booking, db: Session) -> None:
     _ensure_gate_operator(current_user)
     role = _normalized_role(current_user)
     if role == "admin":
         return
     if role == "employee":
         if int(current_user.parking_id) != int(booking.parking_id or 0):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee khÃ´ng cÃ³ quyá»n thao tÃ¡c táº¡i bÃ£i nÃ y")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Employee khÃƒÂ´ng cÃƒÂ³ quyÃ¡Â»Ân thao tÃƒÂ¡c tÃ¡ÂºÂ¡i bÃƒÂ£i nÃƒÂ y")
         return
     assignment = (
         db.query(OwnerParking)
@@ -154,7 +154,7 @@ def _assert_gate_permission(current_user: User | EmployeeAccount, booking: Booki
     if owner_managed_district_id and parking_lot and parking_lot.district_id == owner_managed_district_id:
         return
 
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn không có quyền thao tác tại cổng của bãi này")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Báº¡n khÃ´ng cÃ³ quyá»n thao tÃ¡c táº¡i cá»•ng cá»§a bÃ£i nÃ y")
 
 
 def _display_slot(slot: ParkingSlot | None) -> str | None:
@@ -237,12 +237,12 @@ def _create_gate_log(
 
 def _status_label(status_value: str | None) -> str:
     mapping = {
-        "pending": "Chờ xác nhận",
-        "booked": "Đã đặt chỗ",
-        "checked_in": "Đang trong bãi",
-        "checked_out": "Đã ra bãi",
-        "completed": "Hoàn tất",
-        "cancelled": "Đã hủy",
+        "pending": "Chá» xÃ¡c nháº­n",
+        "booked": "ÄÃ£ Ä‘áº·t chá»—",
+        "checked_in": "Äang trong bÃ£i",
+        "checked_out": "ÄÃ£ ra bÃ£i",
+        "completed": "HoÃ n táº¥t",
+        "cancelled": "ÄÃ£ há»§y",
     }
     return mapping.get((status_value or "").lower(), status_value or "--")
 
@@ -296,7 +296,7 @@ def _expire_no_show_booking_if_needed(booking: Booking, payment: Payment | None,
         return False
 
     booking.status = "cancelled"
-    booking.cancel_reason = "Quá thời hạn check-in cho phép"
+    booking.cancel_reason = "QuÃ¡ thá»i háº¡n check-in cho phÃ©p"
     booking.last_gate_action = "expired"
     booking.last_gate_action_at = now
     _invalidate_qr(booking, now)
@@ -421,8 +421,8 @@ def _cooldown_info(booking: Booking, now: datetime) -> dict:
     message = None
     if active:
         message = (
-            f"QR đã được check-in lúc {booking.last_gate_action_at.strftime('%H:%M')}, "
-            f"vui lòng chờ tối thiểu {SCAN_COOLDOWN_MINUTES} phút trước khi quét ra"
+            f"QR Ä‘Ã£ Ä‘Æ°á»£c check-in lÃºc {booking.last_gate_action_at.strftime('%H:%M')}, "
+            f"vui lÃ²ng chá» tá»‘i thiá»ƒu {SCAN_COOLDOWN_MINUTES} phÃºt trÆ°á»›c khi quÃ©t ra"
         )
     return {
         "active": active,
@@ -477,9 +477,9 @@ def _serialize_booking_detail(booking: Booking, payment: Payment | None, db: Ses
         "booking_status_label": _status_label(booking.status),
         "booking_mode": booking.booking_mode,
         "booking_mode_label": {
-            "hourly": "Theo giờ",
-            "daily": "Theo ngày",
-            "monthly": "Theo tháng",
+            "hourly": "Theo giá»",
+            "daily": "Theo ngÃ y",
+            "monthly": "Theo thÃ¡ng",
         }.get((booking.booking_mode or "").lower(), booking.booking_mode),
         "checkin_time": booking.start_time,
         "checkout_time": booking.expire_time,
@@ -540,26 +540,26 @@ def _ensure_slot_available(booking: Booking, db: Session) -> None:
         .first()
     )
     if active_conflict:
-        raise HTTPException(status_code=409, detail="Slot hiện đang có xe khác trong bãi, không thể xử lý check-in sớm")
+        raise HTTPException(status_code=409, detail="Slot hiá»‡n Ä‘ang cÃ³ xe khÃ¡c trong bÃ£i, khÃ´ng thá»ƒ xá»­ lÃ½ check-in sá»›m")
 
 
 def _execute_check_in(booking: Booking, payment: Payment | None, gate_id: str, source_type: str, actor: User, db: Session) -> dict:
     now = _local_now()
     _assert_gate_permission(actor, booking, db)
     if _expire_no_show_booking_if_needed(booking, payment, now):
-        raise HTTPException(status_code=400, detail="Booking đã hết hiệu lực check-in và đã bị hủy")
+        raise HTTPException(status_code=400, detail="Booking Ä‘Ã£ háº¿t hiá»‡u lá»±c check-in vÃ  Ä‘Ã£ bá»‹ há»§y")
     if booking.status not in {"pending", "booked", "checked_out"}:
-        raise HTTPException(status_code=400, detail=f"Booking đang ở trạng thái { _status_label(booking.status) }, không thể check-in")
+        raise HTTPException(status_code=400, detail=f"Booking Ä‘ang á»Ÿ tráº¡ng thÃ¡i { _status_label(booking.status) }, khÃ´ng thá»ƒ check-in")
     if booking.booking_mode == "hourly" and payment and payment.payment_status != "paid":
-        raise HTTPException(status_code=400, detail="Booking theo giờ chưa hoàn tất thanh toán/cọc nên không thể check-in")
+        raise HTTPException(status_code=400, detail="Booking theo giá» chÆ°a hoÃ n táº¥t thanh toÃ¡n/cá»c nÃªn khÃ´ng thá»ƒ check-in")
     if booking.qr_token_expires_at and booking.qr_token_expires_at <= now:
-        raise HTTPException(status_code=400, detail="QR/token của booking đã hết hiệu lực")
+        raise HTTPException(status_code=400, detail="QR/token cá»§a booking Ä‘Ã£ háº¿t hiá»‡u lá»±c")
     if booking.expire_time and now > booking.expire_time:
-        raise HTTPException(status_code=400, detail="Booking đã hết thời gian hiệu lực")
+        raise HTTPException(status_code=400, detail="Booking Ä‘Ã£ háº¿t thá»i gian hiá»‡u lá»±c")
     if booking.start_time:
         grace_limit = booking.start_time - timedelta(minutes=EARLY_GRACE_MINUTES)
         if now < grace_limit and EARLY_CHECKIN_POLICY == "REJECT":
-            raise HTTPException(status_code=400, detail="Xe đến quá sớm so với giờ booking, vui lòng chờ đúng giờ")
+            raise HTTPException(status_code=400, detail="Xe Ä‘áº¿n quÃ¡ sá»›m so vá»›i giá» booking, vui lÃ²ng chá» Ä‘Ãºng giá»")
         _ensure_slot_available(booking, db)
 
     if booking.actual_checkin is None:
@@ -576,7 +576,7 @@ def _execute_check_in(booking: Booking, payment: Payment | None, gate_id: str, s
         source_type=source_type,
         action_type="check_in",
         result="success",
-        note="Check-in thành công tại cổng",
+        note="Check-in thÃ nh cÃ´ng táº¡i cá»•ng",
         db=db,
     )
     db.flush()
@@ -595,7 +595,7 @@ def _execute_check_out(
     now = _local_now()
     _assert_gate_permission(actor, booking, db)
     if booking.status != "checked_in":
-        raise HTTPException(status_code=400, detail="Booking chưa ở trạng thái đang trong bãi")
+        raise HTTPException(status_code=400, detail="Booking chÆ°a á»Ÿ tráº¡ng thÃ¡i Ä‘ang trong bÃ£i")
 
     price = _get_price(booking, db)
     booking.actual_checkout = now
@@ -651,7 +651,7 @@ def _execute_check_out(
         source_type=source_type,
         action_type="check_out",
         result="success",
-        note=f"Check-out thành công, thanh toán bằng {payment_method}",
+        note=f"Check-out thÃ nh cÃ´ng, thanh toÃ¡n báº±ng {payment_method}",
         db=db,
     )
     db.flush()
@@ -674,7 +674,7 @@ def resolve_gate_scan(
         .first()
     )
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
 
     _assert_gate_permission(current_user, booking, db)
     payment = _get_payment(booking.id, db, lock=True)
@@ -687,14 +687,14 @@ def resolve_gate_scan(
         source_type=payload.source_type,
         action_type="resolve",
         result="expired" if expired else "success",
-        note="Resolve tại cổng",
+        note="Resolve táº¡i cá»•ng",
         db=db,
     )
 
     db.commit()
     latest_booking = detail
     return {
-        "message": "Resolve thành công",
+        "message": "Resolve thÃ nh cÃ´ng",
         "booking": latest_booking,
         "parsed_payload": parsed["payload"],
         "allowed_actions": latest_booking["allowed_actions"],
@@ -713,12 +713,12 @@ def gate_check_in(
 ):
     booking = db.query(Booking).filter(Booking.id == payload.booking_id).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_in(booking, payment, payload.gate_id, payload.source_type, current_user, db)
     db.commit()
     return {
-        "message": "Check-in thành công",
+        "message": "Check-in thÃ nh cÃ´ng",
         "booking": detail,
         "payment_preview": detail["pricing_preview"],
     }
@@ -732,7 +732,7 @@ def gate_check_out(
 ):
     booking = db.query(Booking).filter(Booking.id == payload.booking_id).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
     payment = _get_payment(booking.id, db, lock=True)
     now = _local_now()
     if _cooldown_info(booking, now)["active"]:
@@ -740,7 +740,7 @@ def gate_check_out(
     detail = _execute_check_out(booking, payment, payload.gate_id, payload.source_type, payload.payment_method, current_user, db)
     db.commit()
     return {
-        "message": "Check-out thành công",
+        "message": "Check-out thÃ nh cÃ´ng",
         "booking": detail,
         "payment_preview": detail["pricing_preview"],
     }
@@ -755,7 +755,7 @@ def get_gate_booking(
     _ensure_gate_operator(current_user)
     booking = db.query(Booking).filter(Booking.id == booking_id).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y booking")
     _assert_gate_permission(current_user, booking, db)
     payment = _get_payment(booking.id, db, lock=True)
     now = _local_now()

@@ -24,9 +24,12 @@ class User(Base):
     vehicle_plate = Column(String(30), nullable=True)
     vehicle_color = Column(String(50), nullable=True)
     managed_district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=True)
     role = Column(String(50), default="user")
     status = Column(String(20), default="active")
     is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
     managed_district = relationship("District", foreign_keys=[managed_district_id])
     vehicle_profile = relationship("UserVehicle", back_populates="user", uselist=False)
 
@@ -163,6 +166,7 @@ class ParkingLot(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
     address = Column(String(255), nullable=False)
+    phone = Column(String(30), nullable=True)
     district_id = Column(Integer, ForeignKey("districts.id"), nullable=True)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)
@@ -204,23 +208,6 @@ class Review(Base):
     parking = relationship("ParkingLot")
 
 
-class EmployeeAccount(Base):
-    __tablename__ = "employee_accounts"
-
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(100), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
-    role = Column(String(50), default="employee", nullable=False)
-    status = Column(String(20), default="active", nullable=False)
-    is_active = Column(Integer, default=1, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    owner = relationship("User")
-    parking_lot = relationship("ParkingLot")
-
-
 class ParkingOperationalState(Base):
     __tablename__ = "parking_operational_states"
 
@@ -236,7 +223,7 @@ class EmployeeActivity(Base):
     __tablename__ = "employee_activities"
 
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employee_accounts.id"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), nullable=False, index=True)
     booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
     action = Column(String(50), nullable=False)
@@ -244,6 +231,6 @@ class EmployeeActivity(Base):
     amount = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    employee = relationship("EmployeeAccount")
+    employee = relationship("User")
     parking_lot = relationship("ParkingLot")
     booking = relationship("Booking")

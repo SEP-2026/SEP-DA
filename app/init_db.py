@@ -53,6 +53,8 @@ def migrate_parking_lots_columns():
         alter_statements.append("ADD COLUMN avg_rating DECIMAL(3,1) NOT NULL DEFAULT 0.0")
     if "review_count" not in columns:
         alter_statements.append("ADD COLUMN review_count INT NOT NULL DEFAULT 0")
+    if "phone" not in columns:
+        alter_statements.append("ADD COLUMN phone VARCHAR(30) NULL")
 
     if alter_statements:
         with engine.begin() as conn:
@@ -85,10 +87,16 @@ def migrate_users_columns():
         alter_statements.append("ADD COLUMN vehicle_color VARCHAR(50) NULL")
     if "managed_district_id" not in columns:
         alter_statements.append("ADD COLUMN managed_district_id INT NULL")
+    if "owner_id" not in columns:
+        alter_statements.append("ADD COLUMN owner_id INT NULL")
+    if "parking_id" not in columns:
+        alter_statements.append("ADD COLUMN parking_id INT NULL")
     if "is_active" not in columns:
         alter_statements.append("ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1")
     if "status" not in columns:
         alter_statements.append("ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
 
     if alter_statements:
         with engine.begin() as conn:
@@ -614,6 +622,73 @@ def migrate_employee_accounts_columns():
     if "uq_employee_accounts_username" not in indexes:
         _run_ddl_with_retry("CREATE UNIQUE INDEX uq_employee_accounts_username ON employee_accounts (username)")
 
+    # Migrate legacy employee accounts into users table as role=employee.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO users (
+                    full_name, email, password, password_hash, phone, role, status, is_active, owner_id, parking_id, created_at
+                )
+                SELECT
+                    COALESCE(NULLIF(TRIM(ea.username), ''), CONCAT('employee_', ea.id)),
+                    LOWER(TRIM(ea.username)),
+                    '__legacy_disabled__',
+                    ea.password_hash,
+                    NULL,
+                    'employee',
+                    COALESCE(NULLIF(ea.status, ''), 'active'),
+                    COALESCE(ea.is_active, 1),
+                    ea.owner_id,
+                    ea.parking_id,
+                    COALESCE(ea.created_at, CURRENT_TIMESTAMP)
+                FROM employee_accounts ea
+                WHERE ea.username IS NOT NULL
+                  AND TRIM(ea.username) <> ''
+                  AND NOT EXISTS (
+                    SELECT 1 FROM users u WHERE LOWER(TRIM(u.email)) = LOWER(TRIM(ea.username))
+                  )
+                """
+            )
+        )
+
+    # Drop foreign keys that still reference employee_accounts to allow table removal.
+    with engine.begin() as conn:
+        fk_rows = conn.execute(
+            text(
+                """
+                SELECT TABLE_NAME, CONSTRAINT_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND REFERENCED_TABLE_NAME = 'employee_accounts'
+                """
+            )
+        ).mappings().all()
+
+        for fk in fk_rows:
+            _run_ddl_with_retry(
+                f"ALTER TABLE {fk['TABLE_NAME']} DROP FOREIGN KEY {fk['CONSTRAINT_NAME']}"
+            )
+
+    # Remap employee_activities.employee_id from legacy employee_accounts.id -> users.id
+    # using normalized username/email before dropping employee_accounts.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE employee_activities act
+                JOIN employee_accounts ea ON ea.id = act.employee_id
+                JOIN users u
+                  ON LOWER(TRIM(u.email)) = LOWER(TRIM(ea.username))
+                 AND LOWER(TRIM(COALESCE(u.role, ''))) = 'employee'
+                SET act.employee_id = u.id
+                """
+            )
+        )
+
+    # Drop legacy table after successful migration.
+    _run_ddl_with_retry("DROP TABLE IF EXISTS employee_accounts")
+
 
 def migrate_parking_operational_states_columns():
     inspector = inspect(engine)
@@ -675,6 +750,39 @@ def migrate_employee_activities_columns():
 
     with engine.begin() as conn:
         conn.execute(text("UPDATE employee_activities SET amount = COALESCE(amount, 0)"))
+        conn.execute(
+            text(
+                """
+                DELETE act
+                FROM employee_activities act
+                LEFT JOIN users u ON u.id = act.employee_id
+                WHERE u.id IS NULL
+                """
+            )
+        )
+
+    with engine.begin() as conn:
+        fk_exists = conn.execute(
+            text(
+                """
+                SELECT 1
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'employee_activities'
+                  AND COLUMN_NAME = 'employee_id'
+                  AND REFERENCED_TABLE_NAME = 'users'
+                LIMIT 1
+                """
+            )
+        ).first()
+    if not fk_exists:
+        _run_ddl_with_retry(
+            """
+            ALTER TABLE employee_activities
+            ADD CONSTRAINT fk_employee_activities_employee_id
+            FOREIGN KEY (employee_id) REFERENCES users(id)
+            """.strip()
+        )
 
 
 def init_db():

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { OwnerIcon } from "../owner/OwnerIcons";
@@ -93,9 +93,10 @@ export default function EmployeeLayout({ auth, onLogout }) {
   const displayName = auth?.user?.username || "nhân viên";
   const routeHint = ROUTE_HINT[location.pathname] || "Không gian vận hành dành cho tài khoản nhân viên.";
   const notificationsCount = Math.max(0, Number(parkingLot?.occupiedSlots || 0));
+  const isParkingLocked = parkingLot?.status === "locked";
 
   return (
-    <div className={`employee-shell${sidebarOpen ? " sidebar-open" : ""}`}>
+    <div className={`employee-shell${sidebarOpen ? " sidebar-open" : ""}${isParkingLocked ? " is-locked" : ""}`}>
       <aside className="employee-sidebar">
         <div className="employee-brand">
           <div className="employee-brand-mark">EP</div>
@@ -113,8 +114,14 @@ export default function EmployeeLayout({ auth, onLogout }) {
                 key={item.to}
                 to={item.to}
                 end={item.to === "/employee"}
-                className={({ isActive }) => `employee-menu-link${isActive ? " active" : ""}`}
-                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) => `employee-menu-link${isActive ? " active" : ""}${isParkingLocked ? " disabled" : ""}`}
+                onClick={(event) => {
+                  if (isParkingLocked) {
+                    event.preventDefault();
+                    return;
+                  }
+                  setSidebarOpen(false);
+                }}
               >
                 <OwnerIcon name={item.icon} className="owner-menu-icon" />
                 <span>{item.label}</span>
@@ -155,6 +162,7 @@ export default function EmployeeLayout({ auth, onLogout }) {
               <span>{notificationsCount}</span>
             </div>
             <div className="employee-role-pill">Vận hành bãi</div>
+            {isParkingLocked ? <div className="employee-lock-pill">Bãi đang bị khóa</div> : null}
             <div className="employee-avatar">
               <div className="employee-avatar-mark">{displayName.slice(0, 1).toUpperCase()}</div>
               <div>
@@ -166,7 +174,17 @@ export default function EmployeeLayout({ auth, onLogout }) {
         </header>
 
         <main className="employee-content">
-          <Outlet context={{ auth, parkingLot, profile, revenue, slotsOverview, refreshEmployee, loading, syncNote }} />
+          <div className="employee-content-layer">
+            <Outlet context={{ auth, parkingLot, profile, revenue, slotsOverview, refreshEmployee, loading, syncNote, isParkingLocked }} />
+          </div>
+          {isParkingLocked ? (
+            <div className="employee-locked-overlay" role="status" aria-live="polite">
+              <div className="employee-locked-card">
+                <strong>Bãi đang bị admin khóa</strong>
+                <span>Toàn bộ chức năng tạm thời bị vô hiệu hóa. Vui lòng đợi mở khóa để tiếp tục thao tác.</span>
+              </div>
+            </div>
+          ) : null}
         </main>
       </div>
     </div>

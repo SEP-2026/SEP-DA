@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 ADMIN_RUNTIME_SETTINGS = {
     "commissionRate": "10",
     "supportEmail": "admin@smartparking.vn",
-    "maintenanceWindow": "Chá»§ nháº­t 23:00 - 01:00",
+    "maintenanceWindow": "Chủ nhật 23:00 - 01:00",
     "alertThreshold": "85",
 }
 
@@ -77,6 +77,7 @@ class OwnerUpdateRequest(BaseModel):
 class ParkingLotCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     address: str = Field(min_length=1, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
     owner: str | None = Field(default=None, max_length=255)
     slot_count: int = Field(default=0, ge=0)
     status: str = Field(default="pending", pattern="^(pending|active|locked)$")
@@ -85,6 +86,7 @@ class ParkingLotCreateRequest(BaseModel):
 class ParkingLotUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     address: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
     owner: str | None = Field(default=None, max_length=255)
     status: str | None = Field(default=None, pattern="^(pending|active|locked)$")
 
@@ -421,20 +423,23 @@ def _evaluate_user_spam(users: list[User], bookings: list[Booking]) -> tuple[dic
 
 def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lots: list[ParkingLot]) -> list[dict]:
     logs = []
-    for booking in sorted(bookings, key=lambda item: item.created_at or datetime.min, reverse=True)[:4]:
+    for booking in sorted(bookings, key=lambda item: item.created_at or datetime.min, reverse=True)[:6]:
+        actor = booking.user.name if booking.user else "Hệ thống"
+        parking_name = booking.parking_lot.name if booking.parking_lot else "Không rõ bãi"
+        action_label = f"Tạo booking BK-{booking.id} tại {parking_name}"
         logs.append({
             "id": f"booking-{booking.id}",
-            "actor": booking.user.name if booking.user else "system",
-            "action": f"Booking #{booking.id} được tạo",
+            "actor": actor,
+            "action": action_label,
             "time": booking.created_at.isoformat() if booking.created_at else datetime.utcnow().isoformat(),
-            "type": "system",
+            "type": "booking",
         })
 
     for user in users:
         if _to_status_label(user) == "banned":
             logs.append({
                 "id": f"user-{user.id}",
-                "actor": "system",
+                "actor": "Hệ thống",
                 "action": f"Tài khoản {user.email} đang bị khóa",
                 "time": datetime.utcnow().isoformat(),
                 "type": "security",
@@ -444,13 +449,13 @@ def _build_activity_logs(bookings: list[Booking], users: list[User], parking_lot
         if _lot_status(lot) == "locked":
             logs.append({
                 "id": f"lot-{lot.id}",
-                "actor": "system",
-                "action": f"Bãi {lot.name} đang bị khóa",
+                "actor": "Hệ thống",
+                "action": f"Bãi {lot.name} đang bị khóa vận hành",
                 "time": datetime.utcnow().isoformat(),
                 "type": "warning",
             })
 
-    return logs[:6]
+    return logs[:12]
 
 
 def _build_login_history(db: Session) -> list[dict]:
@@ -537,10 +542,10 @@ def _serialize_bootstrap(db: Session) -> dict:
             "phone": owner.phone,
             "parkingLots": lot_by_owner.get(int(owner.id)) if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else [],
             # legacy single-string field for backward compatibility (first lot name or placeholder)
-            "parkingLot": (lot_by_owner.get(int(owner.id))[0]["name"] if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "ChÆ°a gÃ¡n trong CSDL"),
+            "parkingLot": (lot_by_owner.get(int(owner.id))[0]["name"] if int(owner.id) in lot_by_owner and lot_by_owner.get(int(owner.id)) else "Chưa gán trong CSDL"),
             "status": "active" if _to_status_label(owner) == "active" else "suspended",
             "performance": f"{owner_booking_counts.get(int(owner.id), 0)} booking • {owner_avg_occupancy.get(int(owner.id), 0)}% occupancy",
-            "passwordHint": "CÃ³ thá»ƒ reset tá»« admin",
+            "passwordHint": "Có thể reset từ admin",
         }
         for owner in owners
     ]
@@ -555,7 +560,8 @@ def _serialize_bootstrap(db: Session) -> dict:
             "id": lot.id,
             "name": lot.name,
             "address": lot.address,
-            "owner": owner_by_lot.get(int(lot.id)).name if owner_by_lot.get(int(lot.id)) else "Chua gan trong CSDL",
+            "owner": owner_by_lot.get(int(lot.id)).name if owner_by_lot.get(int(lot.id)) else "Chưa gán trong CSDL",
+            "phone": lot.phone,
             "slotCount": total,
             "status": _lot_status(lot),
             "occupancy": occupancy,
@@ -655,7 +661,7 @@ def _serialize_bootstrap(db: Session) -> dict:
             "userGrowthPercent": growth_percent,
             "averageOccupancy": avg_occupancy,
             "activeParkingLots": active_parking,
-            "topParking": top_parking["name"] if top_parking else "Chua co",
+            "topParking": top_parking["name"] if top_parking else "Chưa có",
             "topParkingOccupancy": top_parking["occupancy"] if top_parking else 0,
         },
         "notifications": notifications,
@@ -682,12 +688,12 @@ def update_user_status(
 ):
     user = db.query(User).filter(User.id == user_id, User.role == "user").first()
     if not user:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y user")
+        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
 
     user.status = payload.status
     user.is_active = 1 if payload.status == "active" else 0
     db.commit()
-    return {"message": "Cáº­p nháº­t tráº¡ng thÃ¡i user thÃ nh cÃ´ng"}
+    return {"message": "Cập nhật trạng thái người dùng thành công"}
 
 
 @router.post("/owners")
@@ -769,13 +775,13 @@ def create_owner(
         "email": owner.email,
         "phone": owner.phone,
         "parkingLots": assigned,
-        "parkingLot": assigned[0]["name"] if assigned else "ChÆ°a gÃ¡n trong CSDL",
+        "parkingLot": assigned[0]["name"] if assigned else "Chưa gán trong CSDL",
         "status": payload.status,
         "performance": "0 booking",
-        "passwordHint": "CÃ³ thá»ƒ reset tá»« admin",
+        "passwordHint": "Có thể reset từ admin",
     }
 
-    return {"message": "Táº¡o tÃ i khoáº£n owner thÃ nh cÃ´ng", "default_password": temporary_password, "owner": owner_info}
+    return {"message": "Tạo tài khoản chủ bãi thành công", "default_password": temporary_password, "owner": owner_info}
 
 
 @router.patch("/owners/{owner_id}")
@@ -830,12 +836,12 @@ def update_owner_status(
 ):
     owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
     if not owner:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
+        raise HTTPException(status_code=404, detail="Không tìm thấy chủ bãi")
 
     owner.status = "active" if payload.status == "active" else "banned"
     owner.is_active = 1 if payload.status == "active" else 0
     db.commit()
-    return {"message": "Cáº­p nháº­t tráº¡ng thÃ¡i owner thÃ nh cÃ´ng"}
+    return {"message": "Cập nhật trạng thái chủ bãi thành công"}
 
 
 @router.post("/owners/{owner_id}/reset-password")
@@ -846,13 +852,13 @@ def reset_owner_password(
 ):
     owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
     if not owner:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
+        raise HTTPException(status_code=404, detail="Không tìm thấy chủ bãi")
 
     temp_password = _generate_strong_password()
     owner.password = "__legacy_disabled__"
     owner.password_hash = generate_password_hash(temp_password)
     db.commit()
-    return {"message": "ÄÃ£ reset máº­t kháº©u owner", "temporary_password": temp_password}
+    return {"message": "Đã đặt lại mật khẩu chủ bãi", "temporary_password": temp_password}
 
 
 @router.delete("/owners/{owner_id}")
@@ -863,12 +869,12 @@ def delete_owner(
 ):
     owner = db.query(User).filter(User.id == owner_id, User.role == "owner").first()
     if not owner:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
+        raise HTTPException(status_code=404, detail="Không tìm thấy chủ bãi")
 
     _remove_owner_assignments(db, owner.id)
     db.delete(owner)
     db.commit()
-    return {"message": "ÄÃ£ xÃ³a owner"}
+    return {"message": "Đã xóa chủ bãi"}
 
 
 @router.post("/parking-lots")
@@ -879,7 +885,7 @@ def create_parking_lot(
 ):
     owner = _find_owner_by_reference(db, payload.owner)
     if payload.owner and not owner:
-        raise HTTPException(status_code=404, detail="KhÃ´ng tÃ¬m tháº¥y owner")
+        raise HTTPException(status_code=404, detail="Không tìm thấy chủ bãi")
     duplicate_name = db.query(ParkingLot.id).filter(ParkingLot.name == payload.name.strip()).first()
     if duplicate_name:
         raise HTTPException(status_code=409, detail="Ten bai do da ton tai")
@@ -887,6 +893,7 @@ def create_parking_lot(
     lot = ParkingLot(
         name=payload.name.strip(),
         address=payload.address.strip(),
+        phone=payload.phone.strip() if payload.phone else None,
         latitude=10.0,
         longitude=106.0,
         has_roof=0,
@@ -928,6 +935,8 @@ def update_parking_lot(
         lot.name = payload.name.strip()
     if payload.address is not None:
         lot.address = payload.address.strip()
+    if payload.phone is not None:
+        lot.phone = payload.phone.strip() or None
     if payload.owner is not None:
         db.query(OwnerParking).filter(OwnerParking.parking_id == lot.id).delete()
         owner = _find_owner_by_reference(db, payload.owner)

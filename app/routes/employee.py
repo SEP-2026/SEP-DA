@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+﻿from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -21,7 +21,7 @@ from app.controllers.employee_controller import (
     update_owner_employee_controller,
 )
 from app.database import get_db
-from app.models.models import EmployeeAccount, RevokedToken, User
+from app.models.models import RevokedToken, User
 from app.routes.auth import decode_access_token, get_current_user
 from app.security.password_policy import ensure_strong_password
 from app.schemas.employee import (
@@ -61,7 +61,7 @@ def _serialize_parking_info(payload: dict) -> EmployeeParkingOverview:
 def get_current_employee(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
-) -> EmployeeAccount:
+) -> User:
     if not credentials or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing access token")
 
@@ -72,16 +72,13 @@ def get_current_employee(
     if db.query(RevokedToken).filter(RevokedToken.jti == jti).first():
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
 
-    subject = payload.get("sub") or ""
-    if not str(subject).startswith("employee:"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is not employee token")
-
+    subject = payload.get("sub")
     try:
-        employee_id = int(str(subject).split(":", 1)[1])
+        employee_id = int(subject)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
-    employee = db.query(EmployeeAccount).filter(EmployeeAccount.id == employee_id, EmployeeAccount.is_active == 1).first()
+    employee = db.query(User).filter(User.id == employee_id, User.role == "employee", User.is_active == 1).first()
     if not employee or employee.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Employee not found or inactive")
     return employee
@@ -162,11 +159,11 @@ def employee_login(payload: EmployeeLoginRequest, db: Session = Depends(get_db))
 
 
 @router.get("/me", response_model=EmployeeInfo)
-def employee_me(current_employee: EmployeeAccount = Depends(get_current_employee)):
+def employee_me(current_employee: User = Depends(get_current_employee)):
     return _serialize_employee_info(
         {
             "id": current_employee.id,
-            "username": current_employee.username,
+            "username": current_employee.email,
             "role": current_employee.role,
             "owner_id": current_employee.owner_id,
             "parking_id": current_employee.parking_id,
@@ -179,7 +176,7 @@ def employee_me(current_employee: EmployeeAccount = Depends(get_current_employee
 @router.post("/change-password", response_model=EmployeeChangePasswordResponse)
 def employee_change_password(
     payload: EmployeeChangePasswordRequest,
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     if payload.new_password != payload.confirm_password:
@@ -188,8 +185,8 @@ def employee_change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mat khau moi phai khac mat khau cu")
 
     employee = (
-        db.query(EmployeeAccount)
-        .filter(EmployeeAccount.id == current_employee.id, EmployeeAccount.is_active == 1)
+        db.query(User)
+        .filter(User.id == current_employee.id, User.is_active == 1)
         .with_for_update()
         .first()
     )
@@ -202,10 +199,7 @@ def employee_change_password(
     new_hash = generate_password_hash(payload.new_password)
     employee.password_hash = new_hash
 
-    linked_user = db.query(User).filter(User.email == employee.username, User.is_active == 1).first()
-    if linked_user:
-        linked_user.password_hash = new_hash
-        linked_user.password = "__legacy_disabled__"
+    employee.password = "__legacy_disabled__"
 
     db.commit()
     return EmployeeChangePasswordResponse(message="Doi mat khau thanh cong")
@@ -213,7 +207,7 @@ def employee_change_password(
 
 @router.get("/parking-lot", response_model=EmployeeParkingOverview)
 def employee_dashboard(
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return _serialize_parking_info(employee_dashboard_controller(current_employee, db))
@@ -221,7 +215,7 @@ def employee_dashboard(
 
 @router.get("/vehicles", response_model=EmployeeVehicleResponse)
 def employee_vehicles(
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return EmployeeVehicleResponse(**employee_vehicles_controller(current_employee, db))
@@ -229,7 +223,7 @@ def employee_vehicles(
 
 @router.get("/revenue", response_model=EmployeeRevenueResponse)
 def employee_revenue(
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return EmployeeRevenueResponse(**employee_revenue_controller(current_employee, db))
@@ -237,7 +231,7 @@ def employee_revenue(
 
 @router.get("/slots-overview", response_model=EmployeeSlotsOverviewResponse)
 def employee_slots_overview(
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return EmployeeSlotsOverviewResponse(**employee_slots_overview_controller(current_employee, db))
@@ -246,7 +240,7 @@ def employee_slots_overview(
 @router.put("/parking-status", response_model=EmployeeParkingOverview)
 def employee_parking_status(
     payload: EmployeeParkingStatusRequest,
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return _serialize_parking_info(employee_parking_status_controller(current_employee, payload.status, db))
@@ -254,7 +248,7 @@ def employee_parking_status(
 
 @router.get("/profile", response_model=EmployeeProfileResponse)
 def employee_profile(
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     profile = employee_profile_controller(current_employee, db)
@@ -268,7 +262,7 @@ def employee_profile(
 def employee_history(
     limit: int = Query(default=200, ge=1, le=500),
     action: str | None = Query(default=None),
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return EmployeeHistoryResponse(**employee_history_controller(current_employee, db, limit=limit, action=action))
@@ -277,7 +271,7 @@ def employee_history(
 @router.post("/check-in", response_model=EmployeeQrActionResponse)
 def employee_check_in(
     payload: EmployeeQrActionRequest,
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return EmployeeQrActionResponse(**employee_check_in_controller(current_employee, payload.qr_data, db))
@@ -286,7 +280,7 @@ def employee_check_in(
 @router.post("/check-out", response_model=EmployeeQrActionResponse)
 def employee_check_out(
     payload: EmployeeQrActionRequest,
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return EmployeeQrActionResponse(**employee_check_out_controller(current_employee, payload.qr_data, payload.payment_method, db))
@@ -295,7 +289,7 @@ def employee_check_out(
 @router.get("/bookings/{booking_id}")
 def employee_gate_booking(
     booking_id: int,
-    current_employee: EmployeeAccount = Depends(get_current_employee),
+    current_employee: User = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     return employee_gate_booking_controller(current_employee, booking_id, db)

@@ -6,6 +6,7 @@ const STATUS_LABEL = {
   open: "Đang mở",
   closed: "Đang đóng",
   full: "Đã đầy",
+  locked: "Đang bị khóa",
 };
 
 function formatMoney(value) {
