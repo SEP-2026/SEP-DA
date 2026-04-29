@@ -596,6 +596,34 @@ def migrate_wallets():
             pass
 
 
+def migrate_wallet_transactions_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "wallet_transactions" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("wallet_transactions")}
+    alter_statements = []
+
+    if "source_type" not in columns:
+        alter_statements.append("ADD COLUMN source_type VARCHAR(50) NULL")
+    if "source_id" not in columns:
+        alter_statements.append("ADD COLUMN source_id INT NULL")
+    if "actor_id" not in columns:
+        alter_statements.append("ADD COLUMN actor_id INT NULL")
+    if "actor_role" not in columns:
+        alter_statements.append("ADD COLUMN actor_role VARCHAR(50) NULL")
+    if "request_ip" not in columns:
+        alter_statements.append("ADD COLUMN request_ip VARCHAR(45) NULL")
+    if "user_agent" not in columns:
+        alter_statements.append("ADD COLUMN user_agent VARCHAR(255) NULL")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE wallet_transactions {', '.join(alter_statements)}"))
+
+
 def migrate_transactions_columns():
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
@@ -845,6 +873,7 @@ def init_db():
     _run_migration_step("bookings", migrate_bookings_columns)
     _run_migration_step("payments", migrate_payments_columns)
     _run_migration_step("wallets", migrate_wallets)
+    _run_migration_step("wallet_transactions", migrate_wallet_transactions_columns)
     _run_migration_step("transactions", migrate_transactions_columns)
     _run_migration_step("employee_accounts", migrate_employee_accounts_columns)
     _run_migration_step("parking_operational_states", migrate_parking_operational_states_columns)

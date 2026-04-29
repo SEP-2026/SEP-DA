@@ -47,25 +47,7 @@ class SecurityGatewayMiddleware(BaseHTTPMiddleware):
                 return True
         return False
 
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and content_length.isdigit() and int(content_length) > self.max_request_bytes:
-            return JSONResponse(
-                status_code=413,
-                content={"detail": "Request quá lớn"},
-            )
-
-        client_ip = self._get_client_ip(request)
-        if self._check_rate_limit(request, client_ip):
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Quá nhiều yêu cầu. Vui lòng thử lại sau."},
-                headers={"Retry-After": "60"},
-            )
-
-        response = await call_next(request)
-
-        # Add CORS headers
+    def _apply_security_headers(self, response: JSONResponse, request: Request) -> JSONResponse:
         origin = request.headers.get("origin")
         allowed_origins = ["http://localhost:5173", "http://localhost:3000"]
         if origin in allowed_origins:
@@ -84,3 +66,31 @@ class SecurityGatewayMiddleware(BaseHTTPMiddleware):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         return response
+
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > self.max_request_bytes:
+            response = JSONResponse(
+                status_code=413,
+                content={"detail": "Request quá lớn"},
+            )
+            return self._apply_security_headers(response, request)
+
+        client_ip = self._get_client_ip(request)
+        if self._check_rate_limit(request, client_ip):
+            response = JSONResponse(
+                status_code=429,
+                content={"detail": "Quá nhiều yêu cầu. Vui lòng thử lại sau."},
+                headers={"Retry-After": "60"},
+            )
+            return self._apply_security_headers(response, request)
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Lỗi máy chủ nội bộ"},
+            )
+
+        return self._apply_security_headers(response, request)

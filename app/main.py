@@ -17,8 +17,6 @@ from app.services.auto_checkout_service import auto_checkout_expired_bookings
 
 app = FastAPI()
 
-app.add_middleware(SecurityGatewayMiddleware)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -26,6 +24,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(SecurityGatewayMiddleware)
 
 logger = logging.getLogger(__name__)
 AUTO_CHECKOUT_INTERVAL_SECONDS = max(10, int(os.getenv("AUTO_CHECKOUT_INTERVAL_SECONDS", "30")))

@@ -44,6 +44,34 @@ def get_wallet_summary(db: Session, user_id: int) -> dict:
     return serialize_wallet(wallet, user_id)
 
 
+def get_wallet_transactions(db: Session, user_id: int, limit: int = 50, offset: int = 0) -> list[dict]:
+    wallet = db.query(Wallet).filter(Wallet.user_id == user_id).first()
+    if not wallet:
+        return []
+    transactions = (
+        db.query(WalletTransaction)
+        .filter(WalletTransaction.wallet_id == wallet.id)
+        .order_by(WalletTransaction.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    return [
+        {
+            "id": txn.id,
+            "transaction_type": txn.transaction_type,
+            "amount": float(txn.amount),
+            "reference_type": txn.reference_type,
+            "reference_id": txn.reference_id,
+            "source_type": txn.source_type,
+            "source_id": txn.source_id,
+            "note": txn.note,
+            "created_at": txn.created_at.isoformat(),
+        }
+        for txn in transactions
+    ]
+
+
 def _create_wallet(db: Session, user_id: int) -> Wallet:
     for _ in range(2):
         wallet = Wallet(user_id=user_id, balance=Decimal("0.00"), reserved_balance=Decimal("0.00"))
@@ -171,6 +199,7 @@ def reserve_wallet_amount(
         user_agent=user_agent,
         note=note,
     )
+    return serialize_wallet(wallet, user_id)
 def settle_booking_payment(
     db: Session,
     user_id: int,
@@ -186,6 +215,8 @@ def settle_booking_payment(
 ) -> dict:
     reserve_amount = _normalize_amount(reserved_amount)
     capture_due = _normalize_amount(capture_amount)
+    if reserve_amount < 0 or capture_due < 0:
+        raise WalletError("Số tiền không hợp lệ")
     wallet = _lock_wallet(db, user_id)
 
     current_reserved = _normalize_amount(wallet.reserved_balance)
@@ -227,5 +258,40 @@ def settle_booking_payment(
         request_ip=request_ip,
         user_agent=user_agent,
         note=note or "Trừ tiền còn lại khi checkout",
+    )
+    return serialize_wallet(wallet, user_id)
+
+
+def refund_wallet_amount(
+    db: Session,
+    user_id: int,
+    refund_amount: float | Decimal,
+    reference_type: str,
+    reference_id: int | None = None,
+    note: str | None = None,
+    actor_id: int | None = None,
+    actor_role: str | None = None,
+    request_ip: str | None = None,
+    user_agent: str | None = None,
+) -> dict:
+    refund = _normalize_amount(refund_amount)
+    if refund <= 0:
+        raise WalletError("Số tiền hoàn lại phải lớn hơn 0")
+    wallet = _lock_wallet(db, user_id)
+    wallet.balance = _normalize_amount(wallet.balance + refund)
+    _add_transaction(
+        db,
+        wallet,
+        "refund",
+        refund,
+        reference_type,
+        reference_id,
+        source_type="wallet_refund",
+        source_id=reference_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        request_ip=request_ip,
+        user_agent=user_agent,
+        note=note or "Hoàn tiền",
     )
     return serialize_wallet(wallet, user_id)
