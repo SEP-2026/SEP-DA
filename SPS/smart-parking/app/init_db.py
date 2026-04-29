@@ -307,9 +307,13 @@ def migrate_wallets():
     alter_statements = []
 
     if "balance" not in columns:
-        alter_statements.append("ADD COLUMN balance FLOAT NOT NULL DEFAULT 0")
+        alter_statements.append("ADD COLUMN balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    else:
+        alter_statements.append("MODIFY COLUMN balance DECIMAL(12,2) NOT NULL DEFAULT 0")
     if "reserved_balance" not in columns:
-        alter_statements.append("ADD COLUMN reserved_balance FLOAT NOT NULL DEFAULT 0")
+        alter_statements.append("ADD COLUMN reserved_balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    else:
+        alter_statements.append("MODIFY COLUMN reserved_balance DECIMAL(12,2) NOT NULL DEFAULT 0")
     if "created_at" not in columns:
         alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
     if "updated_at" not in columns:
@@ -331,6 +335,14 @@ def migrate_wallets():
                 """
             )
         )
+        try:
+            conn.execute(text("ALTER TABLE wallets ADD CONSTRAINT chk_wallet_balance_nonnegative CHECK (balance >= 0)"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE wallets ADD CONSTRAINT chk_wallet_reserved_balance_nonnegative CHECK (reserved_balance >= 0)"))
+        except Exception:
+            pass
 
 
 def init_db():

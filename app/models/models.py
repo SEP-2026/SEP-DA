@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text
+from sqlalchemy import Column, DateTime, DECIMAL, Float, CheckConstraint, ForeignKey, Integer, SmallInteger, String, Text
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -60,11 +60,15 @@ class UserVehicle(Base):
 
 class Wallet(Base):
     __tablename__ = "wallets"
+    __table_args__ = (
+        CheckConstraint("balance >= 0", name="ck_wallet_balance_nonnegative"),
+        CheckConstraint("reserved_balance >= 0", name="ck_wallet_reserved_balance_nonnegative"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
-    balance = Column(Float, default=0)
-    reserved_balance = Column(Float, default=0)
+    balance = Column(DECIMAL(12, 2), default=0)
+    reserved_balance = Column(DECIMAL(12, 2), default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -73,13 +77,22 @@ class Wallet(Base):
 
 class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_wallet_transaction_amount_nonnegative"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     wallet_id = Column(Integer, ForeignKey("wallets.id"), nullable=False, index=True)
     transaction_type = Column(String(50), nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(DECIMAL(12, 2), nullable=False)
     reference_type = Column(String(50), nullable=True)
     reference_id = Column(Integer, nullable=True, index=True)
+    source_type = Column(String(50), nullable=True)
+    source_id = Column(Integer, nullable=True, index=True)
+    actor_id = Column(Integer, nullable=True, index=True)
+    actor_role = Column(String(50), nullable=True)
+    request_ip = Column(String(45), nullable=True)
+    user_agent = Column(String(255), nullable=True)
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -116,13 +129,13 @@ class Booking(Base):
     actual_checkin = Column(DateTime, nullable=True)
     actual_checkout = Column(DateTime, nullable=True)
     overstay_minutes = Column(Integer, default=0, nullable=True)
-    overstay_fee = Column(Float, default=0, nullable=True)
-    total_actual_fee = Column(Float, nullable=True)
+    overstay_fee = Column(DECIMAL(12, 2), default=0, nullable=True)
+    total_actual_fee = Column(DECIMAL(12, 2), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     booking_mode = Column(String(20), default="hourly")
     billed_units = Column(Float, default=0)
-    total_amount = Column(Float, default=0)
+    total_amount = Column(DECIMAL(12, 2), default=0)
 
     status = Column(String(50), default="pending")
     qr_code = Column(String(255))
@@ -146,7 +159,7 @@ class Transaction(Base):
 
     booking_id = Column(Integer, ForeignKey("bookings.id"))
 
-    amount = Column(Float)
+    amount = Column(DECIMAL(12, 2))
     payment_status = Column(String(50), default="pending")
     user_id = Column(Integer, nullable=True)
     parking_id = Column(Integer, nullable=True)
@@ -168,16 +181,16 @@ class Payment(Base):
     id = Column(Integer, primary_key=True, index=True)
     booking_id = Column(Integer, ForeignKey("bookings.id"), unique=True, nullable=False)
 
-    amount = Column(Float, nullable=False)
-    overtime_fee = Column(Float, default=0)
+    amount = Column(DECIMAL(12, 2), nullable=False)
+    overtime_fee = Column(DECIMAL(12, 2), default=0)
     payment_method = Column(String(50), default="vnpay")
     payment_status = Column(String(20), default="pending")
     paid_at = Column(DateTime, nullable=True)
     vnpay_url = Column(String(500), nullable=True)
     qr_code = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    deposit_amount = Column(Float, default=0)
-    remaining_amount = Column(Float, default=0)
+    deposit_amount = Column(DECIMAL(12, 2), default=0)
+    remaining_amount = Column(DECIMAL(12, 2), default=0)
 
 
 class OwnerParking(Base):
@@ -211,9 +224,9 @@ class ParkingPrice(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     parking_id = Column(Integer, ForeignKey("parking_lots.id"), unique=True, nullable=False)
-    price_per_hour = Column(Float, nullable=False)
-    price_per_day = Column(Float, nullable=False)
-    price_per_month = Column(Float, nullable=False)
+    price_per_hour = Column(DECIMAL(12, 2), nullable=False)
+    price_per_day = Column(DECIMAL(12, 2), nullable=False)
+    price_per_month = Column(DECIMAL(12, 2), nullable=False)
 
     parking = relationship("ParkingLot")
 

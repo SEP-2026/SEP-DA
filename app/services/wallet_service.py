@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -23,15 +24,18 @@ class WalletSummary:
     reserved_balance: float
 
 
-def _normalize_amount(amount: float | int) -> float:
-    return round(float(amount or 0), 2)
+def _normalize_amount(amount: float | int | Decimal) -> Decimal:
+    value = Decimal(str(amount or 0)) if not isinstance(amount, Decimal) else amount
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def serialize_wallet(wallet: Wallet | None, user_id: int) -> dict:
+    balance = _normalize_amount(wallet.balance if wallet else 0)
+    reserved_balance = _normalize_amount(wallet.reserved_balance if wallet else 0)
     return {
         "user_id": user_id,
-        "balance": _normalize_amount(wallet.balance if wallet else 0),
-        "reserved_balance": _normalize_amount(wallet.reserved_balance if wallet else 0),
+        "balance": float(balance),
+        "reserved_balance": float(reserved_balance),
     }
 
 
@@ -41,17 +45,18 @@ def get_wallet_summary(db: Session, user_id: int) -> dict:
 
 
 def _create_wallet(db: Session, user_id: int) -> Wallet:
-    wallet = Wallet(user_id=user_id, balance=0, reserved_balance=0)
-    db.add(wallet)
-    try:
-        db.flush()
-        return wallet
-    except IntegrityError:
-        db.rollback()
-        wallet = db.query(Wallet).filter(Wallet.user_id == user_id).with_for_update().first()
-        if wallet:
+    for _ in range(2):
+        wallet = Wallet(user_id=user_id, balance=Decimal("0.00"), reserved_balance=Decimal("0.00"))
+        db.add(wallet)
+        try:
+            db.flush()
             return wallet
-        raise
+        except IntegrityError:
+            db.rollback()
+            existing_wallet = db.query(Wallet).filter(Wallet.user_id == user_id).with_for_update().first()
+            if existing_wallet:
+                return existing_wallet
+    raise WalletError("Không thể tạo ví mới do xung đột đồng thời")
 
 
 def _lock_wallet(db: Session, user_id: int) -> Wallet:
@@ -65,9 +70,15 @@ def _add_transaction(
     db: Session,
     wallet: Wallet,
     transaction_type: str,
-    amount: float,
+    amount: float | Decimal,
     reference_type: str | None = None,
     reference_id: int | None = None,
+    source_type: str | None = None,
+    source_id: int | None = None,
+    actor_id: int | None = None,
+    actor_role: str | None = None,
+    request_ip: str | None = None,
+    user_agent: str | None = None,
     note: str | None = None,
 ) -> WalletTransaction:
     txn = WalletTransaction(
@@ -76,6 +87,12 @@ def _add_transaction(
         amount=_normalize_amount(amount),
         reference_type=reference_type,
         reference_id=reference_id,
+        source_type=source_type,
+        source_id=source_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        request_ip=request_ip,
+        user_agent=user_agent,
         note=note,
     )
     db.add(txn)
@@ -85,8 +102,12 @@ def _add_transaction(
 def top_up_wallet(
     db: Session,
     user_id: int,
-    amount: float,
+    amount: float | Decimal,
     note: str | None = None,
+    actor_id: int | None = None,
+    actor_role: str | None = None,
+    request_ip: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     topup_amount = _normalize_amount(amount)
     if topup_amount <= 0:
@@ -94,17 +115,35 @@ def top_up_wallet(
 
     wallet = _lock_wallet(db, user_id)
     wallet.balance = _normalize_amount(wallet.balance + topup_amount)
-    _add_transaction(db, wallet, "topup", topup_amount, "wallet", user_id, note or "Nạp tiền mô phỏng")
+    _add_transaction(
+        db,
+        wallet,
+        "topup",
+        topup_amount,
+        "wallet",
+        user_id,
+        source_type="wallet_topup",
+        source_id=user_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        request_ip=request_ip,
+        user_agent=user_agent,
+        note=note or "Nạp tiền mô phỏng",
+    )
     return serialize_wallet(wallet, user_id)
 
 
 def reserve_wallet_amount(
     db: Session,
     user_id: int,
-    amount: float,
+    amount: float | Decimal,
     reference_type: str,
     reference_id: int | None = None,
     note: str | None = None,
+    actor_id: int | None = None,
+    actor_role: str | None = None,
+    request_ip: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     reserve_amount = _normalize_amount(amount)
     if reserve_amount <= 0:
@@ -117,18 +156,33 @@ def reserve_wallet_amount(
 
     wallet.balance = _normalize_amount(current_balance - reserve_amount)
     wallet.reserved_balance = _normalize_amount(wallet.reserved_balance + reserve_amount)
-    _add_transaction(db, wallet, "reserve", reserve_amount, reference_type, reference_id, note)
-    return serialize_wallet(wallet, user_id)
-
-
+    _add_transaction(
+        db,
+        wallet,
+        "reserve",
+        reserve_amount,
+        reference_type,
+        reference_id,
+        source_type="wallet_reserve",
+        source_id=reference_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        request_ip=request_ip,
+        user_agent=user_agent,
+        note=note,
+    )
 def settle_booking_payment(
     db: Session,
     user_id: int,
-    reserved_amount: float,
-    capture_amount: float,
+    reserved_amount: float | Decimal,
+    capture_amount: float | Decimal,
     reference_type: str,
     reference_id: int | None = None,
     note: str | None = None,
+    actor_id: int | None = None,
+    actor_role: str | None = None,
+    request_ip: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     reserve_amount = _normalize_amount(reserved_amount)
     capture_due = _normalize_amount(capture_amount)
@@ -151,7 +205,13 @@ def settle_booking_payment(
         reserve_amount,
         reference_type,
         reference_id,
-        note or "Giải chấp tiền giữ chỗ khi checkout",
+        source_type="wallet_settle",
+        source_id=reference_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        request_ip=request_ip,
+        user_agent=user_agent,
+        note=note or "Giải chấp tiền giữ chỗ khi checkout",
     )
     _add_transaction(
         db,
@@ -160,6 +220,12 @@ def settle_booking_payment(
         capture_due,
         reference_type,
         reference_id,
-        note or "Trừ tiền còn lại khi checkout",
+        source_type="wallet_capture",
+        source_id=reference_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+        request_ip=request_ip,
+        user_agent=user_agent,
+        note=note or "Trừ tiền còn lại khi checkout",
     )
     return serialize_wallet(wallet, user_id)
