@@ -50,6 +50,34 @@ class UserVehicle(Base):
     user = relationship("User", back_populates="vehicle_profile")
 
 
+class Wallet(Base):
+    __tablename__ = "wallets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    balance = Column(Float, default=0)
+    reserved_balance = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    wallet_id = Column(Integer, ForeignKey("wallets.id"), nullable=False, index=True)
+    transaction_type = Column(String(50), nullable=False)
+    amount = Column(Float, nullable=False)
+    reference_type = Column(String(50), nullable=True)
+    reference_id = Column(Integer, nullable=True, index=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    wallet = relationship("Wallet")
+
+
 class ParkingSlot(Base):
     __tablename__ = "parking_slots"
 

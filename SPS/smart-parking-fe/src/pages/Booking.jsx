@@ -180,8 +180,8 @@ const buildDefaultBookingForm = (profile = {}) => {
     licensePlate: profile?.vehicle_plate || profile?.licensePlate || "",
     contactPhone: profile?.phone || profile?.phone_number || "",
     vehicleColor: profile?.vehicle_color || profile?.vehicleColor || "",
-    vehicleType: "vf4",
-    seats: "4 chỗ",
+    vehicleType: "",
+    seats: "",
     brand: "",
     bookingMode: "hourly",
     checkinTime: toDatetimeLocalValue(new Date(now + 60 * 60 * 1000)),
@@ -427,7 +427,19 @@ export default function Booking() {
   useEffect(() => {
     if (!selectedLot) {
       setBookingResult(null);
-      setBookingForm(buildDefaultBookingForm(profile || auth?.user || {}));
+      setBookingForm((prev) => {
+        const defaults = buildDefaultBookingForm(profile || auth?.user || {});
+        return {
+          ...defaults,
+          ownerName: prev.ownerName.trim() ? prev.ownerName : defaults.ownerName,
+          licensePlate: prev.licensePlate.trim() ? prev.licensePlate : defaults.licensePlate,
+          contactPhone: prev.contactPhone.trim() ? prev.contactPhone : defaults.contactPhone,
+          vehicleColor: prev.vehicleColor.trim() ? prev.vehicleColor : defaults.vehicleColor,
+          brand: prev.brand.trim() ? prev.brand : defaults.brand,
+          vehicleType: prev.vehicleType.trim() ? prev.vehicleType : defaults.vehicleType,
+          seats: prev.seats.trim() ? prev.seats : defaults.seats,
+        };
+      });
     }
   }, [auth?.user, profile, selectedLot]);
 
@@ -664,7 +676,7 @@ export default function Booking() {
         checkout_time: toVietnamIsoString(bookingWindow.checkoutDate),
       };
       const res = await API.post("/booking/create", pendingCreatePayload);
-      navigate(`/payment/${res.data.booking_id}`, {
+      navigate(`/payment/success/${res.data.booking_id}`, {
         state: {
           booking: res.data,
         },

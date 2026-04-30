@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Booking, Payment, User
 from app.routes.auth import get_current_user
+from app.services.wallet_service import WalletError, get_wallet_summary, reserve_wallet_amount
 from app.services.qr_service import generate_booking_qr_code
 from app.utils.timezone import vn_now
 
@@ -16,6 +17,10 @@ router = APIRouter(prefix="/payment", tags=["payment"])
 
 
 class PaymentCreateRequest(BaseModel):
+    booking_id: int = Field(gt=0)
+
+
+class PaymentMockSuccessRequest(BaseModel):
     booking_id: int = Field(gt=0)
 
 
@@ -171,6 +176,86 @@ def payment_callback(
         "payment_status": payment.payment_status,
         "paid_at": payment.paid_at,
     }
+
+
+@router.post("/mock-success")
+def mock_payment_success(
+    payload: PaymentMockSuccessRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        booking = db.query(Booking).filter(Booking.id == payload.booking_id).with_for_update().first()
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking không tồn tại")
+
+        if booking.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Bạn không có quyền thanh toán booking này")
+
+        if booking.status not in {"pending", "booked"}:
+            raise HTTPException(status_code=400, detail="Booking không ở trạng thái có thể thanh toán")
+
+        total_amount = round(float(booking.total_amount or 0), 2)
+        upfront_amount = round(total_amount * 0.3, 2)
+        remaining_amount = round(max(0.0, total_amount - upfront_amount), 2)
+
+        payment = db.query(Payment).filter(Payment.booking_id == booking.id).with_for_update().first()
+        if not payment:
+            payment = Payment(
+                booking_id=booking.id,
+                amount=total_amount,
+                overtime_fee=0,
+                payment_method="wallet",
+                payment_status="pending",
+                deposit_amount=upfront_amount,
+                remaining_amount=remaining_amount,
+            )
+            db.add(payment)
+            db.flush()
+        elif payment.payment_status == "paid":
+            return {
+                "message": "Booking đã được thanh toán trước đó",
+                "booking_id": booking.id,
+                "booking_status": booking.status,
+                "payment_status": payment.payment_status,
+                "paid_at": payment.paid_at,
+                "wallet": get_wallet_summary(db, current_user.id),
+            }
+
+        reserve_wallet_amount(
+            db,
+            current_user.id,
+            amount=upfront_amount,
+            reference_type="booking_payment",
+            reference_id=booking.id,
+            note="Giữ 30% khi mô phỏng thanh toán bằng ví nội bộ",
+        )
+
+        payment.amount = total_amount
+        payment.deposit_amount = upfront_amount
+        payment.remaining_amount = remaining_amount
+        payment.payment_method = "wallet"
+        payment.payment_status = "paid"
+        payment.paid_at = vn_now()
+
+        booking.status = "booked"
+
+        db.commit()
+
+        return {
+            "message": "Đã mô phỏng thanh toán thành công",
+            "booking_id": booking.id,
+            "booking_status": booking.status,
+            "payment_status": payment.payment_status,
+            "paid_at": payment.paid_at,
+            "wallet": get_wallet_summary(db, current_user.id),
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Mô phỏng thanh toán thất bại: {exc}") from exc
 
 
 @router.get("/history")

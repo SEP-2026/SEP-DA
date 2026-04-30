@@ -528,7 +528,7 @@ def migrate_payments_columns():
             text(
                 """
                 ALTER TABLE payments
-                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay') DEFAULT 'vnpay'
+                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay','wallet') DEFAULT 'vnpay'
                 """
             )
         )
@@ -545,6 +545,83 @@ def migrate_payments_columns():
     if "uq_payments_booking_id" not in indexes:
         with engine.begin() as conn:
             conn.execute(text("CREATE UNIQUE INDEX uq_payments_booking_id ON payments (booking_id)"))
+
+
+def migrate_wallets():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "wallets" not in table_names or "users" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("wallets")}
+    alter_statements = []
+
+    if "balance" not in columns:
+        alter_statements.append("ADD COLUMN balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    else:
+        alter_statements.append("MODIFY COLUMN balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    if "reserved_balance" not in columns:
+        alter_statements.append("ADD COLUMN reserved_balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    else:
+        alter_statements.append("MODIFY COLUMN reserved_balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if "updated_at" not in columns:
+        alter_statements.append("ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE wallets {', '.join(alter_statements)}"))
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO wallets (user_id, balance, reserved_balance, created_at, updated_at)
+                SELECT u.id, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM users u
+                LEFT JOIN wallets w ON w.user_id = u.id
+                WHERE w.id IS NULL
+                """
+            )
+        )
+        try:
+            conn.execute(text("ALTER TABLE wallets ADD CONSTRAINT chk_wallet_balance_nonnegative CHECK (balance >= 0)"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE wallets ADD CONSTRAINT chk_wallet_reserved_balance_nonnegative CHECK (reserved_balance >= 0)"))
+        except Exception:
+            pass
+
+
+def migrate_wallet_transactions_columns():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "wallet_transactions" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("wallet_transactions")}
+    alter_statements = []
+
+    if "source_type" not in columns:
+        alter_statements.append("ADD COLUMN source_type VARCHAR(50) NULL")
+    if "source_id" not in columns:
+        alter_statements.append("ADD COLUMN source_id INT NULL")
+    if "actor_id" not in columns:
+        alter_statements.append("ADD COLUMN actor_id INT NULL")
+    if "actor_role" not in columns:
+        alter_statements.append("ADD COLUMN actor_role VARCHAR(50) NULL")
+    if "request_ip" not in columns:
+        alter_statements.append("ADD COLUMN request_ip VARCHAR(45) NULL")
+    if "user_agent" not in columns:
+        alter_statements.append("ADD COLUMN user_agent VARCHAR(255) NULL")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE wallet_transactions {', '.join(alter_statements)}"))
 
 
 def migrate_transactions_columns():
@@ -795,6 +872,8 @@ def init_db():
     _run_migration_step("reviews", migrate_reviews_columns)
     _run_migration_step("bookings", migrate_bookings_columns)
     _run_migration_step("payments", migrate_payments_columns)
+    _run_migration_step("wallets", migrate_wallets)
+    _run_migration_step("wallet_transactions", migrate_wallet_transactions_columns)
     _run_migration_step("transactions", migrate_transactions_columns)
     _run_migration_step("employee_accounts", migrate_employee_accounts_columns)
     _run_migration_step("parking_operational_states", migrate_parking_operational_states_columns)
