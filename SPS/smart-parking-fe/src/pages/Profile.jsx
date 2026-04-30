@@ -22,6 +22,16 @@ const normalizeError = (err, fallback) => {
 
 const normalizeText = (value) => String(value || "").trim();
 
+const formatCurrencyString = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) {
+    return "";
+  }
+  return Number(digits).toLocaleString("vi-VN");
+};
+
+const parseCurrencyString = (value) => String(value || "").replace(/\D/g, "");
+
 const isEqualByKeys = (current, initial, keys) => keys.every((key) => normalizeText(current[key]) === normalizeText(initial[key]));
 
 const getNoticeTone = (notice) => {
@@ -104,6 +114,7 @@ export default function Profile({ onAuthUpdated }) {
     reserved_balance: 0,
   });
   const [walletTopUpAmount, setWalletTopUpAmount] = useState("");
+  const [walletPendingAmount, setWalletPendingAmount] = useState(null);
 
   const greetingName = useMemo(() => personalForm.name || auth?.user?.name || "User", [personalForm.name, auth?.user?.name]);
   const sectionTitle = useMemo(() => {
@@ -441,20 +452,35 @@ export default function Profile({ onAuthUpdated }) {
       return;
     }
 
+    setWalletPendingAmount(amount);
+  };
+
+  const confirmTopUpWallet = async () => {
+    if (!Number.isFinite(walletPendingAmount) || walletPendingAmount <= 0) {
+      setWalletNotice("Số tiền nạp phải lớn hơn 0");
+      setWalletPendingAmount(null);
+      return;
+    }
+
     try {
       setWalletLoading(true);
       const res = await API.post("/wallet/topup", {
-        amount,
-        note: "Nạp tiền mô phỏng",
+        amount: walletPendingAmount,
+        note: "Nạp tiền",
       });
       setWalletInfo(res.data?.wallet || { balance: 0, reserved_balance: 0 });
       setWalletTopUpAmount("");
+      setWalletPendingAmount(null);
       setWalletNotice("Nạp tiền thành công");
     } catch (err) {
       setWalletNotice(normalizeError(err, "Nạp tiền thất bại"));
     } finally {
       setWalletLoading(false);
     }
+  };
+
+  const cancelTopUpWallet = () => {
+    setWalletPendingAmount(null);
   };
 
   if (loading) {
@@ -656,22 +682,56 @@ export default function Profile({ onAuthUpdated }) {
                 </div>
 
                 <label>Số tiền nạp</label>
+                <div className="profile-topup-presets">
+                  {[100000, 200000, 500000, 1000000, 2000000, 5000000].map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      className="profile-topup-preset"
+                      onClick={() => {
+                        setWalletTopUpAmount(String(amount));
+                        setWalletPendingAmount(null);
+                      }}
+                    >
+                      {amount.toLocaleString("vi-VN")} đ
+                    </button>
+                  ))}
+                </div>
                 <div className="profile-input-shell">
                   <span className="profile-input-icon" aria-hidden="true">➕</span>
                   <input
                     className="booking-input profile-input"
-                    type="number"
-                    min={1}
-                    placeholder="Ví dụ: 100000"
-                    value={walletTopUpAmount}
-                    onChange={(e) => setWalletTopUpAmount(e.target.value)}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ví dụ: 100.000"
+                    value={walletTopUpAmount ? formatCurrencyString(walletTopUpAmount) : ""}
+                    onChange={(e) => {
+                      setWalletTopUpAmount(parseCurrencyString(e.target.value));
+                      if (walletPendingAmount !== null) {
+                        setWalletPendingAmount(null);
+                      }
+                    }}
                   />
                 </div>
 
                 <button className="profile-action-btn" type="submit" disabled={walletLoading}>
-                  {walletLoading ? "Đang xử lý..." : "→ Nạp tiền mô phỏng"}
+                  {walletLoading ? "Đang xử lý..." : "→ Nạp tiền"}
                 </button>
-                <p className="profile-hint">Nạp tiền mô phỏng dùng cho demo, không tích hợp ngân hàng thật.</p>
+
+                {walletPendingAmount !== null ? (
+                  <div className="profile-topup-confirm">
+                    <p>Xác nhận nạp {walletPendingAmount.toLocaleString("vi-VN")} đ vào ví?</p>
+                    <div className="profile-topup-confirm-actions">
+                      <button type="button" className="profile-action-btn profile-action-confirm" onClick={confirmTopUpWallet} disabled={walletLoading}>
+                        Xác nhận
+                      </button>
+                      <button type="button" className="profile-action-btn profile-action-cancel" onClick={cancelTopUpWallet} disabled={walletLoading}>
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 {walletNotice ? <p className={`profile-notice ${getNoticeTone(walletNotice)}`} aria-live="polite">{walletNotice}</p> : null}
               </form>
             )}
