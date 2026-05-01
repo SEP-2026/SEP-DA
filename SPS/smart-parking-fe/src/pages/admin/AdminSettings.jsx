@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useMemo, useState } from "react";
 
 import { SectionCard, StatusBadge, formatDateTime } from "../../owner/OwnerUI";
 import { useAdminContext } from "../../admin/useAdminContext";
@@ -12,16 +12,19 @@ export default function AdminSettings() {
   const [opsError, setOpsError] = useState("");
   const [assignmentRows, setAssignmentRows] = useState([]);
 
+  const activityLogs = useMemo(() => (adminData.logs || []).slice(0, 20), [adminData.logs]);
+  const loginHistory = useMemo(() => (adminData.loginHistory || []).slice(0, 20), [adminData.loginHistory]);
+
   const runAdminOp = async (runner) => {
     setOpsLoading(true);
     setOpsMessage("");
     setOpsError("");
     try {
       const result = await runner();
-      setOpsMessage(typeof result?.message === "string" ? result.message : "Thao tac thanh cong");
+      setOpsMessage(typeof result?.message === "string" ? result.message : "Thao tác thành công");
       return result;
     } catch (error) {
-      setOpsError(error?.response?.data?.detail || "Khong the thuc hien thao tac");
+      setOpsError(error?.response?.data?.detail || "Không thể thực hiện thao tác");
       return null;
     } finally {
       setOpsLoading(false);
@@ -31,8 +34,8 @@ export default function AdminSettings() {
   return (
     <div className="owner-page-grid">
       <SectionCard
-        title="Cai dat he thong"
-        subtitle="Cau hinh ty le hoa hong, thoi gian bao tri va nguong canh bao."
+        title="Cài đặt hệ thống"
+        subtitle="Cấu hình tỷ lệ hoa hồng, thời gian bảo trì và ngưỡng cảnh báo."
       >
         <form
           className="owner-settings-form"
@@ -43,7 +46,7 @@ export default function AdminSettings() {
           }}
         >
           <label>
-            Ty le hoa hong (%)
+            Tỷ lệ hoa hồng (%)
             <input
               className="owner-input"
               value={form.commissionRate}
@@ -54,7 +57,7 @@ export default function AdminSettings() {
             />
           </label>
           <label>
-            Email ho tro
+            Email hỗ trợ
             <input
               className="owner-input"
               value={form.supportEmail}
@@ -65,7 +68,7 @@ export default function AdminSettings() {
             />
           </label>
           <label>
-            Khung bao tri
+            Khung bảo trì
             <input
               className="owner-input"
               value={form.maintenanceWindow}
@@ -76,7 +79,7 @@ export default function AdminSettings() {
             />
           </label>
           <label>
-            Nguong canh bao (%)
+            Ngưỡng cảnh báo (%)
             <input
               className="owner-input"
               value={form.alertThreshold}
@@ -87,15 +90,15 @@ export default function AdminSettings() {
             />
           </label>
           <div className="owner-settings-actions owner-form-span">
-            {saved ? <p className="owner-save-note">Da luu cau hinh he thong.</p> : <span />}
-            <button type="submit" className="btn-primary owner-btn">Luu cau hinh</button>
+            {saved ? <p className="owner-save-note">Đã lưu cấu hình hệ thống.</p> : <span />}
+            <button type="submit" className="btn-primary owner-btn">Lưu cấu hình</button>
           </div>
         </form>
       </SectionCard>
 
       <SectionCard
-        title="Van hanh phan cong owner"
-        subtitle="Cong cu admin de rebuild, auto-assign va kiem tra owner_parking."
+        title="Vận hành phân công owner"
+        subtitle="Công cụ admin để tạo lại phân công, tự động phân công và kiểm tra owner_parking."
       >
         <div className="owner-row-actions" style={{ marginBottom: 12 }}>
           <button
@@ -104,7 +107,7 @@ export default function AdminSettings() {
             disabled={opsLoading}
             onClick={() => runAdminOp(() => actions.rebuildOwnerAssignments())}
           >
-            Rebuild Assignments
+            Tạo lại phân công
           </button>
           <button
             type="button"
@@ -112,7 +115,7 @@ export default function AdminSettings() {
             disabled={opsLoading}
             onClick={() => runAdminOp(() => actions.autoAssignOwners())}
           >
-            Auto Assign Owners
+            Tự động phân công
           </button>
           <button
             type="button"
@@ -122,11 +125,11 @@ export default function AdminSettings() {
               const rows = await runAdminOp(() => actions.getOwnerAssignmentsDebug());
               if (Array.isArray(rows)) {
                 setAssignmentRows(rows);
-                setOpsMessage(`Tai ${rows.length} dong assignment`);
+                setOpsMessage(`Tải ${rows.length} dòng assignment`);
               }
             }}
           >
-            Load Assignment Debug
+            Tải dữ liệu kiểm tra
           </button>
         </div>
         {opsMessage ? <p className="owner-save-note">{opsMessage}</p> : null}
@@ -144,7 +147,7 @@ export default function AdminSettings() {
             <tbody>
               {assignmentRows.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="owner-empty-cell">Chua co du lieu debug assignment.</td>
+                  <td colSpan={3} className="owner-empty-cell">Chưa có dữ liệu kiểm tra phân công.</td>
                 </tr>
               ) : (
                 assignmentRows.map((row) => (
@@ -161,56 +164,50 @@ export default function AdminSettings() {
       </SectionCard>
 
       <div className="owner-two-col">
-        <SectionCard title="Nhat ky quan tri" subtitle="Nhat ky hanh dong quan tri moi nhat.">
-          <div className="owner-table-shell">
-            <table className="owner-table">
-              <thead>
-                <tr>
-                  <th>Nguoi thuc hien</th>
-                  <th>Hanh dong</th>
-                  <th>Thoi gian</th>
-                  <th>Loai</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(adminData.logs || []).map((log) => (
-                  <tr key={log.id}>
-                    <td>{log.actor}</td>
-                    <td>{log.action}</td>
-                    <td>{formatDateTime(log.time)}</td>
-                    <td><StatusBadge status={log.type} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <SectionCard title="Nhật ký quản trị" subtitle="Theo dõi đầy đủ người thực hiện, hành động, thời gian và đối tượng.">
+          {activityLogs.length === 0 ? (
+            <p className="owner-empty">Chưa có dữ liệu nhật ký.</p>
+          ) : (
+            <div className="admin-log-list">
+              {activityLogs.map((log) => (
+                <article key={log.id} className="admin-log-item">
+                  <div className="admin-log-main">
+                    <div className="admin-log-head">
+                      <strong>{log.actor || "Hệ thống"}</strong>
+                      <StatusBadge status={log.type || "system"} />
+                    </div>
+                    <p className="admin-log-action">{log.action}</p>
+                    <div className="admin-log-meta">
+                      <span><b>Đối tượng:</b> {log.target || "--"}</span>
+                      <span><b>Thời gian:</b> {formatDateTime(log.time)}</span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </SectionCard>
 
-        <SectionCard title="Lich su dang nhap" subtitle="Lich su dang nhap va su kien bao mat.">
-          <div className="owner-table-shell">
-            <table className="owner-table">
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>IP</th>
-                  <th>Thiet bi</th>
-                  <th>Thoi gian</th>
-                  <th>Trang thai</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(adminData.loginHistory || []).map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.email}</td>
-                    <td>{item.ip}</td>
-                    <td>{item.device}</td>
-                    <td>{formatDateTime(item.time)}</td>
-                    <td><StatusBadge status={item.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <SectionCard title="Lịch sử đăng nhập" subtitle="Lịch sử đăng nhập và sự kiện bảo mật gần đây.">
+          {loginHistory.length === 0 ? (
+            <p className="owner-empty">Chưa có dữ liệu đăng nhập.</p>
+          ) : (
+            <div className="admin-login-list">
+              {loginHistory.map((item) => (
+                <article key={item.id} className="admin-login-item">
+                  <div className="admin-login-main">
+                    <strong>{item.email || "--"}</strong>
+                    <span>{formatDateTime(item.time)}</span>
+                  </div>
+                  <div className="admin-login-meta">
+                    <span><b>IP:</b> {item.ip || "--"}</span>
+                    <span><b>Thiết bị:</b> {item.device || "--"}</span>
+                    <StatusBadge status={item.status || "blocked"} />
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </SectionCard>
       </div>
     </div>

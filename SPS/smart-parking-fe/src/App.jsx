@@ -95,9 +95,7 @@ function App() {
       }
 
       try {
-        const me = auth?.authType === "employee" || auth?.user?.role === "employee"
-          ? await API.get("/api/employee/me")
-          : await API.get("/auth/me");
+        const me = await API.get("/auth/me");
         setAuth((prev) => {
           if (!prev) {
             return prev;
@@ -121,7 +119,7 @@ function App() {
     };
 
     verifySession();
-  }, [auth?.token, auth?.authType, auth?.user?.role]);
+  }, [auth?.token, auth?.user?.role]);
 
   if (checkingSession) {
     return null;

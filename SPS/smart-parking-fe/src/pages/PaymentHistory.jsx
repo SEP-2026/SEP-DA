@@ -12,6 +12,24 @@ const currency = new Intl.NumberFormat("vi-VN", {
 
 const formatMoney = (value) => currency.format(Number(value || 0));
 
+const STATUS_LABELS = {
+  pending: "Chờ thanh toán",
+  paid: "Đã thanh toán",
+  completed: "Hoàn tất",
+  cancelled: "Đã hủy",
+  failed: "Thất bại",
+  refunded: "Đã hoàn tiền",
+  booked: "Đã đặt",
+  checked_in: "Đang gửi xe",
+  checked_out: "Đã check-out",
+};
+
+const translateStatus = (status) => {
+  if (!status) return "N/A";
+  const key = String(status).toLowerCase();
+  return STATUS_LABELS[key] || status;
+};
+
 export default function PaymentHistory() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +107,11 @@ export default function PaymentHistory() {
                   rows.map((row) => (
                     <tr key={row.booking_id}>
                       <td>#{row.booking_id}</td>
-                      <td>{row.booking_status === "cancelled" && row.cancel_reason === "no_show" ? "Quá hạn check-in" : row.payment_status || row.booking_status || "N/A"}</td>
+                      <td>
+                        {row.booking_status === "cancelled" && row.cancel_reason === "no_show"
+                          ? "Quá hạn check-in"
+                          : translateStatus(row.payment_status || row.booking_status)}
+                      </td>
                       <td>{formatMoney(row.booking_amount)}</td>
                       <td>{formatMoney(row.paid_amount)}</td>
                       <td>{formatMoney(row.deposit_amount)}</td>

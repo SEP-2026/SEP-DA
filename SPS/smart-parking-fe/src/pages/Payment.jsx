@@ -1,124 +1,68 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import API from "../services/api";
+import { formatDateTimeVN } from "../utils/dateTime";
 import "./Payment.css";
 
 const formatMoney = (value) => Number(value || 0).toLocaleString("vi-VN");
-const STATIC_PAYMENT_QR = "/payment/merchant-qr.png";
-const VIETQR_BANK_ID = "VCB";
-const VIETQR_ACCOUNT_NO = "1021209511";
-const VIETQR_ACCOUNT_NAME = "SMART PARKING";
-
-
-const buildDynamicVietQrUrl = (amount, bookingId) => {
-  if (!VIETQR_BANK_ID || !VIETQR_ACCOUNT_NO) {
-    return null;
-  }
-
-  const amountValue = Math.max(0, Math.round(Number(amount || 0)));
-  const addInfo = encodeURIComponent(`BOOKING ${bookingId}`);
-  const accountName = encodeURIComponent(VIETQR_ACCOUNT_NAME || "SMART PARKING");
-
-  return `https://img.vietqr.io/image/${VIETQR_BANK_ID}-${VIETQR_ACCOUNT_NO}-compact2.png?amount=${amountValue}&addInfo=${addInfo}&accountName=${accountName}`;
-};
-
-const getTotalPaymentAmount = (payment) => {
-  const amount = Number(payment?.amount || 0);
-  const overtime = Number(payment?.overtime_fee || 0);
-  return amount + overtime;
-};
-
-const formatDuration = (start, end) => {
-  try {
-    const s = new Date(start);
-    const e = new Date(end);
-    let diff = Math.max(0, e - s);
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    diff -= hours * 1000 * 60 * 60;
-    const minutes = Math.round(diff / (1000 * 60));
-    return `${hours} giờ ${minutes} phút`;
-  } catch (e) {
-    return "";
-  }
-};
 
 export default function Payment() {
   const { bookingId } = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
-
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [payment, setPayment] = useState(null);
-  const [bookingDetail, setBookingDetail] = useState(null);
-  const [staticQrMissing, setStaticQrMissing] = useState(false);
-  const dynamicQrUrl = useMemo(
-    () => buildDynamicVietQrUrl(getTotalPaymentAmount(payment), payment?.booking_id),
-    [payment?.amount, payment?.overtime_fee, payment?.booking_id],
-  );
+  const [submitting, setSubmitting] = useState(false);
+  const [booking, setBooking] = useState(null);
+  const [wallet, setWallet] = useState(null);
 
   const numericBookingId = useMemo(() => Number(bookingId), [bookingId]);
+  const remainingAmount = Math.max(0, Number(booking?.total_amount || 0) - Number(booking?.upfront_amount || 0));
 
-  const loadPayment = async () => {
-    if (!Number.isInteger(numericBookingId) || numericBookingId <= 0) {
-      setError("Booking ID không hợp lệ");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setError("");
-      setLoading(true);
-      const res = await API.post("/payment/create", {
-        booking_id: numericBookingId,
-      });
-      setPayment(res.data);
-
-      // Try to fetch booking detail to display upfront amount and booking time
-      try {
-        const bres = await API.get(`/booking/my/${numericBookingId}`);
-        setBookingDetail(bres.data);
-      } catch (err) {
-        // ignore booking detail failures
-        setBookingDetail(null);
-      }
-    } catch (err) {
-      setError(err?.response?.data?.detail || "Không tạo được payment");
-      setPayment(null);
-    } finally {
-      setLoading(false);
-    }
+  const refreshData = async () => {
+    const [bookingRes, walletRes] = await Promise.all([
+      API.get(`/booking/my/${numericBookingId}`),
+      API.get("/wallet/me"),
+    ]);
+    setBooking(bookingRes.data);
+    setWallet(walletRes.data?.wallet || null);
   };
 
   useEffect(() => {
-    loadPayment();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const loadData = async () => {
+      if (!Number.isInteger(numericBookingId) || numericBookingId <= 0) {
+        setError("Booking ID không hợp lệ");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        await refreshData();
+      } catch (err) {
+        setError(err?.response?.data?.detail || "Không tải được thông tin booking");
+        setBooking(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
   }, [numericBookingId]);
 
-  const handleMockCallback = async (status) => {
-    if (!payment?.booking_id) {
+  const handleMockPaid = async () => {
+    if (!booking?.booking_id) {
       return;
     }
 
     try {
       setSubmitting(true);
       setError("");
-      const res = await API.post("/payment/callback", null, {
-        params: { booking_id: payment.booking_id, status },
-      });
-
-      if (status === "success") {
-        navigate(`/payment/success/${res.data.booking_id}`, { replace: true });
-        return;
-      }
-
-      setPayment((prev) => ({
-        ...prev,
-        payment_status: "failed",
-      }));
+      await API.post("/payment/mock-success", { booking_id: booking.booking_id });
+      await refreshData();
+      navigate(`/payment/success/${booking.booking_id}`, { replace: true });
     } catch (err) {
-      setError(err?.response?.data?.detail || "Xử lý callback thất bại");
+      setError(err?.response?.data?.detail || "Không mô phỏng thanh toán được");
     } finally {
       setSubmitting(false);
     }
@@ -127,82 +71,34 @@ export default function Payment() {
   return (
     <section className="page-wrap">
       <div className="page-card payment-shell">
-        <h1 className="page-title">Thanh Toán Booking</h1>
+        <h1 className="page-title">Thanh Toán Bằng Ví</h1>
+        <p className="payment-note">Flow cũ bằng QR ngân hàng đã được thay bằng ví nội bộ.</p>
 
-        {location.state?.booking?.booking_id && (
-          <p className="payment-note">
-            Booking #{location.state.booking.booking_id} đã được tạo. Vui lòng quét mã QR VNPay để thanh toán.
-          </p>
-        )}
-
-        {loading && <p className="payment-note">Đang tạo payment...</p>}
+        {loading && <p className="payment-note">Đang tải thông tin booking...</p>}
         {error && <p className="payment-error">{error}</p>}
 
-        {payment && !loading && (
+        {booking && !loading && (
           <div className="payment-card">
-            <p><strong>Booking ID:</strong> {payment.booking_id}</p>
-            <p><strong>Số tiền dự kiến:</strong> {formatMoney(payment.amount)}đ</p>
-            {bookingDetail && (
-              <p><strong>Số tiền cần thanh toán:</strong> {formatMoney(bookingDetail.upfront_amount)}đ</p>
-            )}
-            <p><strong>Phí lố giờ:</strong> {formatMoney(payment.overtime_fee)}đ</p>
-            {bookingDetail && bookingDetail.checkout_time && bookingDetail.checkin_time && (
-              <p>
-                <strong>Thời gian booking:</strong> {formatDuration(bookingDetail.checkin_time, bookingDetail.checkout_time)}
-              </p>
-            )}
-            <p><strong>Tổng tiền phải thanh toán:</strong> {formatMoney(getTotalPaymentAmount(payment))}đ</p>
-            <p><strong>Trạng thái:</strong> {payment.payment_status}</p>
-            <p className="payment-note">Đường dẫn QR cố định: public/payment/merchant-qr.png</p>
-
-            <p className="payment-note">
-              Mã QR cố định thanh toán với số tiền động:
-            </p>
-            <div className="payment-qr-box">
-              {!staticQrMissing && dynamicQrUrl ? (
-                <img
-                  src={dynamicQrUrl}
-                  alt="QR VietQR động theo số tiền"
-                  onError={() => setStaticQrMissing(true)}
-                />
-              ) : payment.qr_code ? (
-                <div>
-                  <img src={`http://localhost:8000/${payment.qr_code}`} alt="QR thanh toán VNPay fallback" />
-                  <div style={{ marginTop: 8 }}>
-                    <a href={`http://localhost:8000/${payment.qr_code}`} download className="btn-link">
-                      Tải QR
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <p className="payment-note">Chưa có QR code để hiển thị</p>
-              )}
-            </div>
-
-            {!dynamicQrUrl && (
-              <p className="payment-note" style={{ color: "red" }}>
-                ⚠️ Không thể tạo QR VietQR động.
-              </p>
-            )}
+            <p><strong>Booking ID:</strong> {booking.booking_id}</p>
+            <p><strong>Trạng thái:</strong> {booking.booking_status}</p>
+            <p><strong>Bãi xe:</strong> {booking.parking?.name}</p>
+            <p><strong>Slot:</strong> {booking.slot?.code || booking.slot?.id}</p>
+            <p><strong>Biển số:</strong> {booking.vehicle?.license_plate}</p>
+            <p><strong>Check-in:</strong> {formatDateTimeVN(booking.checkin_time)}</p>
+            <p><strong>Check-out:</strong> {formatDateTimeVN(booking.checkout_time)}</p>
+            <p><strong>Tổng tiền booking:</strong> {formatMoney(booking.total_amount)}đ</p>
+            <p><strong>Đã giữ 30%:</strong> {formatMoney(booking.upfront_amount)}đ</p>
+            <p><strong>Còn lại khi checkout:</strong> {formatMoney(remainingAmount)}đ</p>
+            {wallet ? <p><strong>Số dư ví:</strong> {formatMoney(wallet.balance)}đ</p> : null}
 
             <div className="payment-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => handleMockCallback("success")}
-                disabled={submitting || payment.payment_status === "paid"}
-              >
-                {submitting ? "Đang xử lý..." : "Mô phỏng thanh toán thành công"}
+              <button type="button" className="btn-primary" onClick={handleMockPaid} disabled={submitting}>
+                {submitting ? "Đang mô phỏng..." : "Mô phỏng đã thanh toán"}
               </button>
-
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => handleMockCallback("fail")}
-                disabled={submitting || payment.payment_status === "paid"}
-              >
-                Mô phỏng thanh toán thất bại
+              <button type="button" className="btn-primary" onClick={() => navigate(`/payment/success/${booking.booking_id}`, { replace: true })}>
+                Xem chi tiết booking
               </button>
+              <button type="button" className="btn-secondary" onClick={() => navigate("/profile")}>Về hồ sơ ví</button>
             </div>
           </div>
         )}

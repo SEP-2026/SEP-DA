@@ -37,6 +37,15 @@ export default function AdminLayout({ auth, onLogout }) {
     refreshAdminData();
   }, [refreshAdminData]);
 
+  useEffect(() => {
+    document.documentElement.classList.add("admin-page-lock");
+    document.body.classList.add("admin-page-lock");
+    return () => {
+      document.documentElement.classList.remove("admin-page-lock");
+      document.body.classList.remove("admin-page-lock");
+    };
+  }, []);
+
   const stats = useMemo(() => {
     if (!adminData) {
       return {
@@ -61,38 +70,44 @@ export default function AdminLayout({ auth, onLogout }) {
   }, [adminData]);
 
   const actions = {
+    async execWithRefresh(task) {
+      try {
+        await task();
+        await refreshAdminData();
+        return true;
+      } catch (error) {
+        const message = error?.response?.data?.detail || "Không thể thực hiện thao tác";
+        window.alert(message);
+        return false;
+      }
+    },
     async toggleUserStatus(id, status) {
-      await API.patch(`/admin/users/${id}/status`, { status });
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.patch(`/admin/users/${id}/status`, { status }));
     },
     async toggleOwnerStatus(id, status) {
-      await API.patch(`/admin/owners/${id}/status`, { status });
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.patch(`/admin/owners/${id}/status`, { status }));
     },
     async updateOwner(id, payload) {
-      await API.patch(`/admin/owners/${id}`, payload);
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.patch(`/admin/owners/${id}`, payload));
     },
     async resetOwnerPassword(id) {
-      const res = await API.post(`/admin/owners/${id}/reset-password`);
-      window.alert(`Mật khẩu tạm: ${res.data.temporary_password}`);
-      await refreshAdminData();
+      await actions.execWithRefresh(async () => {
+        const res = await API.post(`/admin/owners/${id}/reset-password`);
+        window.alert(`Mật khẩu tạm: ${res.data.temporary_password}`);
+      });
     },
     async deleteOwner(id) {
-      await API.delete(`/admin/owners/${id}`);
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.delete(`/admin/owners/${id}`));
     },
     async addOwner(payload) {
       const res = await API.post("/admin/owners", payload);
       window.alert(`Đã tạo owner. Mật khẩu mặc định: ${res.data.default_password}`);
-      // If backend returned the created owner with parkingLots, merge it into adminData immediately
       if (res.data && res.data.owner) {
         setAdminData((prev) => ({
           ...prev,
           owners: [...(prev?.owners || []), res.data.owner],
         }));
       } else {
-        // synthesize a temporary owner entry so UI shows the parkingLot the admin entered
         const synth = {
           id: res.data && res.data.id ? res.data.id : Date.now(),
           name: payload.name,
@@ -108,25 +123,20 @@ export default function AdminLayout({ auth, onLogout }) {
           owners: [...(prev?.owners || []), synth],
         }));
       }
-      // refresh in background to stay consistent
       refreshAdminData();
     },
     async updateParkingLot(id, payload) {
-      await API.patch(`/admin/parking-lots/${id}`, payload);
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.patch(`/admin/parking-lots/${id}`, payload));
     },
     async addParkingLot(payload) {
-      await API.post("/admin/parking-lots", payload);
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.post("/admin/parking-lots", payload));
     },
     async deleteParkingLot(id) {
-      await API.delete(`/admin/parking-lots/${id}`);
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.delete(`/admin/parking-lots/${id}`));
     },
     async updateBookingStatus(id, status) {
       const bookingId = String(id).replace(/^BK-/, "");
-      await API.patch(`/admin/bookings/${bookingId}/status`, { status });
-      await refreshAdminData();
+      await actions.execWithRefresh(() => API.patch(`/admin/bookings/${bookingId}/status`, { status }));
     },
     async updateSettings(payload) {
       const res = await API.patch("/admin/settings", payload);
@@ -156,7 +166,7 @@ export default function AdminLayout({ auth, onLogout }) {
           <div className="admin-brand-mark">AD</div>
           <div>
             <strong>Smart Parking</strong>
-              <span>Trung tâm điều hành</span>
+            <span>Trung tâm điều hành</span>
           </div>
         </div>
 
@@ -207,10 +217,6 @@ export default function AdminLayout({ auth, onLogout }) {
               <span>{notificationsCount}</span>
             </div>
             <div className="admin-role-pill">Trung tâm vận hành</div>
-            <button type="button" className="admin-topbar-logout" onClick={onLogout}>
-              <AdminIcon name="logout" className="admin-menu-icon" />
-              <span>Đăng xuất</span>
-            </button>
             <div className="admin-avatar">
               <div className="admin-avatar-mark">{adminDisplayName.slice(0, 1).toUpperCase()}</div>
               <div>
@@ -225,7 +231,7 @@ export default function AdminLayout({ auth, onLogout }) {
           {!loading && !adminData ? (
             <section className="admin-state-card admin-state-card--error">
               Không lấy được dữ liệu admin từ backend.
-              Khả năng cao backend chưa restart để nhận route `/admin/*` mới hoặc API đang lỗi.
+              Có thể backend chưa restart để nhận route `/admin/*` mới hoặc API đang lỗi.
             </section>
           ) : null}
           {!loading && adminData ? <Outlet context={{ auth, adminData, stats, actions }} /> : null}

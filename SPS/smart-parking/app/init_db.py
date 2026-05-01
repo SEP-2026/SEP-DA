@@ -277,7 +277,7 @@ def migrate_payments_columns():
             text(
                 """
                 ALTER TABLE payments
-                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay') DEFAULT 'vnpay'
+                MODIFY COLUMN payment_method ENUM('qr','cash','vnpay','wallet') DEFAULT 'vnpay'
                 """
             )
         )
@@ -296,6 +296,55 @@ def migrate_payments_columns():
             conn.execute(text("CREATE UNIQUE INDEX uq_payments_booking_id ON payments (booking_id)"))
 
 
+def migrate_wallets():
+    inspector = inspect(engine)
+    table_names = inspector.get_table_names()
+
+    if "wallets" not in table_names or "users" not in table_names:
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("wallets")}
+    alter_statements = []
+
+    if "balance" not in columns:
+        alter_statements.append("ADD COLUMN balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    else:
+        alter_statements.append("MODIFY COLUMN balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    if "reserved_balance" not in columns:
+        alter_statements.append("ADD COLUMN reserved_balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    else:
+        alter_statements.append("MODIFY COLUMN reserved_balance DECIMAL(12,2) NOT NULL DEFAULT 0")
+    if "created_at" not in columns:
+        alter_statements.append("ADD COLUMN created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if "updated_at" not in columns:
+        alter_statements.append("ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+
+    if alter_statements:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE wallets {', '.join(alter_statements)}"))
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO wallets (user_id, balance, reserved_balance, created_at, updated_at)
+                SELECT u.id, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM users u
+                LEFT JOIN wallets w ON w.user_id = u.id
+                WHERE w.id IS NULL
+                """
+            )
+        )
+        try:
+            conn.execute(text("ALTER TABLE wallets ADD CONSTRAINT chk_wallet_balance_nonnegative CHECK (balance >= 0)"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE wallets ADD CONSTRAINT chk_wallet_reserved_balance_nonnegative CHECK (reserved_balance >= 0)"))
+        except Exception:
+            pass
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     migrate_parking_lots_columns()
@@ -304,6 +353,7 @@ def init_db():
     migrate_parking_slots_columns()
     migrate_bookings_columns()
     migrate_payments_columns()
+    migrate_wallets()
     migrate_employee_operational_tables()
 
 

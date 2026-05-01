@@ -55,40 +55,44 @@
   transition: all 0.2s ease;
   border: 2px solid #ddd;
   background: white;
+  color: #000;
   min-height: 60px;
 }
 
 .parking-slot:hover {
   transform: scale(1.05);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  color: #fff;
 }
 
 .slot-available {
   background: #4caf50;
   border-color: #388e3c;
-  color: white;
+  color: #000;
 }
 
 .slot-available:hover {
   background: #43a047;
+  color: #fff;
 }
 
 .slot-occupied {
   background: #f44336;
   border-color: #d32f2f;
-  color: white;
+  color: #000;
   cursor: not-allowed;
 }
 
 .slot-occupied:hover {
   transform: none;
   box-shadow: none;
+  color: #fff;
 }
 
 .slot-selected {
   background: #ff9800;
   border-color: #f57c00;
-  color: white;
+  color: #000;
   animation: pulse 1.5s infinite;
 }
 
@@ -104,13 +108,14 @@
 .slot-maintenance {
   background: #9e9e9e;
   border-color: #757575;
-  color: white;
+  color: #000;
   cursor: not-allowed;
 }
 
 .slot-maintenance:hover {
   transform: none;
   box-shadow: none;
+  color: #fff;
 }
 
 .slot-code {

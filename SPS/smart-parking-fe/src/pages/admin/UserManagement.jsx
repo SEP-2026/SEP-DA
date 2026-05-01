@@ -9,8 +9,8 @@ export default function UserManagement() {
   const [selectedUser, setSelectedUser] = useState(null);
 
   const filtered = useMemo(
-    () => adminData.users.filter((item) => {
-      const matchesQuery = `${item.name} ${item.email}`.toLowerCase().includes(query.toLowerCase());
+    () => (adminData.users || []).filter((item) => {
+      const matchesQuery = `${item.name || ""} ${item.email || ""}`.toLowerCase().includes(query.toLowerCase());
       const matchesStatus = statusFilter === "all" ? true : item.status === statusFilter;
       return matchesQuery && matchesStatus;
     }),
@@ -40,7 +40,7 @@ export default function UserManagement() {
                 <th>Tên</th>
                 <th>Email</th>
                 <th>Trạng thái</th>
-                <th>Spam score</th>
+                <th>Điểm spam</th>
                 <th>Booking 14 ngày</th>
                 <th>Hủy 14 ngày</th>
                 <th>Hoạt động cuối</th>
@@ -55,7 +55,7 @@ export default function UserManagement() {
                   <td><StatusBadge status={user.status} /></td>
                   <td>
                     <strong>{user.spamScore ?? 0}</strong>
-                    <div style={{ fontSize: "12px", opacity: 0.8 }}>{user.spamStatus || "normal"}</div>
+                    <div style={{ fontSize: 12, opacity: 0.8 }}>{user.spamStatus || "normal"}</div>
                   </td>
                   <td>{user.bookings14d ?? 0}</td>
                   <td>{user.cancelled14d ?? 0}</td>
@@ -79,14 +79,14 @@ export default function UserManagement() {
         <div className="owner-modal-backdrop" onClick={() => setSelectedUser(null)}>
           <div className="owner-modal owner-modal--detail" onClick={(e) => e.stopPropagation()}>
             <div className="owner-modal-head">
-              <div><h2>{selectedUser.name}</h2><p>Thông tin user toàn hệ thống.</p></div>
+              <div><h2>{selectedUser.name}</h2><p>Thông tin người dùng toàn hệ thống.</p></div>
               <button type="button" className="owner-modal-close" onClick={() => setSelectedUser(null)}>×</button>
             </div>
             <div className="owner-detail-grid">
               <div><span>Email</span><strong>{selectedUser.email}</strong></div>
               <div><span>Số điện thoại</span><strong>{selectedUser.phone || "--"}</strong></div>
               <div><span>Trạng thái</span><strong><StatusBadge status={selectedUser.status} /></strong></div>
-              <div><span>Spam score</span><strong>{selectedUser.spamScore ?? 0}</strong></div>
+              <div><span>Điểm spam</span><strong>{selectedUser.spamScore ?? 0}</strong></div>
               <div><span>Booking 14 ngày</span><strong>{selectedUser.bookings14d ?? 0}</strong></div>
               <div><span>Tỷ lệ hủy 14 ngày</span><strong>{Math.round((selectedUser.cancelRatio14d || 0) * 100)}%</strong></div>
             </div>

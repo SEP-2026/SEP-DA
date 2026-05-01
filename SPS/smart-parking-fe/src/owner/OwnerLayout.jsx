@@ -294,6 +294,9 @@ export default function OwnerLayout({ auth, onLogout }) {
     async createEmployee(payload) {
       try {
         const res = await API.post("/api/owner/create-employee", payload);
+        if (res.data?.employee?.email && res.data?.employee?.default_password) {
+          window.alert(`Tài khoản employee đã tạo:\nEmail: ${res.data.employee.email}\nMật khẩu: ${res.data.employee.default_password}`);
+        }
         await refreshOwnerData();
         return res.data?.employee || null;
       } catch (error) {

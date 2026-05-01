@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import API, { getAuth, saveAuth } from "../services/api";
 import { formatDateOnlyVN, toDateInputValue, toDatetimeLocalValue, toVietnamIsoString } from "../utils/dateTime";
@@ -132,7 +133,7 @@ const computeEstimatedCharge = (lot, window) => {
   }
 
   if (durationHours > 12) {
-    const billedUnits = 1;
+    const billedUnits = Math.max(1, Math.ceil(durationHours / 24));
     return {
       amount: Math.round(billedUnits * pricePerDay),
       resolvedMode: "daily",
@@ -179,8 +180,8 @@ const buildDefaultBookingForm = (profile = {}) => {
     licensePlate: profile?.vehicle_plate || profile?.licensePlate || "",
     contactPhone: profile?.phone || profile?.phone_number || "",
     vehicleColor: profile?.vehicle_color || profile?.vehicleColor || "",
-    vehicleType: "vf4",
-    seats: "4 chỗ",
+    vehicleType: "",
+    seats: "",
     brand: "",
     bookingMode: "hourly",
     checkinTime: toDatetimeLocalValue(new Date(now + 60 * 60 * 1000)),
@@ -213,6 +214,25 @@ const formatSeats = (seatCount) => {
   return `${seatCount} chỗ`;
 };
 
+const normalizeSelectedLot = (lot) => {
+  if (!lot || !lot.id) {
+    return null;
+  }
+
+  return {
+    ...lot,
+    id: Number(lot.id),
+    name: lot.name || lot.parking_name || "",
+    address: lot.address || lot.parking_address || "",
+    has_roof: Boolean(lot.has_roof),
+    distance: lot.distance ?? "",
+    price_per_hour: Number(lot.price_per_hour || 0),
+    price_per_day: Number(lot.price_per_day || 0),
+    price_per_month: Number(lot.price_per_month || 0),
+    priceLoaded: Boolean(lot.priceLoaded),
+  };
+};
+
 
 export default function Booking() {
   const location = useLocation();
@@ -227,7 +247,7 @@ export default function Booking() {
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
   const [bookingError, setBookingError] = useState("");
-  const [selectedLot, setSelectedLot] = useState(location.state?.selectedLot || null);
+  const [selectedLot, setSelectedLot] = useState(() => normalizeSelectedLot(location.state?.selectedLot));
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlotId, setSelectedSlotId] = useState("");
   const [bookingForm, setBookingForm] = useState(() => buildDefaultBookingForm(auth?.user || {}));
@@ -287,8 +307,42 @@ export default function Booking() {
   };
 
   useEffect(() => {
-    setSelectedLot(location.state?.selectedLot || null);
+    setSelectedLot(normalizeSelectedLot(location.state?.selectedLot));
   }, [location.state]);
+
+  useEffect(() => {
+    const loadLotPricing = async () => {
+      if (!selectedLot?.id || selectedLot.priceLoaded) {
+        return;
+      }
+
+      try {
+        const res = await API.get(`/parking-lots/${selectedLot.id}`);
+        setSelectedLot((prev) => {
+          if (!prev || Number(prev.id) !== Number(selectedLot.id)) {
+            return prev;
+          }
+          return normalizeSelectedLot({
+            ...prev,
+            ...res.data,
+            priceLoaded: true,
+          });
+        });
+      } catch {
+        setSelectedLot((prev) => {
+          if (!prev || Number(prev.id) !== Number(selectedLot.id)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            priceLoaded: true,
+          };
+        });
+      }
+    };
+
+    loadLotPricing();
+  }, [selectedLot?.id, selectedLot?.priceLoaded]);
 
   useEffect(() => {
     if (location.state?.paymentNotice) {
@@ -307,12 +361,33 @@ export default function Booking() {
       const slotId = Number(slotIdParam);
 
       if (lotId && slotId) {
-        setSelectedLot((prev) => (prev?.id === lotId ? prev : { id: lotId, name: "" }));
+        setSelectedLot((prev) => {
+          if (prev?.id === lotId) {
+            return prev;
+          }
+
+          const stateLot = normalizeSelectedLot(location.state?.selectedLot);
+          if (stateLot?.id === lotId) {
+            return stateLot;
+          }
+
+          return {
+            id: lotId,
+            name: `Bãi #${lotId}`,
+            address: "",
+            has_roof: false,
+            distance: "",
+            price_per_hour: 0,
+            price_per_day: 0,
+            price_per_month: 0,
+            priceLoaded: false,
+          };
+        });
         setSelectedSlotId(String(slotId));
         setPrefilledSlotName(slotNameParam || "");
       }
     }
-  }, [searchParams]);
+  }, [location.state, searchParams]);
 
   useEffect(() => {
     const loadSlots = async () => {
@@ -352,7 +427,19 @@ export default function Booking() {
   useEffect(() => {
     if (!selectedLot) {
       setBookingResult(null);
-      setBookingForm(buildDefaultBookingForm(profile || auth?.user || {}));
+      setBookingForm((prev) => {
+        const defaults = buildDefaultBookingForm(profile || auth?.user || {});
+        return {
+          ...defaults,
+          ownerName: prev.ownerName.trim() ? prev.ownerName : defaults.ownerName,
+          licensePlate: prev.licensePlate.trim() ? prev.licensePlate : defaults.licensePlate,
+          contactPhone: prev.contactPhone.trim() ? prev.contactPhone : defaults.contactPhone,
+          vehicleColor: prev.vehicleColor.trim() ? prev.vehicleColor : defaults.vehicleColor,
+          brand: prev.brand.trim() ? prev.brand : defaults.brand,
+          vehicleType: prev.vehicleType.trim() ? prev.vehicleType : defaults.vehicleType,
+          seats: prev.seats.trim() ? prev.seats : defaults.seats,
+        };
+      });
     }
   }, [auth?.user, profile, selectedLot]);
 
@@ -482,7 +569,7 @@ export default function Booking() {
   };
 
   const handleSelectLot = (lot) => {
-    setSelectedLot(lot);
+    setSelectedLot(normalizeSelectedLot(lot));
     setBookingResult(null);
     setError("");
     setBookingError("");
@@ -589,7 +676,7 @@ export default function Booking() {
         checkout_time: toVietnamIsoString(bookingWindow.checkoutDate),
       };
       const res = await API.post("/booking/create", pendingCreatePayload);
-      navigate(`/payment/${res.data.booking_id}`, {
+      navigate(`/payment/success/${res.data.booking_id}`, {
         state: {
           booking: res.data,
         },
@@ -758,13 +845,11 @@ export default function Booking() {
                     <h3>{lot.name}</h3>
                     <p>📍 {lot.address}</p>
                     <p>📏 {lot.distance} km</p>
-                    <p>🏠 {lot.has_roof ? "Có mái che" : "Không mái che"}</p>
-                    <p>💰 {Number(lot.price_per_hour).toLocaleString("vi-VN")}đ/giờ</p>
-                    <p>💵 {Number(lot.price_per_day).toLocaleString("vi-VN")}đ/ngày - {Number(lot.price_per_month).toLocaleString("vi-VN")}đ/tháng</p>
                     {expandedLotId === lot.id ? (
                       <div className="lot-detail-box">
                         <p><strong>ID bãi:</strong> {lot.id}</p>
-                        <p><strong>Tọa độ:</strong> {lot.latitude}, {lot.longitude}</p>
+                        <p><strong>Địa chỉ:</strong> {lot.address || "Chưa có địa chỉ"}</p>
+                        <p><strong>Có mái che:</strong> {lot.has_roof ? "Có" : "Không"}</p>
                         <p><strong>Giá theo giờ:</strong> {Number(lot.price_per_hour || 0).toLocaleString("vi-VN")}đ</p>
                         <p><strong>Giá theo ngày:</strong> {Number(lot.price_per_day || 0).toLocaleString("vi-VN")}đ</p>
                         <p><strong>Giá theo tháng:</strong> {Number(lot.price_per_month || 0).toLocaleString("vi-VN")}đ</p>
@@ -813,6 +898,10 @@ export default function Booking() {
               <h3>Thông tin bãi đỗ xe</h3>
               <p><strong>Bãi xe:</strong> {selectedLot.name}</p>
               <p><strong>Địa chỉ:</strong> {selectedLot.address}</p>
+              <p><strong>Có mái che:</strong> {selectedLot.has_roof ? "Có" : "Không"}</p>
+              <p><strong>Giá theo giờ:</strong> {Number(selectedLot.price_per_hour || 0).toLocaleString("vi-VN")}đ</p>
+              <p><strong>Giá theo ngày:</strong> {Number(selectedLot.price_per_day || 0).toLocaleString("vi-VN")}đ</p>
+              <p><strong>Giá theo tháng:</strong> {Number(selectedLot.price_per_month || 0).toLocaleString("vi-VN")}đ</p>
               <div className="selected-lot-meta">
                 <span>📍 Khoảng cách: {selectedLot.distance} km</span>
                 <span>✅ Slot trống: {availableSlots.length}</span>
@@ -985,8 +1074,8 @@ export default function Booking() {
                           ? selectedLot.price_per_day 
                           : selectedLot.price_per_month;
                         const priceText = modeOption.value === "monthly" 
-                          ? `${Number(price).toLocaleString("vi-VN")}đ/tháng`
-                          : `${Number(price).toLocaleString("vi-VN")}đ/${modeOption.value === "hourly" ? "giờ" : "ngày"}`;
+                          ? `${Number(price || 0).toLocaleString("vi-VN")}đ/tháng`
+                          : `${Number(price || 0).toLocaleString("vi-VN")}đ/${modeOption.value === "hourly" ? "giờ" : "ngày"}`;
                         return (
                           <button
                             key={modeOption.value}
@@ -1138,18 +1227,29 @@ export default function Booking() {
 
             {(bookingError || error) && <p className="booking-error">{bookingError || error}</p>}
 
-            {bookingResult && (
-              <div className="booking-result">
-                <p>{bookingResult.message}</p>
-                <p><strong>Booking ID:</strong> {bookingResult.booking_id}</p>
-                <p><strong>Slot:</strong> {bookingResult.slot?.code}</p>
-                <p><strong>Xe:</strong> {bookingResult.vehicle?.license_plate}</p>
-                <p><strong>Kiểu tính phí:</strong> {bookingResult.billing?.resolved_mode}</p>
-                <p><strong>Tổng tiền:</strong> {Number(bookingResult.total_amount || 0).toLocaleString("vi-VN")}đ</p>
-                <div className="qr-box">
-                  <img src={`http://localhost:8000/${bookingResult.qr_code}`} alt="Mã QR đặt chỗ" />
+            {bookingResult && ReactDOM.createPortal(
+              <div className="qr-modal-overlay" onClick={() => setBookingResult(null)}>
+                <div className="qr-modal" onClick={(e) => e.stopPropagation()}>
+                  <button className="qr-modal-close" onClick={() => setBookingResult(null)}>×</button>
+                  <h2>Mã QR - Booking #{bookingResult.booking_id}</h2>
+                  <div className="qr-modal-image">
+                    <img src={`http://localhost:8000/${bookingResult.qr_code}`} alt="Mã QR đặt chỗ" />
+                  </div>
+                  <p className="booking-result-message">{bookingResult.message}</p>
+                  <div style={{ marginTop: 12 }}>
+                    <button className="qr-modal-download" onClick={() => {
+                      const url = `http://localhost:8000/${bookingResult.qr_code}`;
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `booking-${bookingResult.booking_id}-qr.png`;
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                    }}>Tải QR</button>
+                  </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </section>
         )}

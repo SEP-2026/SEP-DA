@@ -1,14 +1,15 @@
 ﻿from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+import re
+import unicodedata
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.models.models import (
     Booking,
-    EmployeeAccount,
     EmployeeActivity,
     OwnerParking,
     ParkingLot,
@@ -46,10 +47,10 @@ def _get_owner_assignment(owner_id: int, parking_id: int, db: Session) -> OwnerP
     )
 
 
-def _get_employee_parking(employee: EmployeeAccount, db: Session) -> ParkingLot:
-    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == employee.parking_id, ParkingLot.is_active == 1).first()
+def _get_employee_parking(employee: User, db: Session) -> ParkingLot:
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == employee.parking_id).first()
     if not parking_lot:
-        raise HTTPException(status_code=404, detail="Không tìm thấy bãi được phân công")
+        raise HTTPException(status_code=404, detail="Không tìm th?y bãi du?c phân công")
     return parking_lot
 
 
@@ -82,6 +83,12 @@ def _compute_slot_metrics(parking_id: int, db: Session) -> tuple[int, int, int]:
 
 
 def _resolve_status(parking_id: int, db: Session) -> str:
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == parking_id).first()
+    if not parking_lot:
+        return "closed"
+    if int(parking_lot.is_active or 0) != 1:
+        return "locked"
+
     total_slots, occupied_slots, _ = _compute_slot_metrics(parking_id, db)
     state = _get_operational_state(parking_id, db)
     if state.status == "closed":
@@ -92,18 +99,21 @@ def _resolve_status(parking_id: int, db: Session) -> str:
 
 
 def _assert_employee_can_check_in(parking_id: int, db: Session) -> None:
+    if _resolve_status(parking_id, db) == "locked":
+        raise HTTPException(status_code=409, detail="Bãi đang bị khóa, không thể check-in")
+
     total_slots, occupied_slots, _ = _compute_slot_metrics(parking_id, db)
     state = _get_operational_state(parking_id, db)
     if state.status == "closed":
-        raise HTTPException(status_code=409, detail="Bãi đang đóng, không thể check-in")
+        raise HTTPException(status_code=409, detail="Bãi dang dóng, không th? check-in")
     if state.status == "full" or (total_slots > 0 and occupied_slots >= total_slots):
-        raise HTTPException(status_code=409, detail="Bãi đang đầy, không thể check-in")
+        raise HTTPException(status_code=409, detail="Bãi dang d?y, không th? check-in")
 
 
-def _serialize_employee(employee: EmployeeAccount) -> dict:
+def _serialize_employee(employee: User) -> dict:
     return {
         "id": employee.id,
-        "username": employee.username,
+        "username": employee.email,
         "role": employee.role,
         "owner_id": employee.owner_id,
         "parking_id": employee.parking_id,
@@ -116,15 +126,10 @@ def _normalize_identity(value: str) -> str:
     return value.strip().lower()
 
 
-def _resolve_employee_user(employee: EmployeeAccount, db: Session) -> User | None:
-    username_key = _normalize_identity(employee.username or "")
-    if not username_key:
-        return None
-    return (
-        db.query(User)
-        .filter(User.email == username_key, User.role == "employee")
-        .first()
-    )
+def _parking_login_token(parking_name: str) -> str:
+    normalized = unicodedata.normalize("NFKD", parking_name or "").encode("ascii", "ignore").decode("ascii").lower()
+    token = re.sub(r"[^a-z0-9]+", "", normalized)
+    return token or "parking"
 
 
 def _serialize_parking(parking_lot: ParkingLot, db: Session) -> dict:
@@ -141,7 +146,7 @@ def _serialize_parking(parking_lot: ParkingLot, db: Session) -> dict:
 
 
 def _log_activity(
-    employee: EmployeeAccount,
+    employee: User,
     parking_id: int,
     action: str,
     detail: str,
@@ -186,40 +191,35 @@ def create_employee_for_owner(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner account is not authorized")
 
     if owner.role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner mới tạo được employee")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ch? owner m?i t?o du?c employee")
     if _get_owner_assignment(owner.id, parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Owner email is not allowed to manage this parking")
 
-    if len(password or "") < EMPLOYEE_PASSWORD_MIN_LENGTH:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Employee password must be at least {EMPLOYEE_PASSWORD_MIN_LENGTH} characters",
-        )
-    normalized_email = _normalize_identity(email)
+    parking_lot = db.query(ParkingLot).filter(ParkingLot.id == parking_id).first()
+    if not parking_lot:
+        raise HTTPException(status_code=404, detail="Khong tim thay bai do de tao tai khoan nhan vien")
+
+    login_token = _parking_login_token(parking_lot.name)
+    normalized_email = f"bx{login_token}@gmail.com"
+    generated_password = f"{login_token}@hcm"
     normalized_full_name = (full_name or "").strip()
     normalized_phone = (phone or "").strip()
     if not normalized_full_name:
         raise HTTPException(status_code=400, detail="Employee full name is required")
     if not normalized_phone:
         raise HTTPException(status_code=400, detail="Employee phone is required")
-    normalized_username = normalized_email
-    if "@" not in normalized_email:
-        raise HTTPException(status_code=400, detail="Email nhân viên không hợp lệ")
-
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
-        raise HTTPException(status_code=409, detail="Email employee đã tồn tại")
-
-    existing = db.query(EmployeeAccount).filter(EmployeeAccount.username == normalized_username).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Username employee đã tồn tại")
+        raise HTTPException(status_code=409, detail="Email employee dã t?n t?i")
 
     user = User(
         name=normalized_full_name,
         email=normalized_email,
         password="__legacy_disabled__",
-        password_hash=generate_password_hash(password),
+        password_hash=generate_password_hash(generated_password),
         phone=normalized_phone,
+        owner_id=owner.id,
+        parking_id=parking_id,
         role="employee",
         status="active",
         is_active=1,
@@ -227,28 +227,17 @@ def create_employee_for_owner(
     db.add(user)
     db.flush()
 
-    employee = EmployeeAccount(
-        username=normalized_username,
-        password_hash=generate_password_hash(password),
-        owner_id=owner.id,
-        parking_id=parking_id,
-        role="employee",
-        status="active",
-        is_active=1,
-    )
-    db.add(employee)
-    db.flush()
-
     _get_operational_state(parking_id, db)
-    _log_activity(employee, parking_id, "employee_created", f"Owner #{owner.id} tạo employee {normalized_username}", db)
+    _log_activity(user, parking_id, "employee_created", f"Owner #{owner.id} created employee {normalized_email}", db)
     db.commit()
-    db.refresh(employee)
+    db.refresh(user)
     return {
-        **_serialize_employee(employee),
+        **_serialize_employee(user),
         "user_id": user.id,
         "email": user.email,
         "full_name": user.name,
         "phone": user.phone,
+        "default_password": generated_password,
     }
 
 
@@ -283,9 +272,9 @@ def _is_preferred_slot_booking(candidate: Booking, current: Booking) -> bool:
 
 def get_owner_employees(owner: User, db: Session) -> dict:
     employees = (
-        db.query(EmployeeAccount)
-        .filter(EmployeeAccount.owner_id == owner.id)
-        .order_by(EmployeeAccount.created_at.desc(), EmployeeAccount.id.desc())
+        db.query(User)
+        .filter(User.owner_id == owner.id, User.role == "employee", User.is_active == 1)
+        .order_by(User.created_at.desc(), User.id.desc())
         .all()
     )
     if not employees:
@@ -295,22 +284,16 @@ def get_owner_employees(owner: User, db: Session) -> dict:
     parking_rows = db.query(ParkingLot).filter(ParkingLot.id.in_(parking_ids)).all()
     parking_names = {int(item.id): item.name for item in parking_rows}
 
-    usernames = [_normalize_identity(item.username) for item in employees]
-    user_rows = db.query(User).filter(User.email.in_(usernames)).all()
-    users_by_email = {_normalize_identity(item.email): item for item in user_rows}
-
     result = []
     for employee in employees:
-        employee_email = _normalize_identity(employee.username)
-        user = users_by_email.get(employee_email)
         result.append(
             {
                 "id": employee.id,
-                "user_id": user.id if user else None,
-                "username": employee.username,
-                "email": user.email if user else employee.username,
-                "full_name": user.name if user else None,
-                "phone": user.phone if user else None,
+                "user_id": employee.id,
+                "username": employee.email,
+                "email": employee.email,
+                "full_name": employee.name,
+                "phone": employee.phone,
                 "role": employee.role,
                 "owner_id": employee.owner_id,
                 "parking_id": employee.parking_id,
@@ -334,8 +317,8 @@ def update_owner_employee(
     parking_id: int | None = None,
 ) -> dict:
     employee = (
-        db.query(EmployeeAccount)
-        .filter(EmployeeAccount.id == employee_id, EmployeeAccount.owner_id == owner.id)
+        db.query(User)
+        .filter(User.id == employee_id, User.owner_id == owner.id, User.role == "employee")
         .first()
     )
     if not employee:
@@ -345,30 +328,25 @@ def update_owner_employee(
     if _get_owner_assignment(owner.id, next_parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Owner email is not allowed to manage this parking")
 
-    linked_user = _resolve_employee_user(employee, db)
-
     if full_name is not None and not full_name.strip():
         raise HTTPException(status_code=400, detail="Employee full name is required")
     if phone is not None and not phone.strip():
         raise HTTPException(status_code=400, detail="Employee phone is required")
 
-    next_email = _normalize_identity(email) if email else _normalize_identity(employee.username)
+    next_email = _normalize_identity(email) if email else _normalize_identity(employee.email)
     if "@" not in next_email:
         raise HTTPException(status_code=400, detail="Employee email is invalid")
 
     duplicate_user = db.query(User).filter(User.email == next_email).first()
-    if duplicate_user and (linked_user is None or duplicate_user.id != linked_user.id):
+    if duplicate_user and duplicate_user.id != employee.id:
         raise HTTPException(status_code=409, detail="Employee email already exists")
 
-    duplicate_employee = db.query(EmployeeAccount).filter(
-        EmployeeAccount.username == next_email,
-        EmployeeAccount.id != employee.id,
-    ).first()
-    if duplicate_employee:
-        raise HTTPException(status_code=409, detail="Employee account already exists")
-
-    employee.username = next_email
+    employee.email = next_email
     employee.parking_id = next_parking_id
+    if full_name is not None:
+        employee.name = full_name.strip()
+    if phone is not None:
+        employee.phone = phone.strip() or None
 
     if password:
         if len(password) < EMPLOYEE_PASSWORD_MIN_LENGTH:
@@ -377,42 +355,18 @@ def update_owner_employee(
                 detail=f"Employee password must be at least {EMPLOYEE_PASSWORD_MIN_LENGTH} characters",
             )
         password_hash = generate_password_hash(password)
+        employee.password = "__legacy_disabled__"
         employee.password_hash = password_hash
-    else:
-        password_hash = employee.password_hash
-
-    if linked_user is None:
-        linked_user = User(
-            name=(full_name or next_email).strip(),
-            email=next_email,
-            password="__legacy_disabled__",
-            password_hash=password_hash or generate_password_hash("employee123"),
-            phone=(phone or "").strip() or None,
-            role="employee",
-            status="active",
-            is_active=1,
-        )
-        db.add(linked_user)
-    else:
-        linked_user.email = next_email
-        if full_name is not None:
-            linked_user.name = full_name.strip()
-        if phone is not None:
-            linked_user.phone = phone.strip() or None
-        if password:
-            linked_user.password = "__legacy_disabled__"
-            linked_user.password_hash = password_hash
 
     db.commit()
     db.refresh(employee)
-    linked_user = _resolve_employee_user(employee, db)
     return {
         "id": employee.id,
-        "user_id": linked_user.id if linked_user else None,
-        "username": employee.username,
-        "email": linked_user.email if linked_user else employee.username,
-        "full_name": linked_user.name if linked_user else None,
-        "phone": linked_user.phone if linked_user else None,
+        "user_id": employee.id,
+        "username": employee.email,
+        "email": employee.email,
+        "full_name": employee.name,
+        "phone": employee.phone,
         "role": employee.role,
         "owner_id": employee.owner_id,
         "parking_id": employee.parking_id,
@@ -426,19 +380,15 @@ def update_owner_employee(
 
 def delete_owner_employee(owner: User, employee_id: int, db: Session) -> dict:
     employee = (
-        db.query(EmployeeAccount)
-        .filter(EmployeeAccount.id == employee_id, EmployeeAccount.owner_id == owner.id)
+        db.query(User)
+        .filter(User.id == employee_id, User.owner_id == owner.id, User.role == "employee")
         .first()
     )
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    linked_user = _resolve_employee_user(employee, db)
-
     db.query(EmployeeActivity).filter(EmployeeActivity.employee_id == employee.id).delete(synchronize_session=False)
     db.delete(employee)
-    if linked_user is not None:
-        db.delete(linked_user)
 
     db.commit()
     return {"message": "Deleted employee account permanently"}
@@ -446,30 +396,45 @@ def delete_owner_employee(owner: User, employee_id: int, db: Session) -> dict:
 
 def employee_login(username: str, password: str, db: Session) -> dict:
     normalized_username = username.strip().lower()
-    employee = (
-        db.query(EmployeeAccount)
-        .filter(EmployeeAccount.username == normalized_username, EmployeeAccount.is_active == 1)
-        .first()
-    )
+    employee = db.query(User).filter(User.email == normalized_username, User.role == "employee", User.is_active == 1).first()
+    if not employee and "@" not in normalized_username:
+        employee = (
+            db.query(User)
+            .filter(
+                User.role == "employee",
+                User.is_active == 1,
+                or_(User.email == normalized_username, User.email.like(f"{normalized_username}@%")),
+            )
+            .first()
+        )
     if not employee or employee.status != "active":
-        raise HTTPException(status_code=401, detail="Sai username hoặc mật khẩu")
-    if not employee.password_hash or not check_password_hash(employee.password_hash, password):
-        raise HTTPException(status_code=401, detail="Sai username hoặc mật khẩu")
+        raise HTTPException(status_code=401, detail="Sai username ho?c m?t kh?u")
+    password_ok = False
+    if employee.password_hash:
+        password_ok = check_password_hash(employee.password_hash, password)
+    elif employee.password:
+        password_ok = employee.password == password
+        if password_ok:
+            employee.password_hash = generate_password_hash(password)
+            employee.password = "__legacy_disabled__"
+            db.commit()
+    if not password_ok:
+        raise HTTPException(status_code=401, detail="Sai username ho?c m?t kh?u")
 
     token, expires_at, _ = create_access_token_for_subject(
-        subject=f"employee:{employee.id}",
+        subject=str(employee.id),
         role="employee",
-        identity=employee.username,
+        identity=employee.email,
     )
     return {
-        "message": "Đăng nhập employee thành công",
+        "message": "Ðang nh?p employee thành công",
         "token": token,
         "expires_in": int((expires_at - datetime.now(expires_at.tzinfo)).total_seconds()),
         "user": _serialize_employee(employee),
     }
 
 
-def get_employee_profile(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_profile(employee: User, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     return {
         "employee": _serialize_employee(employee),
@@ -477,12 +442,12 @@ def get_employee_profile(employee: EmployeeAccount, db: Session) -> dict:
     }
 
 
-def get_employee_dashboard(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_dashboard(employee: User, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     return _serialize_parking(parking_lot, db)
 
 
-def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_vehicles(employee: User, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     rows = db.execute(
         text(
@@ -531,7 +496,7 @@ def get_employee_vehicles(employee: EmployeeAccount, db: Session) -> dict:
     return {"vehicles": vehicles, "total_count": len(vehicles)}
 
 
-def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_slots_overview(employee: User, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     slots = (
         db.query(ParkingSlot)
@@ -564,8 +529,8 @@ def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
                 "code": _display_slot_code(slot),
                 "booking_id": int(active_booking.id) if active_booking else None,
                 "booking_status": (active_booking.status if active_booking else None),
-                "zone": slot.zone or "Chưa phân khu",
-                "level": slot.level or "Chưa gán tầng",
+                "zone": slot.zone or "Chua phân khu",
+                "level": slot.level or "Chua gán t?ng",
                 "status": status,
                 "owner_name": active_booking.user.name if active_booking and active_booking.user else None,
                 "owner_phone": active_booking.user.phone if active_booking and active_booking.user else None,
@@ -594,7 +559,7 @@ def get_employee_slots_overview(employee: EmployeeAccount, db: Session) -> dict:
     }
 
 
-def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
+def get_employee_revenue(employee: User, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     today = datetime.now(APP_TIMEZONE).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     month_start = today.replace(day=1)
@@ -699,30 +664,32 @@ def get_employee_revenue(employee: EmployeeAccount, db: Session) -> dict:
     }
 
 
-def update_employee_parking_status(employee: EmployeeAccount, status_value: str, db: Session) -> dict:
-    _get_employee_parking(employee, db)
+def update_employee_parking_status(employee: User, status_value: str, db: Session) -> dict:
+    parking_lot = _get_employee_parking(employee, db)
+    if int(parking_lot.is_active or 0) != 1:
+        raise HTTPException(status_code=409, detail="Bãi đang bị admin khóa, không thể đổi trạng thái vận hành")
     state = _get_operational_state(employee.parking_id, db)
     state.status = status_value
     state.updated_at = datetime.utcnow()
-    _log_activity(employee, employee.parking_id, "parking_status_updated", f"Cập nhật trạng thái bãi sang {status_value}", db)
+    _log_activity(employee, employee.parking_id, "parking_status_updated", f"C?p nh?t tr?ng thái bãi sang {status_value}", db)
     db.commit()
     return get_employee_dashboard(employee, db)
 
 
-def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> dict:
+def employee_check_in(employee: User, qr_data: str, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     _assert_employee_can_check_in(parking_lot.id, db)
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="Không tìm th?y booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
-        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
+        raise HTTPException(status_code=403, detail="Booking không thu?c bãi du?c phân công")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_in(
         booking=booking,
         payment=payment,
-        gate_id=f"EMP-{employee.username}",
+        gate_id=f"EMP-{employee.email}",
         source_type="qr_scan",
         actor=employee,
         db=db,
@@ -743,13 +710,13 @@ def employee_check_in(employee: EmployeeAccount, qr_data: str, db: Session) -> d
     }
 
 
-def employee_get_gate_booking(employee: EmployeeAccount, booking_id: int, db: Session) -> dict:
+def employee_get_gate_booking(employee: User, booking_id: int, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="Không tìm th?y booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
-        raise HTTPException(status_code=403, detail="Employee không có quyền thao tác tại bãi này")
+        raise HTTPException(status_code=403, detail="Employee không có quy?n thao tác t?i bãi này")
     payment = _get_payment(booking.id, db, lock=False)
     _log_activity(
         employee,
@@ -763,14 +730,14 @@ def employee_get_gate_booking(employee: EmployeeAccount, booking_id: int, db: Se
     return _serialize_booking_detail(booking, payment, db, _local_now())
 
 
-def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: str, db: Session) -> dict:
+def employee_check_out(employee: User, qr_data: str, payment_method: str, db: Session) -> dict:
     parking_lot = _get_employee_parking(employee, db)
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
+        raise HTTPException(status_code=404, detail="Không tìm th?y booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
-        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
+        raise HTTPException(status_code=403, detail="Booking không thu?c bãi du?c phân công")
 
     # Fallback for legacy/edge data where a vehicle is physically occupying a slot but booking was not transitioned to checked_in.
     now = _local_now()
@@ -787,7 +754,7 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
     detail = _execute_check_out(
         booking=booking,
         payment=payment,
-        gate_id=f"EMP-{employee.username}",
+        gate_id=f"EMP-{employee.email}",
         source_type="qr_scan",
         payment_method=payment_method,
         actor=employee,
@@ -812,7 +779,7 @@ def employee_check_out(employee: EmployeeAccount, qr_data: str, payment_method: 
 
 
 def get_employee_history(
-    employee: EmployeeAccount,
+    employee: User,
     db: Session,
     *,
     limit: int = 200,
@@ -839,3 +806,4 @@ def get_employee_history(
         for row in rows
     ]
     return {"history": history, "total_count": len(history)}
+

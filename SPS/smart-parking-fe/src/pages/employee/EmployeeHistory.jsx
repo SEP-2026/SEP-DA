@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 
 import { getEmployeeHistory } from "../../employee/employeeService";
 
@@ -10,11 +10,17 @@ const ACTION_LABEL = {
   resolve_booking: "Xem thông tin booking",
 };
 
+const MONEY_RELATED_ACTIONS = new Set(["check_out"]);
+
+function formatCurrency(value) {
+  return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
+}
+
 function decodeMojibake(value) {
   if (!value || typeof value !== "string") {
     return value || "";
   }
-  if (!/[ÃƒÃ‚]/.test(value)) {
+  if (!/[ÃÂ]/.test(value)) {
     return value;
   }
   try {
@@ -69,18 +75,21 @@ export default function EmployeeHistory() {
       <div className="employee-history-list">
         {data.history.length === 0 ? <p className="employee-note">Chưa có hoạt động nào được ghi nhận.</p> : null}
 
-        {data.history.map((item) => (
-          <article key={item.id} className="employee-history-item employee-history-item--timeline">
-            <div>
-              <strong>{ACTION_LABEL[item.action] || decodeMojibake(item.action)}</strong>
-              <p>{decodeMojibake(item.detail) || "Không có mô tả"}</p>
-            </div>
-            <div className="employee-history-meta">
-              <p>{new Date(item.created_at).toLocaleString("vi-VN")}</p>
-              <span className="employee-status-pill">{Number(item.amount || 0).toLocaleString("vi-VN")}đ</span>
-            </div>
-          </article>
-        ))}
+        {data.history.map((item) => {
+          const showAmount = MONEY_RELATED_ACTIONS.has(item.action);
+          return (
+            <article key={item.id} className="employee-history-item employee-history-item--timeline">
+              <div>
+                <strong>{ACTION_LABEL[item.action] || item.action}</strong>
+                <p>{decodeMojibake(item.detail) || "Không có mô tả"}</p>
+              </div>
+              <div className="employee-history-meta">
+                <p>{new Date(item.created_at).toLocaleString("vi-VN")}</p>
+                {showAmount ? <span className="employee-status-pill">{formatCurrency(item.amount)}</span> : null}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

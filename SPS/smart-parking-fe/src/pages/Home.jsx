@@ -123,6 +123,20 @@ function getStatusTone(status) {
   return "info";
 }
 
+function mapOverviewLotToBookingLot(lot) {
+  return {
+    id: lot.parking_id,
+    name: lot.parking_name || "",
+    address: lot.parking_address || "",
+    district: lot.district || "",
+    has_roof: Boolean(lot.has_roof),
+    distance: lot.distance ?? "",
+    price_per_hour: Number(lot.price_per_hour || 0),
+    price_per_day: Number(lot.price_per_day || 0),
+    price_per_month: Number(lot.price_per_month || 0),
+  };
+}
+
 export default function Home({ role = "" }) {
   const navigate = useNavigate();
   const [parkingLots, setParkingLots] = useState([]);
@@ -323,7 +337,14 @@ export default function Home({ role = "" }) {
       if (event && typeof event.stopPropagation === "function") {
         event.stopPropagation();
       }
-      navigate(`/booking?lotId=${lot.parking_id}&slotId=${slot.id}&slotName=${encodeURIComponent(slot.code || slot.slot_number || "")}`);
+      navigate(
+        `/booking?lotId=${lot.parking_id}&slotId=${slot.id}&slotName=${encodeURIComponent(slot.code || slot.slot_number || "")}`,
+        {
+          state: {
+            selectedLot: mapOverviewLotToBookingLot(lot),
+          },
+        },
+      );
       return;
     }
 
@@ -526,7 +547,11 @@ export default function Home({ role = "" }) {
                       className="action-btn action-btn--primary"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/booking?lotId=${lot.parking_id}`);
+                        navigate(`/booking?lotId=${lot.parking_id}`, {
+                          state: {
+                            selectedLot: mapOverviewLotToBookingLot(lot),
+                          },
+                        });
                       }}
                       disabled={lot.available_slots === 0}
                     >

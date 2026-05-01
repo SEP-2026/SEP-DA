@@ -16,14 +16,14 @@ export function formatDateTime(value) {
 export function getStatusMeta(status) {
   const map = {
     available: { label: "Trống", tone: "success" },
-    active: { label: "Active", tone: "success" },
-    locked: { label: "Locked", tone: "danger" },
+    active: { label: "Hoạt động", tone: "success" },
+    locked: { label: "Đã khóa", tone: "danger" },
     reserved: { label: "Đã đặt", tone: "info" },
     in_use: { label: "Đang sử dụng", tone: "warning" },
     maintenance: { label: "Bảo trì", tone: "danger" },
-    banned: { label: "Banned", tone: "danger" },
+    banned: { label: "Bị khóa", tone: "danger" },
     suspended: { label: "Tạm khóa", tone: "danger" },
-    blocked: { label: "Blocked", tone: "danger" },
+    blocked: { label: "Bị chặn", tone: "danger" },
     pending: { label: "Chờ xác nhận", tone: "info" },
     booked: { label: "Đã đặt", tone: "success" },
     checked_in: { label: "Đã check-in", tone: "warning" },

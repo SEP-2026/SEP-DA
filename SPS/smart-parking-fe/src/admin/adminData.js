@@ -1,7 +1,7 @@
 export const ADMIN_NAV_ITEMS = [
   { to: "/admin", label: "Bảng điều khiển", icon: "dashboard" },
   { to: "/admin/users", label: "Người dùng", icon: "users" },
-  { to: "/admin/owners", label: "Chủ bãi", icon: "owners" },
+  { to: "/admin/owners", label: "Khu vực", icon: "owners" },
   { to: "/admin/parking-lots", label: "Bãi đỗ", icon: "parking" },
   { to: "/admin/bookings", label: "Đặt chỗ", icon: "booking" },
   { to: "/admin/revenue", label: "Doanh thu", icon: "revenue" },
@@ -19,8 +19,8 @@ export const ADMIN_ROUTE_META = {
     description: "Quản lý người dùng cuối, trạng thái tài khoản và hoạt động đặt chỗ.",
   },
   "/admin/owners": {
-    title: "Quản lý chủ bãi",
-    description: "Quản trị tài khoản owner, bãi đang quản lý và hiệu suất vận hành.",
+    title: "Quản lý khu vực",
+    description: "Quản trị tài khoản chủ bãi, khu vực đang phụ trách và hiệu suất vận hành.",
   },
   "/admin/parking-lots": {
     title: "Quản lý bãi đỗ",

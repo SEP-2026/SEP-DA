@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timezone
 import os
 import unicodedata
+import logging
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 import json
@@ -17,7 +18,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.models import Booking, ParkingLot, ParkingPrice, ParkingSlot, Payment, User, UserVehicle
 from app.routes.auth import get_current_user
+from app.services.wallet_service import (
+    InsufficientWalletBalance,
+    WalletError,
+    get_wallet_summary,
+    reserve_wallet_amount,
+    settle_booking_payment,
+)
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -411,9 +420,10 @@ def _serialize_booking_response(
     booking_mode: str,
     month_count: int | None,
     existing_pending_booking: bool = False,
+    wallet: dict | None = None,
 ) -> dict:
     return {
-        "message": "Booking created successfully" if not existing_pending_booking else "Đã có booking pending, chuyển sang thanh toán",
+        "message": "Booking created successfully" if not existing_pending_booking else "Đã có booking pending, vui lòng kiểm tra lại",
         "booking_id": booking.id,
         "booking_status": booking.status,
         "qr_code": booking.qr_code,
@@ -435,6 +445,7 @@ def _serialize_booking_response(
         "checkout_time": booking.expire_time,
         "payment_required": booking.status == "pending",
         "existing_pending_booking": existing_pending_booking,
+        "wallet": wallet,
     }
 
 
@@ -490,6 +501,7 @@ def get_my_booking_detail(
         "qr_code": booking.qr_code,
         "qr_url": booking.qr_code,
         "payment_required": payment_required,
+        "wallet": get_wallet_summary(db, current_user.id),
         "parking": {
             "id": parking_lot.id if parking_lot else None,
             "name": parking_lot.name if parking_lot else None,
@@ -676,6 +688,20 @@ def create_booking(
         db.add(booking)
         db.flush()
 
+        reserved_amount = round(float(billing["total_amount"] or 0) * 0.3, 2)
+        remaining_amount = round(float(billing["total_amount"] or 0) - reserved_amount, 2)
+        if reserved_amount > 0:
+            reserve_wallet_amount(
+                db=db,
+                user_id=user.id,
+                amount=reserved_amount,
+                reference_type="booking",
+                reference_id=booking.id,
+                note=f"Giữ 30% cho booking #{booking.id}",
+            )
+
+        booking.status = "booked"
+
         qr_content = _create_booking_qr_content(booking, slot, user)
         qr_path = f"qrcodes/booking_{booking.id}.png"
         _save_booking_qr(qr_content, qr_path)
@@ -713,7 +739,11 @@ def create_booking(
             },
             booking_mode=booking.booking_mode,
             month_count=payload.month_count,
+            wallet=get_wallet_summary(db, user.id),
         )
+    except (WalletError, InsufficientWalletBalance) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HTTPException:
         db.rollback()
         raise
@@ -747,13 +777,19 @@ def check_in(booking_id: int, db: Session = Depends(get_db)):
 
 @router.post("/check-out")
 def check_out(booking_id: int, db: Session = Depends(get_db)):
+    logger.info(f"[CHECKOUT] Starting checkout for booking_id={booking_id}")
+    
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
     if not booking:
+        logger.error(f"[CHECKOUT] Booking not found: {booking_id}")
         raise HTTPException(status_code=404, detail="Không tìm thấy booking")
 
-    if booking.status != "checked_in":
-        raise HTTPException(status_code=400, detail="Chưa check-in")
+    logger.info(f"[CHECKOUT] Booking status: {booking.status}, user_id: {booking.user_id}, total_amount: {booking.total_amount}")
+    
+    if booking.status not in ["checked_in", "booked"]:
+        logger.error(f"[CHECKOUT] Invalid status for checkout: {booking.status}")
+        raise HTTPException(status_code=400, detail=f"Booking ở trạng thái {booking.status}, không thể checkout")
 
     actual_checkout = datetime.utcnow()
     overtime_fee = 0.0
@@ -763,21 +799,55 @@ def check_out(booking_id: int, db: Session = Depends(get_db)):
         price = db.query(ParkingPrice).filter(ParkingPrice.parking_id == booking.parking_lot_id).first()
         if price:
             overtime_fee = round(max(0, extra_hours) * float(price.price_per_hour), 2)
+            logger.info(f"[CHECKOUT] Overtime detected: {extra_hours:.2f} hours, fee: {overtime_fee}")
 
-    payment = db.query(Payment).filter(Payment.booking_id == booking.id).first()
-    if payment and overtime_fee > 0:
-        payment.overtime_fee = overtime_fee
+    reserved_amount = round(float(booking.total_amount or 0) * 0.3, 2)
+    base_remaining = round(float(booking.total_amount or 0) - reserved_amount, 2)
+    remaining_amount = round(base_remaining + overtime_fee, 2)
+    
+    logger.info(f"[CHECKOUT] Payment breakdown - total: {booking.total_amount}, reserved: {reserved_amount}, remaining: {remaining_amount}, overtime: {overtime_fee}")
+
+    # Check wallet before settle
+    wallet_before = get_wallet_summary(db, booking.user_id)
+    logger.info(f"[CHECKOUT] Wallet BEFORE settle - balance: {wallet_before.get('balance')}, reserved: {wallet_before.get('reserved_balance')}")
+
+    try:
+        logger.info(f"[CHECKOUT] Calling settle_booking_payment with reserved={reserved_amount}, capture={remaining_amount}")
+        settle_result = settle_booking_payment(
+            db=db,
+            user_id=booking.user_id,
+            reserved_amount=reserved_amount,
+            capture_amount=remaining_amount,
+            reference_type="booking",
+            reference_id=booking.id,
+            note=f"Chốt thanh toán booking #{booking.id}",
+        )
+        logger.info(f"[CHECKOUT] settle_booking_payment returned: {settle_result}")
+    except (WalletError, InsufficientWalletBalance) as exc:
+        logger.error(f"[CHECKOUT] Wallet error during settle: {str(exc)}")
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Lỗi thanh toán: {str(exc)}") from exc
+    except Exception as exc:
+        logger.error(f"[CHECKOUT] Unexpected error during settle: {str(exc)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(exc)}") from exc
 
     booking.status = "completed"
     if booking.slot:
         booking.slot.status = "available"
 
     db.commit()
+    logger.info(f"[CHECKOUT] Booking #{booking.id} marked as completed and committed to DB")
+
+    # Check wallet after settle
+    wallet_after = get_wallet_summary(db, booking.user_id)
+    logger.info(f"[CHECKOUT] Wallet AFTER settle - balance: {wallet_after.get('balance')}, reserved: {wallet_after.get('reserved_balance')}")
 
     return {
         "message": "Check-out thành công",
         "booking_id": booking.id,
         "booking_status": booking.status,
         "overtime_fee": overtime_fee,
-        "total_paid": round(float(payment.amount + payment.overtime_fee), 2) if payment else None,
+        "total_paid": round(float(booking.total_amount or 0) + overtime_fee, 2),
+        "wallet": wallet_after,
     }
