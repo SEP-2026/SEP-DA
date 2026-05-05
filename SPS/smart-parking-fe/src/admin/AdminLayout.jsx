@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { ADMIN_NAV_ITEMS, ADMIN_ROUTE_META } from "./adminData";
 import { AdminIcon } from "./AdminIcons";
@@ -17,24 +17,31 @@ export default function AdminLayout({ auth, onLogout }) {
   const notificationsCount = adminData?.notifications?.length || adminData?.logs?.length || 0;
   const adminDisplayName = auth?.user?.full_name || auth?.user?.name || auth?.user?.email || "Admin";
 
-  const refreshAdminData = useCallback(async () => {
-    setLoading(true);
+  const refreshAdminData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent && !adminData) {
+      setLoading(true);
+    }
+
     try {
       const res = await API.get("/admin/bootstrap");
       setAdminData(res.data);
       setSyncNote("Đồng bộ từ CSDL");
     } catch {
-      setAdminData(null);
       setSyncNote("Không tải được dữ liệu admin");
+      if (!adminData) {
+        setAdminData(null);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [adminData]);
 
-  useRealtimeRefresh(refreshAdminData, { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2500 });
+  useRealtimeRefresh(() => refreshAdminData({ silent: true }), { enabled: Boolean(auth?.token), minRefreshIntervalMs: 2500 });
 
   useEffect(() => {
-    refreshAdminData();
+    refreshAdminData({ silent: false });
   }, [refreshAdminData]);
 
   useEffect(() => {
@@ -73,7 +80,7 @@ export default function AdminLayout({ auth, onLogout }) {
     async execWithRefresh(task) {
       try {
         await task();
-        await refreshAdminData();
+        await refreshAdminData({ silent: false });
         return true;
       } catch (error) {
         const message = error?.response?.data?.detail || "Không thể thực hiện thao tác";
@@ -123,7 +130,7 @@ export default function AdminLayout({ auth, onLogout }) {
           owners: [...(prev?.owners || []), synth],
         }));
       }
-      refreshAdminData();
+      refreshAdminData({ silent: false });
     },
     async updateParkingLot(id, payload) {
       await actions.execWithRefresh(() => API.patch(`/admin/parking-lots/${id}`, payload));
@@ -145,12 +152,12 @@ export default function AdminLayout({ auth, onLogout }) {
     },
     async rebuildOwnerAssignments() {
       const res = await API.post("/admin/rebuild-owner-assignments");
-      await refreshAdminData();
+      await refreshAdminData({ silent: false });
       return res.data;
     },
     async autoAssignOwners() {
       const res = await API.post("/admin/auto-assign-owners");
-      await refreshAdminData();
+      await refreshAdminData({ silent: false });
       return res.data;
     },
     async getOwnerAssignmentsDebug() {
@@ -227,14 +234,14 @@ export default function AdminLayout({ auth, onLogout }) {
           </div>
         </header>
         <main className="admin-content">
-          {loading ? <section className="admin-state-card">Đang tải dữ liệu admin từ CSDL...</section> : null}
+          {loading && !adminData ? <section className="admin-state-card">Đang tải dữ liệu admin từ CSDL...</section> : null}
           {!loading && !adminData ? (
             <section className="admin-state-card admin-state-card--error">
               Không lấy được dữ liệu admin từ backend.
               Có thể backend chưa restart để nhận route `/admin/*` mới hoặc API đang lỗi.
             </section>
           ) : null}
-          {!loading && adminData ? <Outlet context={{ auth, adminData, stats, actions }} /> : null}
+          {adminData ? <Outlet context={{ auth, adminData, stats, actions }} /> : null}
         </main>
       </div>
     </div>
