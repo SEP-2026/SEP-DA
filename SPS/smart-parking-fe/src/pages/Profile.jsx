@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import API, { getAuth, saveAuth } from "../services/api";
+import { buildDynamicVietQrUrl } from "../features/gate/gateFormatters";
 import { isStrongPassword, PASSWORD_POLICY_TEXT } from "../services/passwordPolicy";
 import "./Profile.css";
 
@@ -115,6 +116,7 @@ export default function Profile({ onAuthUpdated }) {
   });
   const [walletTopUpAmount, setWalletTopUpAmount] = useState("");
   const [walletPendingAmount, setWalletPendingAmount] = useState(null);
+  const [walletTopUpQrUrl, setWalletTopUpQrUrl] = useState("");
 
   const greetingName = useMemo(() => personalForm.name || auth?.user?.name || "User", [personalForm.name, auth?.user?.name]);
   const sectionTitle = useMemo(() => {
@@ -453,12 +455,32 @@ export default function Profile({ onAuthUpdated }) {
     }
 
     setWalletPendingAmount(amount);
+    setWalletTopUpQrUrl("");
   };
 
   const confirmTopUpWallet = async () => {
     if (!Number.isFinite(walletPendingAmount) || walletPendingAmount <= 0) {
       setWalletNotice("Số tiền nạp phải lớn hơn 0");
       setWalletPendingAmount(null);
+      setWalletTopUpQrUrl("");
+      return;
+    }
+
+    const qrUrl = buildDynamicVietQrUrl(walletPendingAmount, `WALLET-${auth?.user?.id || "USER"}`);
+    if (!qrUrl) {
+      setWalletNotice("Không thể tạo QR chuyển khoản");
+      return;
+    }
+
+    setWalletTopUpQrUrl(qrUrl);
+    setWalletNotice("Quét QR và chuyển đúng số tiền, sau đó bấm xác nhận để cộng vào ví");
+  };
+
+  const completeTopUpWallet = async () => {
+    if (!Number.isFinite(walletPendingAmount) || walletPendingAmount <= 0) {
+      setWalletNotice("Số tiền nạp phải lớn hơn 0");
+      setWalletPendingAmount(null);
+      setWalletTopUpQrUrl("");
       return;
     }
 
@@ -466,11 +488,12 @@ export default function Profile({ onAuthUpdated }) {
       setWalletLoading(true);
       const res = await API.post("/wallet/topup", {
         amount: walletPendingAmount,
-        note: "Nạp tiền",
+        note: "Nạp ví qua QR chuyển khoản",
       });
       setWalletInfo(res.data?.wallet || { balance: 0, reserved_balance: 0 });
       setWalletTopUpAmount("");
       setWalletPendingAmount(null);
+      setWalletTopUpQrUrl("");
       setWalletNotice("Nạp tiền thành công");
     } catch (err) {
       setWalletNotice(normalizeError(err, "Nạp tiền thất bại"));
@@ -481,6 +504,7 @@ export default function Profile({ onAuthUpdated }) {
 
   const cancelTopUpWallet = () => {
     setWalletPendingAmount(null);
+    setWalletTopUpQrUrl("");
   };
 
   if (loading) {
@@ -691,6 +715,7 @@ export default function Profile({ onAuthUpdated }) {
                       onClick={() => {
                         setWalletTopUpAmount(String(amount));
                         setWalletPendingAmount(null);
+                        setWalletTopUpQrUrl("");
                       }}
                     >
                       {amount.toLocaleString("vi-VN")} đ
@@ -710,6 +735,9 @@ export default function Profile({ onAuthUpdated }) {
                       if (walletPendingAmount !== null) {
                         setWalletPendingAmount(null);
                       }
+                      if (walletTopUpQrUrl) {
+                        setWalletTopUpQrUrl("");
+                      }
                     }}
                   />
                 </div>
@@ -720,15 +748,34 @@ export default function Profile({ onAuthUpdated }) {
 
                 {walletPendingAmount !== null ? (
                   <div className="profile-topup-confirm">
-                    <p>Xác nhận nạp {walletPendingAmount.toLocaleString("vi-VN")} đ vào ví?</p>
-                    <div className="profile-topup-confirm-actions">
-                      <button type="button" className="profile-action-btn profile-action-confirm" onClick={confirmTopUpWallet} disabled={walletLoading}>
-                        Xác nhận
-                      </button>
-                      <button type="button" className="profile-action-btn profile-action-cancel" onClick={cancelTopUpWallet} disabled={walletLoading}>
-                        Hủy
-                      </button>
-                    </div>
+                    {!walletTopUpQrUrl ? (
+                      <>
+                        <p>Xác nhận tạo QR chuyển khoản {walletPendingAmount.toLocaleString("vi-VN")} đ để nạp ví?</p>
+                        <div className="profile-topup-confirm-actions">
+                          <button type="button" className="profile-action-btn profile-action-confirm" onClick={confirmTopUpWallet} disabled={walletLoading}>
+                            Tạo QR chuyển khoản
+                          </button>
+                          <button type="button" className="profile-action-btn profile-action-cancel" onClick={cancelTopUpWallet} disabled={walletLoading}>
+                            Hủy
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p>Quét QR để chuyển đúng số tiền: {walletPendingAmount.toLocaleString("vi-VN")} đ</p>
+                        <div className="profile-topup-qr-box">
+                          <img src={walletTopUpQrUrl} alt="QR topup wallet" />
+                        </div>
+                        <div className="profile-topup-confirm-actions">
+                          <button type="button" className="profile-action-btn profile-action-confirm" onClick={completeTopUpWallet} disabled={walletLoading}>
+                            {walletLoading ? "Đang xử lý..." : "Tôi đã chuyển khoản thành công"}
+                          </button>
+                          <button type="button" className="profile-action-btn profile-action-cancel" onClick={cancelTopUpWallet} disabled={walletLoading}>
+                            Hủy
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : null}
 
