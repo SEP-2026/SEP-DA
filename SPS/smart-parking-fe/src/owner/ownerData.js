@@ -27,6 +27,10 @@ export const OWNER_ROUTE_META = {
     title: "Quản lý khách hàng",
     description: "Xem thông tin khách, lịch sử booking, thanh toán và hỗ trợ khi cần thiết.",
   },
+  "/owner/employees": {
+    title: "Quản lý tài khoản bãi",
+    description: "Tạo, sửa và xóa tài khoản nhân viên vận hành tại khu vực /employee.",
+  },
   "/owner/revenue": {
     title: "Doanh thu",
     description: "Theo dõi doanh thu của bãi theo ngày hoặc tuần và kiểm tra giao dịch gần đây.",

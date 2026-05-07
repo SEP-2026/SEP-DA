@@ -16,6 +16,7 @@ import RevenuePage from "./pages/admin/RevenuePage";
 import UserManagement from "./pages/admin/UserManagement";
 import OwnerBookings from "./pages/owner/OwnerBookings";
 import OwnerCustomers from "./pages/owner/OwnerCustomers";
+import OwnerEmployees from "./pages/owner/OwnerEmployees";
 import OwnerNotifications from "./pages/owner/OwnerNotifications";
 import OwnerOverview from "./pages/owner/OwnerOverview";
 import OwnerParking from "./pages/owner/OwnerParking";
@@ -197,7 +198,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
       owner: [
         { to: "/profile", label: "Hồ sơ" },
         { to: "/scan", label: "Quét QR vào/ra" },
-        { to: "/owner-review-replies", label: "Phản hồi đánh giá" },
+        { to: "/owner/review-replies", label: "Phản hồi đánh giá" },
         { to: "/owner/settings", label: "Tạo nhân viên" },
       ],
       employee: [
@@ -293,7 +294,7 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         />
         <Route
           path="/owner-review-replies"
-          element={auth && role === "owner" ? <OwnerReviewReplyPage /> : <Navigate to={auth ? "/" : "/login"} replace />}
+          element={auth && role === "owner" ? <Navigate to="/owner/review-replies" replace /> : <Navigate to={auth ? "/" : "/login"} replace />}
         />
         <Route
           path="/employee"
@@ -315,9 +316,11 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           <Route path="bookings" element={<OwnerBookings />} />
           <Route path="booking-owner" element={<BookingOwner />} />
           <Route path="customers" element={<OwnerCustomers />} />
+          <Route path="employees" element={<OwnerEmployees />} />
           <Route path="revenue" element={<OwnerRevenue />} />
           <Route path="reviews" element={<OwnerReviews />} />
           <Route path="review-replies" element={<OwnerReviewReplyPage />} />
+          <Route path="notifications" element={<OwnerNotifications />} />
           <Route path="settings" element={<OwnerSettings />} />
         </Route>
         <Route
@@ -341,4 +344,3 @@ function AppBody({ auth, role, onLogin, onLogout }) {
 }
 
 export default App;
-
