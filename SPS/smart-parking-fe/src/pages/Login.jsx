@@ -3,6 +3,17 @@ import API, { saveAuth } from "../services/api";
 import { isStrongPassword, getPasswordStrength, PASSWORD_POLICY_TEXT } from "../services/passwordPolicy";
 import "./Login.css";
 
+const VN_MOBILE_PHONE_REGEX = /^0[35789]\d{8}$/;
+
+function normalizeVietnamPhone(value) {
+  const digits = (value || "").replace(/\D/g, "");
+  const localDigits = digits.startsWith("84") ? `0${digits.slice(2)}` : digits;
+  if (!localDigits) {
+    return "";
+  }
+  return VN_MOBILE_PHONE_REGEX.test(localDigits) ? localDigits : null;
+}
+
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [showForgotForm, setShowForgotForm] = useState(false);
@@ -82,6 +93,13 @@ export default function Login({ onLogin }) {
     } else if (!isStrongPassword(registerPassword)) {
       errors.password = PASSWORD_POLICY_TEXT;
     }
+    if (!registerPhone.trim()) {
+      errors.phone = "Vui lòng nhập số điện thoại";
+    }
+    const normalizedRegisterPhone = normalizeVietnamPhone(registerPhone);
+    if (registerPhone.trim() && !normalizedRegisterPhone) {
+      errors.phone = "Số điện thoại không đúng định dạng (VD: 09xxxxxxxx)";
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -94,7 +112,7 @@ export default function Login({ onLogin }) {
         name: registerName.trim(),
         email: registerEmail.trim().toLowerCase(),
         password: registerPassword,
-        phone: registerPhone.trim() || null,
+        phone: normalizedRegisterPhone || null,
         vehicle_plate: registerPlate.trim() || null,
         vehicle_color: registerColor.trim() || null,
       });
@@ -424,17 +442,24 @@ export default function Login({ onLogin }) {
               </>
             )}
 
-            <label className="login-label" htmlFor="register-phone">Số điện thoại (tùy chọn)</label>
-            <div className="input-shell">
+            <label className="login-label" htmlFor="register-phone">Số điện thoại</label>
+            <div className={`input-shell ${formErrors.phone ? "input-error" : ""}`}>
               <span className="input-icon" aria-hidden="true">☎</span>
               <input
                 id="register-phone"
                 className="login-input"
                 value={registerPhone}
-                onChange={(event) => setRegisterPhone(event.target.value)}
+                onChange={(event) => {
+                  setRegisterPhone(event.target.value);
+                  if (formErrors.phone) {
+                    setFormErrors((prev) => ({ ...prev, phone: "" }));
+                  }
+                }}
                 placeholder="09xxxxxxxx"
+                required
               />
             </div>
+            {formErrors.phone && <p className="field-error">{formErrors.phone}</p>}
 
             <label className="login-label" htmlFor="register-plate">Biển số xe (tùy chọn)</label>
             <div className="input-shell">

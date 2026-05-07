@@ -1,6 +1,23 @@
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+
+VN_MOBILE_PHONE_PATTERN = re.compile(r"^0[35789]\d{8}$")
+
+
+def _normalize_vietnam_phone(value: str) -> str:
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    if digits.startswith("84"):
+        digits = f"0{digits[2:]}"
+    return digits
+
+
+def _validate_vietnam_phone(value: str) -> str:
+    normalized = _normalize_vietnam_phone(value)
+    if not VN_MOBILE_PHONE_PATTERN.fullmatch(normalized):
+        raise ValueError("So dien thoai khong dung dinh dang (VD: 09xxxxxxxx)")
+    return normalized
 
 
 class EmployeeLoginRequest(BaseModel):
@@ -34,6 +51,10 @@ class OwnerCreateEmployeeRequest(BaseModel):
     password: str = Field(min_length=6, max_length=255)
     parking_id: int = Field(gt=0)
 
+    @validator("phone")
+    def validate_employee_phone(cls, value: str) -> str:
+        return _validate_vietnam_phone(value.strip())
+
 
 class OwnerEmployeeItem(BaseModel):
     id: int
@@ -61,6 +82,15 @@ class OwnerUpdateEmployeeRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=30)
     password: str | None = Field(default=None, min_length=6, max_length=255)
     parking_id: int | None = Field(default=None, gt=0)
+
+    @validator("phone")
+    def validate_employee_update_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        return _validate_vietnam_phone(stripped)
 
 
 class OwnerEmployeeActionResponse(BaseModel):
