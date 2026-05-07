@@ -193,11 +193,10 @@ def reply_review(
     if assignment is None:
         raise HTTPException(status_code=403, detail="Bạn không có quyền phản hồi đánh giá của bãi này")
 
-    normalized_reply = payload.reply.strip()
-    if not normalized_reply:
-        raise HTTPException(status_code=400, detail="Nội dung phản hồi không được để trống")
+    if review.owner_reply:
+        raise HTTPException(status_code=400, detail="Đã phản hồi đánh giá này rồi")
 
-    review.owner_reply = normalized_reply
+    review.owner_reply = payload.reply.strip()
     review.owner_replied_at = datetime.utcnow()
     db.commit()
     db.refresh(review)

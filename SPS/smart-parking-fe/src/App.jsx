@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import Booking from "./pages/Booking";
 import BookingHistory from "./pages/BookingHistory";
@@ -23,7 +23,6 @@ import OwnerRevenue from "./pages/owner/OwnerRevenue";
 import OwnerReviewReplyPage from "./pages/owner/OwnerReviewReplyPage";
 import OwnerReviews from "./pages/owner/OwnerReviews";
 import OwnerSettings from "./pages/owner/OwnerSettings";
-import BookingOwner from "./owner/BookingOwner";
 import Payment from "./pages/Payment";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Profile from "./pages/Profile";
@@ -226,13 +225,14 @@ function AppBody({ auth, role, onLogin, onLogout }) {
         <nav className="app-nav">
           <div className="app-nav-links">
             {links.map((link) => (
-              <Link
+              <NavLink
                 key={link.to}
                 to={link.to}
-                className={`app-link${location.pathname === link.to ? " active" : ""}`}
+                end={link.to === "/"}
+                className={({ isActive }) => `app-link${isActive ? " active" : ""}`}
               >
                 {link.label}
-              </Link>
+              </NavLink>
             ))}
           </div>
           <div className="app-nav-user">
@@ -313,11 +313,10 @@ function AppBody({ auth, role, onLogin, onLogout }) {
           <Route index element={<OwnerOverview />} />
           <Route path="parking" element={<OwnerParking />} />
           <Route path="bookings" element={<OwnerBookings />} />
-          <Route path="booking-owner" element={<BookingOwner />} />
           <Route path="customers" element={<OwnerCustomers />} />
           <Route path="revenue" element={<OwnerRevenue />} />
           <Route path="reviews" element={<OwnerReviews />} />
-          <Route path="review-replies" element={<OwnerReviewReplyPage />} />
+          <Route path="notifications" element={<OwnerNotifications />} />
           <Route path="settings" element={<OwnerSettings />} />
         </Route>
         <Route

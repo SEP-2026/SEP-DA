@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from werkzeug.security import generate_password_hash
 
 from app.database import get_db
-from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Review, User, UserVehicle
+from app.models.models import Booking, OwnerParking, ParkingLot, ParkingPrice, ParkingSlot, Payment, Review, User
 from app.routes.auth import get_current_user
 from app.security.password_policy import ensure_strong_password
 from app.utils import isoformat_vn
@@ -57,15 +57,6 @@ class OwnerManagedParkingSettingsUpdateRequest(BaseModel):
 
 class OwnerReviewReplyRequest(BaseModel):
     reply: str = Field(min_length=1, max_length=300)
-
-
-class OwnerBookingRequest(BaseModel):
-    user_id: int
-    slot_id: int
-    start_time: datetime
-    expire_time: datetime
-    booking_mode: str = Field(pattern="^(hourly|daily|monthly)$")
-    total_amount: float
 
 
 def require_owner(current_user: User = Depends(get_current_user)) -> User:
@@ -351,7 +342,7 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "endTime": isoformat_vn(booking.actual_checkout),
             "bookingStartTime": isoformat_vn(booking.start_time or booking.created_at, fallback_now=True),
             "bookingEndTime": isoformat_vn(booking.expire_time or booking.created_at, fallback_now=True),
-            "price": float(booking.total_actual_fee or booking.total_amount or 0),
+            "price": float(booking.total_amount or 0),
             "status": _owner_booking_status(booking.status),
             "phone": user.phone if user and user.phone else "Chưa có",
         })
@@ -382,7 +373,6 @@ def _serialize_owner_bootstrap(current_user: User, parking_lots: list[ParkingLot
             "createdAt": (review.created_at or datetime.utcnow()).isoformat(),
             "content": review.comment or "",
             "ownerReply": review.owner_reply or "",
-            "reply": review.owner_reply or "",
             "replyUpdatedAt": review.owner_replied_at.isoformat() if review.owner_replied_at else None,
         }
         for review in reviews
@@ -721,11 +711,10 @@ def owner_reply_review(
         raise HTTPException(status_code=404, detail="Không tìm thấy đánh giá")
     if _get_owner_parking_assignment(current_user.id, review.parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Bạn không có quyền phản hồi đánh giá này")
-    normalized_reply = payload.reply.strip()
-    if not normalized_reply:
-        raise HTTPException(status_code=400, detail="Nội dung phản hồi không được để trống")
+    if review.owner_reply:
+        raise HTTPException(status_code=400, detail="Đã phản hồi đánh giá này rồi")
 
-    review.owner_reply = normalized_reply
+    review.owner_reply = payload.reply.strip()
     review.owner_replied_at = datetime.utcnow()
     db.commit()
     return {
@@ -813,7 +802,7 @@ def get_owner_slot_detail(
                 "status": _owner_booking_status(active_booking.status),
                 "startTime": (active_booking.start_time or active_booking.created_at or datetime.utcnow()).isoformat(),
                 "endTime": (active_booking.expire_time or active_booking.created_at or datetime.utcnow()).isoformat(),
-                "price": float(active_booking.total_actual_fee or active_booking.total_amount or 0),
+                "price": float(active_booking.total_amount or 0),
                 "user": user.name if user else "Unknown user",
                 "plate": user.vehicle_plate if user and user.vehicle_plate else "Chưa có biển số",
                 "phone": user.phone if user and user.phone else "Chưa có",
@@ -1197,87 +1186,3 @@ def seed_test_data_public(db: Session = Depends(get_db)):
             "status": "error",
             "message": f"Lỗi khi tạo dữ liệu test: {str(e)}"
         }
-
-
-@router.post("/booking-owner")
-def create_owner_booking(
-    request: OwnerBookingRequest,
-    current_user: User = Depends(require_owner),
-    db: Session = Depends(get_db)
-):
-    """Owner tạo booking cho khách hàng với xác nhận"""
-    # Kiểm tra user tồn tại
-    user = db.query(User).filter(User.id == request.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Khách hàng không tồn tại")
-    
-    # Kiểm tra slot tồn tại và available
-    slot = db.query(ParkingSlot).filter(ParkingSlot.id == request.slot_id).first()
-    if not slot:
-        raise HTTPException(status_code=404, detail="Chỗ đỗ không tồn tại")
-    
-    # Kiểm tra owner có quyền trên parking này
-    owner_parking = db.query(OwnerParking).filter(
-        OwnerParking.owner_id == current_user.id,
-        OwnerParking.parking_id == slot.parking_id
-    ).first()
-    if not owner_parking:
-        raise HTTPException(status_code=403, detail="Không có quyền trên bãi đỗ này")
-    
-    # Kiểm tra slot có available không
-    existing_booking = db.query(Booking).filter(
-        Booking.slot_id == request.slot_id,
-        Booking.status.in_(["pending", "booked", "checked_in"])
-    ).first()
-    if existing_booking:
-        raise HTTPException(status_code=400, detail="Chỗ đỗ đã được đặt")
-    
-    # Tạo booking với status pending_owner_confirmation
-    confirmation_expires = datetime.utcnow() + timedelta(minutes=10)
-    booking = Booking(
-        user_id=request.user_id,
-        slot_id=request.slot_id,
-        parking_id=slot.parking_id,
-        start_time=request.start_time,
-        expire_time=request.expire_time,
-        booking_mode=request.booking_mode,
-        total_amount=request.total_amount,
-        status="pending_owner_confirmation",
-        owner_created=1,
-        confirmation_expires_at=confirmation_expires
-    )
-    db.add(booking)
-    db.commit()
-    db.refresh(booking)
-    
-    return {
-        "message": "Đã tạo booking chờ xác nhận từ khách hàng",
-        "booking_id": booking.id,
-        "expires_at": confirmation_expires.isoformat()
-    }
-
-
-@router.get("/customers-list")
-def get_customers_list(
-    current_user: User = Depends(require_owner),
-    db: Session = Depends(get_db)
-):
-    """Lấy danh sách khách hàng cho owner chọn"""
-    # Lấy tất cả users có role "user"
-    customers = db.query(User).filter(User.role == "user", User.is_active == 1).all()
-    
-    result = []
-    for customer in customers:
-        vehicle = customer.vehicle_profile
-        result.append({
-            "id": customer.id,
-            "name": customer.name,
-            "email": customer.email,
-            "phone": customer.phone,
-            "vehicle_plate": vehicle.license_plate if vehicle else None,
-            "vehicle_brand": vehicle.brand if vehicle else None,
-            "vehicle_model": vehicle.vehicle_model if vehicle else None,
-            "vehicle_color": vehicle.vehicle_color if vehicle else None
-        })
-    
-    return result

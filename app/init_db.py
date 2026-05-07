@@ -460,10 +460,6 @@ def migrate_bookings_columns():
         alter_statements.append("ADD COLUMN overstay_fee DECIMAL(10,2) NULL DEFAULT 0")
     if "total_actual_fee" not in columns:
         alter_statements.append("ADD COLUMN total_actual_fee DECIMAL(10,2) NULL")
-    if "owner_created" not in columns:
-        alter_statements.append("ADD COLUMN owner_created TINYINT(1) NOT NULL DEFAULT 0")
-    if "confirmation_expires_at" not in columns:
-        alter_statements.append("ADD COLUMN confirmation_expires_at DATETIME NULL")
     if "is_reviewed" not in columns:
         alter_statements.append("ADD COLUMN is_reviewed TINYINT(1) NOT NULL DEFAULT 0")
 

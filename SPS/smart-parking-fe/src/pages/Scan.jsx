@@ -10,8 +10,6 @@ import { checkInGate, confirmCheckout, getCheckoutPreview, getGateBooking } from
 import { formatCurrency } from "../features/gate/gateFormatters";
 import { inferQrPreview, parseBookingIdFromQR, parseManualBookingId } from "../features/gate/scanParser";
 import { getBannerTone } from "../features/gate/statusLabel";
-import API from "../services/api";
-import { getAuth } from "../services/api";
 import "./Scan.css";
 
 function buildBannerFromError(error, fallbackTitle) {
@@ -25,8 +23,6 @@ export default function Scan() {
   const navigate = useNavigate();
   const scanInputRef = useRef(null);
   const successTimeoutRef = useRef(null);
-  const auth = getAuth();
-  const userRole = auth?.user?.role || "";
   const [gateId, setGateId] = useState("GATE-A1");
   const [scanValue, setScanValue] = useState("");
   const [manualBookingId, setManualBookingId] = useState("");
@@ -46,7 +42,6 @@ export default function Scan() {
   const [checkoutPreview, setCheckoutPreview] = useState(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [confirmingCheckout, setConfirmingCheckout] = useState(false);
-  const [ownerParkingLot, setOwnerParkingLot] = useState(null);
 
   const qrPreview = useMemo(() => inferQrPreview(scanValue), [scanValue]);
   const manualPreview = useMemo(() => parseManualBookingId(manualBookingId), [manualBookingId]);
@@ -54,29 +49,6 @@ export default function Scan() {
   useEffect(() => {
     scanInputRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    const fetchOwnerData = async () => {
-      if (userRole === "owner") {
-        try {
-          const res = await API.get("/owner/bootstrap");
-          if (res.data?.parkingLot) {
-            setOwnerParkingLot(res.data.parkingLot);
-            const parkingLotId = res.data.parkingLot.id;
-            const dynamicGateId = `GATE-${parkingLotId}`;
-            setGateId(dynamicGateId);
-            setBanner({
-              title: "Sẵn sàng xử lý",
-              message: `Quét QR để tự động xử lý hoặc nhập mã booking. Cổng: ${dynamicGateId} - ${res.data.parkingLot.name}`,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to fetch owner parking lot:", error);
-        }
-      }
-    };
-    fetchOwnerData();
-  }, [userRole]);
 
   useEffect(
     () => () => {
@@ -295,27 +267,12 @@ export default function Scan() {
             <p className="scan-subtitle">
               Quét QR để nhận diện booking, sau đó nhân viên chủ động chọn thao tác cho xe vào hoặc ra bãi.
             </p>
-            {ownerParkingLot && (
-              <p className="scan-subtitle" style={{ color: "#4f46e5", fontWeight: "500" }}>
-                📍 {ownerParkingLot.name} - Cổng: {gateId}
-              </p>
-            )}
           </div>
 
           <div className="scan-hero-badge">
             <strong>Trạng thái cổng</strong>
             <span>{uiState === "idle" ? "Sẵn sàng" : uiState}</span>
             <span>{booking?.cooldown?.active ? "Đang chờ cooldown" : "Có thể quét tiếp"}</span>
-            {userRole === "owner" && (
-              <button
-                type="button"
-                className="scan-secondary-btn"
-                style={{ marginTop: 8 }}
-                onClick={() => navigate("/owner")}
-              >
-                ← Quay lại trang chủ
-              </button>
-            )}
             <button
               type="button"
               className="scan-secondary-btn"

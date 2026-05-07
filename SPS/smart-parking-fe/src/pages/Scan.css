@@ -65,8 +65,8 @@
 
 .scan-panel {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 18px;
+  padding: 20px;
   border: 1px solid rgba(20, 57, 93, 0.12);
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.82);
@@ -74,10 +74,7 @@
 }
 
 .scan-panel--primary {
-  gap: 12px;
-  align-content: start;
-  align-items: start;
-  grid-auto-rows: max-content;
+  gap: 16px;
 }
 
 .scan-frame {
@@ -193,12 +190,12 @@
 .scan-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .scan-field {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .scan-field span {
@@ -211,12 +208,9 @@
   width: 100%;
   border: 1px solid rgba(20, 57, 93, 0.16);
   border-radius: 16px;
-  min-height: 52px;
-  padding: 10px 14px;
+  padding: 14px 16px;
   color: #14395d;
-  font-size: 16px;
-  line-height: 1.35;
-  font-family: inherit;
+  font: inherit;
   outline: none;
   background: rgba(255, 255, 255, 0.96);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
@@ -229,15 +223,13 @@
 }
 
 .scan-textarea {
-  min-height: 84px;
-  max-height: 132px;
+  min-height: 138px;
   resize: vertical;
 }
 
 .scan-inline {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
   gap: 10px;
 }
 
@@ -257,19 +249,12 @@
 .btn-checkout {
   border: 0;
   border-radius: 16px;
-  min-height: 44px;
-  padding: 8px 12px;
+  padding: 14px;
   color: #fff;
-  font-size: 16px;
-  line-height: 1.2;
-  font-family: inherit;
+  font: inherit;
   font-weight: 800;
   cursor: pointer;
   transition: transform 0.2s ease, filter 0.2s ease, opacity 0.2s ease;
-}
-
-.scan-actions--single .scan-primary-btn {
-  min-height: 46px;
 }
 
 .scan-primary-btn {

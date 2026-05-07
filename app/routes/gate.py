@@ -373,10 +373,7 @@ def _compute_pricing_preview(booking: Booking, payment: Payment | None, price: P
     if overtime_fee > extra_fee:
         extra_fee = overtime_fee
 
-    if payment and booking.actual_checkout and payment.payment_status == "paid":
-        remaining_due = max(round(float(payment.remaining_amount or 0), 2), 0)
-    else:
-        remaining_due = max(round(total_charge - prepaid_amount, 2), 0)
+    remaining_due = max(round(total_charge - prepaid_amount, 2), 0)
     qr_expired = booking.qr_token_expires_at is not None and booking.qr_token_expires_at <= now
     expired = bool(scheduled_end and now > scheduled_end and booking.status in {"pending", "booked", "checked_out"})
 
@@ -628,13 +625,6 @@ def _execute_check_out(
     payment.remaining_amount = 0
     payment.payment_status = "paid"
     payment.paid_at = now
-
-    booking.overstay_fee = preview["extra_fee"]
-    booking.total_actual_fee = preview["total_charge"]
-    booking.overstay_minutes = max(
-        int(round(max(float(preview["actual_hours"] or 0) - float(preview["scheduled_hours"] or 0), 0) * 60)),
-        0,
-    )
     qr_path, vnpay_url = _generate_payment_artifact(booking.id, preview["remaining_due"], normalized_payment_method)
     if qr_path:
         payment.qr_code = qr_path

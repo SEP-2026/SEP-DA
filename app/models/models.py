@@ -146,8 +146,6 @@ class Booking(Base):
     qr_token_expires_at = Column(DateTime, nullable=True)
     cancel_reason = Column(String(255), nullable=True)
     is_reviewed = Column(Integer, default=0, nullable=False)
-    owner_created = Column(Integer, default=0, nullable=False)  # 1 if created by owner for user
-    confirmation_expires_at = Column(DateTime, nullable=True)  # for owner-created bookings
 
     user = relationship("User")
     slot = relationship("ParkingSlot")
