@@ -339,6 +339,20 @@
   flex-wrap: wrap;
 }
 
+.profile-topup-qr-box {
+  margin: 0.35rem 0 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.profile-topup-qr-box img {
+  width: min(320px, 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(84, 167, 198, 0.35);
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(16, 71, 104, 0.14);
+}
+
 .profile-action-confirm {
   background: linear-gradient(92deg, #2f8fb5 0%, #57c6b9 100%);
 }
