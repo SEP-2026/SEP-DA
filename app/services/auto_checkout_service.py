@@ -79,7 +79,8 @@ def auto_checkout_expired_bookings(db: Session, now: datetime | None = None) -> 
                 # Mark booking as no-show/cancelled for bookkeeping and analytics
                 booking.status = "cancelled"
                 booking.cancel_reason = "no_show"
-                booking.last_gate_action = "auto_no_show_deposit_forfeit"
+                # bookings.last_gate_action is varchar(20), keep value within schema limit.
+                booking.last_gate_action = "auto_no_show"
                 booking.last_gate_action_at = checkout_at
 
                 # Free the slot (booking no longer holds the slot)
@@ -161,4 +162,3 @@ def auto_checkout_expired_bookings(db: Session, now: datetime | None = None) -> 
     except Exception:
         db.rollback()
         raise
-

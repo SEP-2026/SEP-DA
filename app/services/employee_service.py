@@ -48,9 +48,39 @@ def _get_owner_assignment(owner_id: int, parking_id: int, db: Session) -> OwnerP
 
 
 def _get_employee_parking(employee: User, db: Session) -> ParkingLot:
+    # Backward-compatible fallback: old employee accounts may miss parking_id.
+    if not employee.parking_id and employee.owner_id:
+        assignment = (
+            db.query(OwnerParking)
+            .filter(OwnerParking.owner_id == employee.owner_id)
+            .order_by(OwnerParking.id.asc())
+            .first()
+        )
+        if assignment:
+            employee.parking_id = assignment.parking_id
+            db.flush()
+
+    # Second fallback: infer parking by employee login email pattern bx<parking_token>@...
+    if not employee.parking_id and employee.email:
+        email_value = (employee.email or "").strip().lower()
+        if email_value.startswith("bx") and "@" in email_value:
+            login_token = email_value[2:].split("@", 1)[0]
+            if login_token:
+                candidates = db.query(ParkingLot).all()
+                matched = None
+                for lot in candidates:
+                    lot_token = _parking_login_token(lot.name)
+                    lot_token_compact = lot_token.removeprefix("baixe")
+                    if login_token in {lot_token, lot_token_compact}:
+                        matched = lot
+                        break
+                if matched:
+                    employee.parking_id = matched.id
+                    db.flush()
+
     parking_lot = db.query(ParkingLot).filter(ParkingLot.id == employee.parking_id).first()
     if not parking_lot:
-        raise HTTPException(status_code=404, detail="Không tìm th?y bãi du?c phân công")
+        raise HTTPException(status_code=404, detail="Không tìm thấy bãi được phân công")
     return parking_lot
 
 
@@ -105,9 +135,9 @@ def _assert_employee_can_check_in(parking_id: int, db: Session) -> None:
     total_slots, occupied_slots, _ = _compute_slot_metrics(parking_id, db)
     state = _get_operational_state(parking_id, db)
     if state.status == "closed":
-        raise HTTPException(status_code=409, detail="Bãi dang dóng, không th? check-in")
+        raise HTTPException(status_code=409, detail="Bãi đang đóng, không thể check-in")
     if state.status == "full" or (total_slots > 0 and occupied_slots >= total_slots):
-        raise HTTPException(status_code=409, detail="Bãi dang d?y, không th? check-in")
+        raise HTTPException(status_code=409, detail="Bãi đang đầy, không thể check-in")
 
 
 def _serialize_employee(employee: User) -> dict:
@@ -191,7 +221,7 @@ def create_employee_for_owner(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner account is not authorized")
 
     if owner.role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Ch? owner m?i t?o du?c employee")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Chỉ owner mới tạo được employee")
     if _get_owner_assignment(owner.id, parking_id, db) is None:
         raise HTTPException(status_code=403, detail="Owner email is not allowed to manage this parking")
 
@@ -210,7 +240,7 @@ def create_employee_for_owner(
         raise HTTPException(status_code=400, detail="Employee phone is required")
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
-        raise HTTPException(status_code=409, detail="Email employee dã t?n t?i")
+        raise HTTPException(status_code=409, detail="Email employee đã tồn tại")
 
     user = User(
         name=normalized_full_name,
@@ -682,9 +712,9 @@ def employee_check_in(employee: User, qr_data: str, db: Session) -> dict:
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm th?y booking")
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
-        raise HTTPException(status_code=403, detail="Booking không thu?c bãi du?c phân công")
+        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
     payment = _get_payment(booking.id, db, lock=True)
     detail = _execute_check_in(
         booking=booking,
@@ -714,9 +744,9 @@ def employee_get_gate_booking(employee: User, booking_id: int, db: Session) -> d
     parking_lot = _get_employee_parking(employee, db)
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm th?y booking")
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
-        raise HTTPException(status_code=403, detail="Employee không có quy?n thao tác t?i bãi này")
+        raise HTTPException(status_code=403, detail="Employee không có quyền thao tác tại bãi này")
     payment = _get_payment(booking.id, db, lock=False)
     _log_activity(
         employee,
@@ -735,9 +765,9 @@ def employee_check_out(employee: User, qr_data: str, payment_method: str, db: Se
     parsed = _parse_scan_payload(qr_data, "qr_scan")
     booking = db.query(Booking).filter(Booking.id == parsed["booking_id"]).with_for_update().first()
     if not booking:
-        raise HTTPException(status_code=404, detail="Không tìm th?y booking")
+        raise HTTPException(status_code=404, detail="Không tìm thấy booking")
     if int(booking.parking_id or 0) != int(parking_lot.id):
-        raise HTTPException(status_code=403, detail="Booking không thu?c bãi du?c phân công")
+        raise HTTPException(status_code=403, detail="Booking không thuộc bãi được phân công")
 
     # Fallback for legacy/edge data where a vehicle is physically occupying a slot but booking was not transitioned to checked_in.
     now = _local_now()
@@ -806,4 +836,3 @@ def get_employee_history(
         for row in rows
     ]
     return {"history": history, "total_count": len(history)}
-

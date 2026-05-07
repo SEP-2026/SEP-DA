@@ -12,8 +12,8 @@ class EmployeeInfo(BaseModel):
     id: int
     username: str
     role: str = "employee"
-    owner_id: int
-    parking_id: int
+    owner_id: int | None = None
+    parking_id: int | None = None
     status: str
     created_at: datetime | None = None
 
@@ -43,8 +43,8 @@ class OwnerEmployeeItem(BaseModel):
     full_name: str | None = None
     phone: str | None = None
     role: str = "employee"
-    owner_id: int
-    parking_id: int
+    owner_id: int | None = None
+    parking_id: int | None = None
     parking_name: str | None = None
     status: str
     created_at: datetime | None = None
